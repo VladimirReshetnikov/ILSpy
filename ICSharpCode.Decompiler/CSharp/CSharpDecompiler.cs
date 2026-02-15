@@ -1734,6 +1734,7 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		void DecompileBody(IMethod method, EntityDeclaration entityDecl, DecompileRun decompileRun, ITypeResolveContext decompilationContext, ExtensionInfo extensionInfo)
 		{
+			IMethod decompiledMethod = method;
 			try
 			{
 				var ilReader = new ILReader(typeSystem.MainModule) {
@@ -1748,6 +1749,7 @@ namespace ICSharpCode.Decompiler.CSharp
 						parameterOffset = 1; // implementation method has an additional receiver parameter
 					method = extensionInfo.InfoOfExtensionMember((IMethod)method.MemberDefinition).Value.ImplementationMethod;
 				}
+				decompiledMethod = method;
 
 				var methodDef = metadata.GetMethodDefinition((MethodDefinitionHandle)method.MetadataToken);
 				var body = BlockStatement.Null;
@@ -1821,9 +1823,64 @@ namespace ICSharpCode.Decompiler.CSharp
 
 				CleanUpMethodDeclaration(entityDecl, body, function, localSettings.DecompileMemberBodies);
 			}
-			catch (Exception innerException) when (!(innerException is OperationCanceledException || innerException is DecompilerException))
+			catch (Exception innerException) when (!(innerException is OperationCanceledException))
 			{
-				throw new DecompilerException(module, method, innerException);
+				entityDecl.AddChild(CreateErrorBody(decompiledMethod, innerException), Roles.Body);
+			}
+		}
+
+		BlockStatement CreateErrorBody(IMethod method, Exception exception)
+		{
+			var body = new BlockStatement();
+			body.AddChild(new Comment("ILSpy decompilation error. This method body could not be decompiled."), Roles.Comment);
+			body.AddChild(new Comment("Method: " + method.FullName), Roles.Comment);
+			body.AddChild(new Comment(""), Roles.Comment);
+			body.AddChild(new Comment("Exception details:"), Roles.Comment);
+			foreach (var line in SplitLines(exception.ToString()))
+			{
+				body.AddChild(new Comment(line), Roles.Comment);
+			}
+			body.AddChild(new Comment(""), Roles.Comment);
+			body.AddChild(new Comment("Full IL:"), Roles.Comment);
+			foreach (var line in SplitLines(GetMethodBodyIL(method)))
+			{
+				body.AddChild(new Comment(line), Roles.Comment);
+			}
+			// insert explicit rbrace token to make the comment appear within the braces
+			body.AddChild(new CSharpTokenNode(TextLocation.Empty, Roles.RBrace), Roles.RBrace);
+			return body;
+		}
+
+		string GetMethodBodyIL(IMethod method)
+		{
+			try
+			{
+				var output = new PlainTextOutput();
+				var methodDisassembler = new MethodBodyDisassembler(output, CancellationToken) {
+					DetectControlStructure = false
+				};
+				methodDisassembler.Disassemble(module.MetadataFile, (MethodDefinitionHandle)method.MetadataToken);
+				return output.ToString();
+			}
+			catch (Exception ilException) when (!(ilException is OperationCanceledException))
+			{
+				return "Failed to disassemble method body IL." + Environment.NewLine + ilException;
+			}
+		}
+
+		IEnumerable<string> SplitLines(string text)
+		{
+			if (string.IsNullOrEmpty(text))
+			{
+				yield break;
+			}
+			using (var reader = new StringReader(text))
+			{
+				string line;
+				while ((line = reader.ReadLine()) != null)
+				{
+					yield return line;
+				}
 			}
 		}
 
