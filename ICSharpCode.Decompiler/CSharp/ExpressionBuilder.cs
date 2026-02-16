@@ -3702,64 +3702,71 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		TranslatedExpression TranslateStackAllocInitializer(Block block, IType typeHint)
 		{
-			var stloc = block.Instructions.FirstOrDefault() as StLoc;
-			var final = block.FinalInstruction as LdLoc;
-			if (stloc == null || final == null || stloc.Variable != final.Variable || stloc.Variable.Kind != VariableKind.InitializerTarget)
-				throw new ArgumentException("given Block is invalid!");
-			StackAllocExpression stackAllocExpression;
-			IType elementType;
-			if (block.Instructions.Count < 2 || !block.Instructions[1].MatchStObj(out _, out _, out var t))
-				throw new ArgumentException("given Block is invalid!");
-			if (typeHint is PointerType pt && !TypeUtils.IsCompatibleTypeForMemoryAccess(t, pt.ElementType))
+			try
 			{
-				typeHint = new PointerType(t);
-			}
-			switch (stloc.Value)
-			{
-				case LocAlloc locAlloc:
-					stackAllocExpression = TranslateLocAlloc(locAlloc, typeHint, out elementType);
-					break;
-				case LocAllocSpan locAllocSpan:
-					stackAllocExpression = TranslateLocAllocSpan(locAllocSpan, typeHint, out elementType);
-					break;
-				default:
+				var stloc = block.Instructions.FirstOrDefault() as StLoc;
+				var final = block.FinalInstruction as LdLoc;
+				if (stloc == null || final == null || stloc.Variable != final.Variable || stloc.Variable.Kind != VariableKind.InitializerTarget)
 					throw new ArgumentException("given Block is invalid!");
-			}
-			var initializer = stackAllocExpression.Initializer = new ArrayInitializerExpression();
-			var pointerType = new PointerType(elementType);
-			long expectedOffset = 0;
-
-			for (int i = 1; i < block.Instructions.Count; i++)
-			{
-				// stobj type(binary.add.i(ldloc I_0, conv i4->i <sign extend> (ldc.i4 offset)), value)
-				if (!block.Instructions[i].MatchStObj(out var target, out var value, out t) || !TypeUtils.IsCompatibleTypeForMemoryAccess(elementType, t))
+				StackAllocExpression stackAllocExpression;
+				IType elementType;
+				if (block.Instructions.Count < 2 || !block.Instructions[1].MatchStObj(out _, out _, out var t))
 					throw new ArgumentException("given Block is invalid!");
-				long offset = 0;
-				target = target.UnwrapConv(ConversionKind.StopGCTracking);
-
-				if (!target.MatchLdLoc(stloc.Variable))
+				if (typeHint is PointerType pt && !TypeUtils.IsCompatibleTypeForMemoryAccess(t, pt.ElementType))
 				{
-					if (!target.MatchBinaryNumericInstruction(BinaryNumericOperator.Add, out var left, out var right))
-						throw new ArgumentException("given Block is invalid!");
-					var binary = (BinaryNumericInstruction)target;
-					left = left.UnwrapConv(ConversionKind.StopGCTracking);
-					var offsetInst = PointerArithmeticOffset.Detect(right, pointerType.ElementType, binary.CheckForOverflow);
-					if (!left.MatchLdLoc(final.Variable) || offsetInst == null)
-						throw new ArgumentException("given Block is invalid!");
-					if (!offsetInst.MatchLdcI(out offset))
+					typeHint = new PointerType(t);
+				}
+				switch (stloc.Value)
+				{
+					case LocAlloc locAlloc:
+						stackAllocExpression = TranslateLocAlloc(locAlloc, typeHint, out elementType);
+						break;
+					case LocAllocSpan locAllocSpan:
+						stackAllocExpression = TranslateLocAllocSpan(locAllocSpan, typeHint, out elementType);
+						break;
+					default:
 						throw new ArgumentException("given Block is invalid!");
 				}
-				while (expectedOffset < offset)
+				var initializer = stackAllocExpression.Initializer = new ArrayInitializerExpression();
+				var pointerType = new PointerType(elementType);
+				long expectedOffset = 0;
+
+				for (int i = 1; i < block.Instructions.Count; i++)
 				{
-					initializer.Elements.Add(Translate(IL.Transforms.TransformArrayInitializers.GetNullExpression(elementType), typeHint: elementType));
+					// stobj type(binary.add.i(ldloc I_0, conv i4->i <sign extend> (ldc.i4 offset)), value)
+					if (!block.Instructions[i].MatchStObj(out var target, out var value, out t) || !TypeUtils.IsCompatibleTypeForMemoryAccess(elementType, t))
+						throw new ArgumentException("given Block is invalid!");
+					long offset = 0;
+					target = target.UnwrapConv(ConversionKind.StopGCTracking);
+
+					if (!target.MatchLdLoc(stloc.Variable))
+					{
+						if (!target.MatchBinaryNumericInstruction(BinaryNumericOperator.Add, out var left, out var right))
+							throw new ArgumentException("given Block is invalid!");
+						var binary = (BinaryNumericInstruction)target;
+						left = left.UnwrapConv(ConversionKind.StopGCTracking);
+						var offsetInst = PointerArithmeticOffset.Detect(right, pointerType.ElementType, binary.CheckForOverflow);
+						if (!left.MatchLdLoc(final.Variable) || offsetInst == null)
+							throw new ArgumentException("given Block is invalid!");
+						if (!offsetInst.MatchLdcI(out offset))
+							throw new ArgumentException("given Block is invalid!");
+					}
+					while (expectedOffset < offset)
+					{
+						initializer.Elements.Add(Translate(IL.Transforms.TransformArrayInitializers.GetNullExpression(elementType), typeHint: elementType));
+						expectedOffset++;
+					}
+					var val = Translate(value, typeHint: elementType).ConvertTo(elementType, this, allowImplicitConversion: true);
+					initializer.Elements.Add(val);
 					expectedOffset++;
 				}
-				var val = Translate(value, typeHint: elementType).ConvertTo(elementType, this, allowImplicitConversion: true);
-				initializer.Elements.Add(val);
-				expectedOffset++;
+				return stackAllocExpression.WithILInstruction(block)
+					.WithRR(new ResolveResult(stloc.Variable.Type));
 			}
-			return stackAllocExpression.WithILInstruction(block)
-				.WithRR(new ResolveResult(stloc.Variable.Type));
+			catch (ArgumentException)
+			{
+				return ErrorExpression("Could not translate stackalloc initializer", block, typeHint);
+			}
 		}
 
 		TranslatedExpression TranslateWithInitializer(Block block)

@@ -819,12 +819,21 @@ namespace ICSharpCode.Decompiler.CSharp
 						var designation = new SingleVariableDesignation();
 						if (subPattern.HasDesignator)
 						{
-							ILVariable v = ((StLoc)assignments[assignmentPos]).Variable;
-							if (isForeach)
-								v.Kind = VariableKind.ForeachLocal;
-							designation.Identifier = v.Name;
-							designation.AddAnnotation(new ILVariableResolveResult(v));
-							assignmentPos++;
+							if (assignmentPos < assignments.Count && assignments[assignmentPos] is StLoc stloc)
+							{
+								ILVariable v = stloc.Variable;
+								if (isForeach)
+									v.Kind = VariableKind.ForeachLocal;
+								designation.Identifier = v.Name;
+								designation.AddAnnotation(new ILVariableResolveResult(v));
+								assignmentPos++;
+							}
+							else
+							{
+								// The pattern can contain designators that were optimized away from assignments.
+								// Fall back to discards to avoid crashing on malformed/incomplete deconstruction metadata.
+								designation.Identifier = "_";
+							}
 						}
 						else
 						{
