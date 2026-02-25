@@ -37,7 +37,11 @@ namespace ICSharpCode.Decompiler.Solution
 		/// </summary>
 		/// <param name="targetFile">The full path of the file to write.</param>
 		/// <param name="projects">The projects contained in this solution.</param>
-		/// 
+		/// <remarks>
+		/// This method rewrites project files in <paramref name="projects"/> so assembly references that
+		/// point to sibling projects become project-to-project references inside the generated solution.
+		/// </remarks>
+		///
 		/// <exception cref="ArgumentException">Thrown when <paramref name="targetFile"/> is null or empty.</exception>
 		/// <exception cref="ArgumentNullException">Thrown when <paramref name="projects"/> is null.</exception>
 		/// <exception cref="InvalidOperationException">Thrown when <paramref name="projects"/> contains no items.</exception>

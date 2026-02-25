@@ -32,7 +32,8 @@ namespace ICSharpCode.Decompiler.Solution
 		/// <param name="projectFile">The full path of the project file.</param>
 		/// <param name="projectPlatform">The project platform.</param>
 		/// <param name="projectGuid">The project GUID.</param>
-		/// 
+		/// <param name="typeGuid">The Visual Studio project type GUID for the generated project.</param>
+		///
 		/// <exception cref="ArgumentException">Thrown when <paramref name="projectFile"/> 
 		/// or <paramref name="projectPlatform"/> is null or empty.</exception>
 		public ProjectItem(string projectFile, string projectPlatform, Guid projectGuid, Guid typeGuid)
