@@ -16,27 +16,43 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Stores accumulated diagnostics for a single unresolved assembly reference.
+	/// </summary>
 	public sealed class UnresolvedAssemblyNameReference
 	{
+		/// <summary>
+		/// Gets the full display name of the referenced assembly.
+		/// </summary>
 		public string FullName { get; }
 
+		/// <summary>
+		/// Gets whether <see cref="Messages"/> contains at least one error-level diagnostic.
+		/// </summary>
 		public bool HasErrors => Messages.Any(m => m.Item1 == MessageKind.Error);
 
+		/// <summary>
+		/// Gets the ordered diagnostic messages recorded while trying to resolve this reference.
+		/// </summary>
 		public List<(MessageKind, string)> Messages { get; } = new List<(MessageKind, string)>();
 
+		/// <summary>
+		/// Initializes a new entry for the specified referenced assembly.
+		/// </summary>
+		/// <param name="fullName">Full display name of the referenced assembly.</param>
 		public UnresolvedAssemblyNameReference(string fullName)
 		{
 			this.FullName = fullName;
 		}
 	}
 
+	/// <summary>
+	/// Classifies the severity of a reference-resolution diagnostic message.
+	/// </summary>
 	public enum MessageKind { Error, Warning, Info }
 }
