@@ -1134,6 +1134,12 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		readonly Dictionary<TypeDefinitionHandle, PartialTypeInfo> partialTypes = new();
 
+		/// <summary>
+		/// Registers additional members for a type that is emitted as a partial declaration during project decompilation.
+		/// </summary>
+		/// <param name="info">
+		/// Collected information for one partial declaration, including the declaring type handle and declared members.
+		/// </param>
 		public void AddPartialTypeDefinition(PartialTypeInfo info)
 		{
 			if (!partialTypes.TryGetValue(info.DeclaringTypeDefinitionHandle, out var existingInfo))
