@@ -114,16 +114,35 @@ namespace ICSharpCode.Decompiler.Metadata
 
 	sealed class MetadataResource : Resource
 	{
+		/// <summary>
+		/// Gets the metadata file that owns this manifest resource row.
+		/// </summary>
 		public MetadataFile Module { get; }
+		/// <summary>
+		/// Gets the metadata handle that identifies the manifest resource record.
+		/// </summary>
 		public ManifestResourceHandle Handle { get; }
+		/// <summary>
+		/// Gets whether <see cref="Handle"/> is the nil manifest-resource handle.
+		/// </summary>
 		public bool IsNil => Handle.IsNil;
 
+		/// <summary>
+		/// Creates a metadata-backed resource wrapper for a manifest resource row.
+		/// </summary>
+		/// <param name="module">The metadata file that provides access to resource metadata and section data.</param>
+		/// <param name="handle">The manifest resource handle within <paramref name="module"/>.</param>
 		public MetadataResource(MetadataFile module, ManifestResourceHandle handle)
 		{
 			this.Module = module ?? throw new ArgumentNullException(nameof(module));
 			this.Handle = handle;
 		}
 
+		/// <summary>
+		/// Determines whether this instance identifies the same manifest resource row as another instance.
+		/// </summary>
+		/// <param name="other">The other metadata resource to compare with.</param>
+		/// <returns><see langword="true"/> when both instances reference the same module and handle; otherwise, <see langword="false"/>.</returns>
 		public bool Equals(MetadataResource other)
 		{
 			return Module == other.Module && Handle == other.Handle;
@@ -144,6 +163,11 @@ namespace ICSharpCode.Decompiler.Metadata
 		public override string Name => Module.Metadata.GetString(Module.Metadata.GetManifestResource(Handle).Name);
 
 		public override ManifestResourceAttributes Attributes => Module.Metadata.GetManifestResource(Handle).Attributes;
+		/// <summary>
+		/// Determines whether the manifest resource attributes include a specific flag.
+		/// </summary>
+		/// <param name="flag">The flag to test.</param>
+		/// <returns><see langword="true"/> if <paramref name="flag"/> is set; otherwise, <see langword="false"/>.</returns>
 		public bool HasFlag(ManifestResourceAttributes flag) => (Attributes & flag) == flag;
 		public override ResourceType ResourceType => GetResourceType();
 

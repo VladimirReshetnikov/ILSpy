@@ -56,12 +56,21 @@ namespace ICSharpCode.Decompiler.DebugInfo
 			get => functions;
 		}
 
+		/// <summary>
+		/// Initializes a new debug-info generator for a specific decompiler type system.
+		/// </summary>
+		/// <param name="typeSystem">The type system used to resolve metadata entities while generating debug information.</param>
 		public DebugInfoGenerator(IDecompilerTypeSystem typeSystem)
 		{
 			this.typeSystem = typeSystem ?? throw new ArgumentNullException(nameof(typeSystem));
 			this.currentImportScope = globalImportScope;
 		}
 
+		/// <summary>
+		/// Emits all collected import scopes into the target metadata builder.
+		/// </summary>
+		/// <param name="metadata">The metadata builder that receives the generated import-scope records.</param>
+		/// <param name="globalImportScope">The root import scope handle that namespace-local scopes should reference as parent.</param>
 		public void GenerateImportScopes(MetadataBuilder metadata, ImportScopeHandle globalImportScope)
 		{
 			foreach (var scope in importScopes)

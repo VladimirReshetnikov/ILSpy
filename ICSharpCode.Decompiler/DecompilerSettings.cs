@@ -181,6 +181,15 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <summary>
+		/// Computes the minimum C# language version that can represent all features currently enabled in this settings instance.
+		/// </summary>
+		/// <remarks>
+		/// This is used by project decompilation to avoid selecting a language version that would make the generated code invalid.
+		/// </remarks>
+		/// <returns>
+		/// The lowest <see cref="CSharp.LanguageVersion"/> that supports all currently enabled decompiler output features.
+		/// </returns>
 		public CSharp.LanguageVersion GetMinimumRequiredVersion()
 		{
 			if (extensionMembers || firstClassSpanTypes)
@@ -2373,6 +2382,12 @@ namespace ICSharpCode.Decompiler
 
 		CSharpFormattingOptions csharpFormattingOptions;
 
+		/// <summary>
+		/// Gets or sets the formatting options that control C# output layout (indentation, wrapping and member formatting).
+		/// </summary>
+		/// <remarks>
+		/// The value is lazily initialized with an Allman-style configuration that is tuned for decompiler output.
+		/// </remarks>
 		[Browsable(false)]
 		public CSharpFormattingOptions CSharpFormattingOptions {
 			get {
@@ -2396,8 +2411,15 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <inheritdoc cref="INotifyPropertyChanged.PropertyChanged"/>
 		public event PropertyChangedEventHandler PropertyChanged;
 
+		/// <summary>
+		/// Raises <see cref="PropertyChanged"/> for the provided property name.
+		/// </summary>
+		/// <param name="propertyName">
+		/// The name of the property that changed. Defaults to the caller member name.
+		/// </param>
 		protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
 		{
 			if (PropertyChanged != null)
@@ -2406,6 +2428,13 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <summary>
+		/// Creates a copy of this settings object.
+		/// </summary>
+		/// <returns>
+		/// A new <see cref="DecompilerSettings"/> instance with the same option values, including a cloned
+		/// <see cref="CSharpFormattingOptions"/> object when formatting options were initialized.
+		/// </returns>
 		public virtual DecompilerSettings Clone()
 		{
 			DecompilerSettings settings = (DecompilerSettings)MemberwiseClone();
