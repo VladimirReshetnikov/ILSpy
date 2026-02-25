@@ -26,38 +26,86 @@ using System.Reflection.Metadata.Ecma335;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Identifies how a manifest resource is stored and resolved.
+	/// </summary>
 	public enum ResourceType
 	{
+		/// <summary>
+		/// The resource is stored in a separate file referenced by the module.
+		/// </summary>
 		Linked,
+		/// <summary>
+		/// The resource data is embedded directly into the containing module.
+		/// </summary>
 		Embedded,
+		/// <summary>
+		/// The resource is forwarded to another assembly via an assembly reference.
+		/// </summary>
 		AssemblyLinked,
 	}
 
+	/// <summary>
+	/// Represents a logical manifest resource exposed by a PE file or synthesized in memory.
+	/// </summary>
 	public abstract class Resource
 	{
+		/// <summary>
+		/// Gets the storage model used to locate the resource payload.
+		/// </summary>
 		public virtual ResourceType ResourceType => ResourceType.Embedded;
+		/// <summary>
+		/// Gets the raw manifest visibility and behavior flags for the resource.
+		/// </summary>
 		public virtual ManifestResourceAttributes Attributes => ManifestResourceAttributes.Public;
+		/// <summary>
+		/// Gets the resource name as recorded in the manifest.
+		/// </summary>
 		public abstract string Name { get; }
+		/// <summary>
+		/// Attempts to open the resource payload for reading.
+		/// </summary>
+		/// <returns>
+		/// A readable stream for the resource contents, or <see langword="null"/> when the payload is unavailable
+		/// from the current module representation.
+		/// </returns>
 		public abstract Stream? TryOpenStream();
+		/// <summary>
+		/// Attempts to determine the payload length without materializing the full resource content.
+		/// </summary>
+		/// <returns>
+		/// The payload length in bytes, or <see langword="null"/> when the length cannot be determined.
+		/// </returns>
 		public abstract long? TryGetLength();
 	}
 
+	/// <summary>
+	/// Represents an in-memory resource backed by an immutable byte buffer.
+	/// </summary>
 	public class ByteArrayResource : Resource
 	{
+		/// <inheritdoc />
 		public override string Name { get; }
 		byte[] data;
 
+		/// <summary>
+		/// Creates a resource wrapper over an existing byte array.
+		/// </summary>
+		/// <param name="name">Manifest name that should be reported for the resource.</param>
+		/// <param name="data">Resource payload bytes.</param>
 		public ByteArrayResource(string name, byte[] data)
 		{
 			this.Name = name ?? throw new ArgumentNullException(nameof(name));
 			this.data = data ?? throw new ArgumentNullException(nameof(data));
 		}
 
+		/// <inheritdoc />
 		public override Stream TryOpenStream()
 		{
 			return new MemoryStream(data);
 		}
 
+		/// <inheritdoc />
 		public override long? TryGetLength()
 		{
 			return data.Length;

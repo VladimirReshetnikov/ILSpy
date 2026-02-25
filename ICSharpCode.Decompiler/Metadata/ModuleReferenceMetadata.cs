@@ -27,14 +27,29 @@ using System.Reflection.Metadata;
 namespace ICSharpCode.Decompiler.Metadata
 {
 #if !VSADDIN
+	/// <summary>
+	/// Provides cached access to a <see cref="ModuleReference"/> row and related metadata projected from the same module.
+	/// </summary>
 	public class ModuleReferenceMetadata /* : IModuleReference*/
 	{
 		readonly ModuleReference entry;
 
+		/// <summary>
+		/// Gets the metadata reader that owns <see cref="Handle"/>.
+		/// </summary>
 		public MetadataReader Metadata { get; }
+		/// <summary>
+		/// Gets the metadata handle for the module reference row.
+		/// </summary>
 		public ModuleReferenceHandle Handle { get; }
 
 		string? name;
+		/// <summary>
+		/// Gets the referenced module name.
+		/// </summary>
+		/// <remarks>
+		/// Invalid metadata names are converted into a stable fallback value containing the metadata token.
+		/// </remarks>
 		public string Name {
 			get {
 				if (name == null)
@@ -53,6 +68,9 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 		ImmutableArray<CustomAttribute> attributes;
+		/// <summary>
+		/// Gets custom attributes declared on this module reference row.
+		/// </summary>
 		public ImmutableArray<CustomAttribute> Attributes {
 			get {
 				var value = attributes;
@@ -66,6 +84,9 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 		ImmutableArray<TypeReferenceMetadata> typeReferences;
+		/// <summary>
+		/// Gets type references that resolve through this module reference.
+		/// </summary>
 		public ImmutableArray<TypeReferenceMetadata> TypeReferences {
 			get {
 				var value = typeReferences;
@@ -84,6 +105,9 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 		ImmutableArray<ExportedTypeMetadata> exportedTypes;
+		/// <summary>
+		/// Gets exported type entries whose implementation points at this module reference.
+		/// </summary>
 		public ImmutableArray<ExportedTypeMetadata> ExportedTypes {
 			get {
 				var value = exportedTypes;
@@ -101,6 +125,13 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Creates a metadata projection for a module reference row.
+		/// </summary>
+		/// <param name="metadata">Metadata reader containing the module reference table.</param>
+		/// <param name="handle">Handle identifying the module reference row to project.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="metadata"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentNullException"><paramref name="handle"/> is nil.</exception>
 		public ModuleReferenceMetadata(MetadataReader metadata, ModuleReferenceHandle handle)
 		{
 			if (metadata == null)
@@ -112,6 +143,13 @@ namespace ICSharpCode.Decompiler.Metadata
 			entry = metadata.GetModuleReference(handle);
 		}
 
+		/// <summary>
+		/// Creates a metadata projection for a module reference row from a PE file.
+		/// </summary>
+		/// <param name="module">PE file that owns the metadata tables.</param>
+		/// <param name="handle">Handle identifying the module reference row to project.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="module"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentNullException"><paramref name="handle"/> is nil.</exception>
 		public ModuleReferenceMetadata(PEFile module, ModuleReferenceHandle handle)
 		{
 			if (module == null)
@@ -123,6 +161,7 @@ namespace ICSharpCode.Decompiler.Metadata
 			entry = Metadata.GetModuleReference(handle);
 		}
 
+		/// <inheritdoc />
 		public override string ToString()
 		{
 			return Name;
