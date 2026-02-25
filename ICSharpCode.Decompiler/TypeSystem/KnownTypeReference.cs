@@ -235,11 +235,16 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets the known type reference for the specified type code.
 		/// Returns null for KnownTypeCode.None.
 		/// </summary>
+		/// <param name="typeCode">Known type code value used as an index into the known-type table.</param>
+		/// <returns>The corresponding <see cref="KnownTypeReference"/>, or <see langword="null"/> when <paramref name="typeCode"/> is <see cref="KnownTypeCode.None"/>.</returns>
 		public static KnownTypeReference? Get(KnownTypeCode typeCode)
 		{
 			return knownTypeReferences[(int)typeCode];
 		}
 
+		/// <summary>
+		/// Gets all non-null known type references in declaration order.
+		/// </summary>
 		public static IEnumerable<KnownTypeReference> AllKnownTypes {
 			get {
 				for (int i = 0; i < KnownTypeCodeCount; i++)
@@ -303,6 +308,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets the C# primitive type name from the known type code.
 		/// Returns null if there is no primitive name for the specified type.
 		/// </summary>
+		/// <param name="knownTypeCode">Known type code to map to a C# keyword.</param>
+		/// <returns>The C# keyword for primitive/runtime alias types; otherwise <see langword="null"/>.</returns>
 		public static string? GetCSharpNameByTypeCode(KnownTypeCode knownTypeCode)
 		{
 			switch (knownTypeCode)
