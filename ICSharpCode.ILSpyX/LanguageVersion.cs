@@ -23,9 +23,22 @@ namespace ICSharpCode.ILSpyX
 	/// </summary>
 	public class LanguageVersion
 	{
+		/// <summary>
+		/// Gets the language-version token understood by <c>DecompilerSettings.SetLanguageVersion(...)</c>
+		/// (for example <c>CSharp13_0</c>).
+		/// </summary>
 		public string Version { get; }
+
+		/// <summary>
+		/// Gets a UI-friendly label shown in version pickers.
+		/// </summary>
 		public string DisplayName { get; }
 
+		/// <summary>
+		/// Creates a language version descriptor for menus and persisted language settings.
+		/// </summary>
+		/// <param name="version">The underlying decompiler language-version token.</param>
+		/// <param name="name">Optional display label. When <see langword="null"/>, <paramref name="version"/> is used.</param>
 		public LanguageVersion(string version, string? name = null)
 		{
 			Version = version ?? "";
