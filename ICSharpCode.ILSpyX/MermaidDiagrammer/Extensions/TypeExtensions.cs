@@ -27,9 +27,26 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer.Extensions
 {
 	internal static class TypeExtensions
 	{
+		/// <summary>
+		/// Determines whether the type is the canonical <see cref="object"/> type.
+		/// </summary>
+		/// <param name="t">Type to inspect.</param>
+		/// <returns><see langword="true"/> when <paramref name="t"/> is <see cref="KnownTypeCode.Object"/>.</returns>
 		internal static bool IsObject(this IType t) => t.IsKnownType(KnownTypeCode.Object);
+
+		/// <summary>
+		/// Determines whether the type is an interface definition or interface instantiation.
+		/// </summary>
+		/// <param name="t">Type to inspect.</param>
+		/// <returns><see langword="true"/> if <paramref name="t"/> has <see cref="TypeKind.Interface"/> kind.</returns>
 		internal static bool IsInterface(this IType t) => t.Kind == TypeKind.Interface;
 
+		/// <summary>
+		/// Tries to unwrap <see cref="KnownTypeCode.NullableOfT"/> and returns its single type argument.
+		/// </summary>
+		/// <param name="type">Type that may represent <c>Nullable&lt;T&gt;</c>.</param>
+		/// <param name="typeArg">When successful, receives the wrapped value type argument.</param>
+		/// <returns><see langword="true"/> if <paramref name="type"/> is a nullable value type wrapper.</returns>
 		internal static bool TryGetNullableType(this IType type, [MaybeNullWhen(false)] out IType typeArg)
 		{
 			bool isNullable = type.IsKnownType(KnownTypeCode.NullableOfT);

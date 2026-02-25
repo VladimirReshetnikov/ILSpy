@@ -25,6 +25,11 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 		/// <summary>A helper for loading resources embedded in the nested html folder.</summary>
 		private static class EmbeddedResource
 		{
+			/// <summary>
+			/// Reads an embedded text asset from the Mermaid HTML resource bundle.
+			/// </summary>
+			/// <param name="resourceName">File name of the embedded resource inside the <c>html</c> folder.</param>
+			/// <returns>The full text content of the embedded file.</returns>
 			internal static string ReadText(string resourceName)
 			{
 				Stream stream = GetStream(resourceName);
@@ -32,6 +37,11 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 				return reader.ReadToEnd();
 			}
 
+			/// <summary>
+			/// Copies an embedded static asset to the generated output folder.
+			/// </summary>
+			/// <param name="outputFolder">Directory where the extracted asset should be written.</param>
+			/// <param name="resourceName">File name of the embedded resource inside the <c>html</c> folder.</param>
 			internal static void CopyTo(string outputFolder, string resourceName)
 			{
 				Stream resourceStream = GetStream(resourceName);

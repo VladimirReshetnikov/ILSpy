@@ -58,6 +58,15 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 			noiseAndPadding = new Regex(regexes.Join("|"), RegexOptions.Multiline); // builds an OR | combined regex
 		}
 
+		/// <summary>
+		/// Collects normalized XML documentation snippets for the supplied type and member groups.
+		/// </summary>
+		/// <param name="type">The root type whose documentation is stored under an empty-string key.</param>
+		/// <param name="memberCollections">Sets of members whose documentation should be added by member name.</param>
+		/// <returns>
+		/// A dictionary containing only entities that actually have documentation text,
+		/// or <see langword="null"/> if neither the type nor any member produced output.
+		/// </returns>
 		internal Dictionary<string, string>? GetXmlDocs(ITypeDefinition type, params IMember[][] memberCollections)
 		{
 			Dictionary<string, string>? docs = new();
