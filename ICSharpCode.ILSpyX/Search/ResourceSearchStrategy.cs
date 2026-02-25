@@ -24,12 +24,21 @@ using ICSharpCode.ILSpyX.Abstractions;
 
 namespace ICSharpCode.ILSpyX.Search
 {
+	/// <summary>
+	/// Searches embedded resources by traversing the resource tree built for a module.
+	/// </summary>
 	public class ResourceSearchStrategy : AbstractSearchStrategy
 	{
 		protected readonly bool searchInside;
 		protected readonly ApiVisibility apiVisibility;
 		protected readonly ITreeNodeFactory treeNodeFactory;
 
+		/// <summary>
+		/// Creates a strategy that matches resource names while honoring API visibility rules.
+		/// </summary>
+		/// <param name="apiVisibility">Visibility filter applied to manifest resources.</param>
+		/// <param name="request">Search configuration and shared collaborators.</param>
+		/// <param name="resultQueue">Queue that receives discovered results.</param>
 		public ResourceSearchStrategy(ApiVisibility apiVisibility, SearchRequest request, IProducerConsumerCollection<SearchResult> resultQueue)
 			: base(request, resultQueue)
 		{
@@ -38,6 +47,11 @@ namespace ICSharpCode.ILSpyX.Search
 			this.searchInside = true;
 		}
 
+		/// <summary>
+		/// Determines whether a resource passes the configured <see cref="ApiVisibility"/> filter.
+		/// </summary>
+		/// <param name="resource">The resource to evaluate.</param>
+		/// <returns><see langword="true"/> if the resource should be searched; otherwise, <see langword="false"/>.</returns>
 		protected bool CheckVisibility(Resource resource)
 		{
 			if (apiVisibility == ApiVisibility.All)
@@ -49,6 +63,11 @@ namespace ICSharpCode.ILSpyX.Search
 			return true;
 		}
 
+		/// <summary>
+		/// Searches the module's resources and nested resource children for matching names.
+		/// </summary>
+		/// <param name="module">The module whose resources are searched.</param>
+		/// <param name="cancellationToken">Token used to cancel the search.</param>
 		public override void Search(MetadataFile module, CancellationToken cancellationToken)
 		{
 			cancellationToken.ThrowIfCancellationRequested();

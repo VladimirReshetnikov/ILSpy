@@ -27,6 +27,9 @@ using ICSharpCode.ILSpyX.Abstractions;
 
 namespace ICSharpCode.ILSpyX.Search
 {
+	/// <summary>
+	/// Selects the domain searched by a strategy.
+	/// </summary>
 	public enum SearchMode
 	{
 		TypeAndMember,
@@ -43,6 +46,9 @@ namespace ICSharpCode.ILSpyX.Search
 		Namespace
 	}
 
+	/// <summary>
+	/// Captures immutable options and collaborators used to execute a search pass.
+	/// </summary>
 	public struct SearchRequest
 	{
 		public DecompilerSettings DecompilerSettings;
@@ -59,6 +65,9 @@ namespace ICSharpCode.ILSpyX.Search
 		public string InAssembly;
 	}
 
+	/// <summary>
+	/// Base class that provides term matching and result queueing for concrete search strategies.
+	/// </summary>
 	public abstract class AbstractSearchStrategy
 	{
 		protected readonly string[] searchTerm;
@@ -68,6 +77,11 @@ namespace ICSharpCode.ILSpyX.Search
 		protected readonly SearchRequest searchRequest;
 		private readonly IProducerConsumerCollection<SearchResult> resultQueue;
 
+		/// <summary>
+		/// Initializes a strategy with a parsed <see cref="SearchRequest"/> and destination result queue.
+		/// </summary>
+		/// <param name="request">The search configuration and shared service references.</param>
+		/// <param name="resultQueue">The concurrent queue that receives discovered matches.</param>
 		protected AbstractSearchStrategy(SearchRequest request, IProducerConsumerCollection<SearchResult> resultQueue)
 		{
 			this.resultQueue = resultQueue;
@@ -78,8 +92,18 @@ namespace ICSharpCode.ILSpyX.Search
 			this.omitGenerics = request.OmitGenerics;
 		}
 
+		/// <summary>
+		/// Searches a metadata module and reports matches through the result queue.
+		/// </summary>
+		/// <param name="module">The module to search.</param>
+		/// <param name="cancellationToken">Token used to cancel the search early.</param>
 		public abstract void Search(MetadataFile module, CancellationToken cancellationToken);
 
+		/// <summary>
+		/// Evaluates whether a candidate name satisfies configured keyword or regex filters.
+		/// </summary>
+		/// <param name="name">The candidate text to match.</param>
+		/// <returns><see langword="true"/> when the candidate passes all filters; otherwise, <see langword="false"/>.</returns>
 		protected virtual bool IsMatch(string name)
 		{
 			if (regex != null)
@@ -159,6 +183,10 @@ namespace ICSharpCode.ILSpyX.Search
 			return false;
 		}
 
+		/// <summary>
+		/// Enqueues a discovered search result.
+		/// </summary>
+		/// <param name="result">The result to publish.</param>
 		protected void OnFoundResult(SearchResult result)
 		{
 			resultQueue.TryAdd(result);
