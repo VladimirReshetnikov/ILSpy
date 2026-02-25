@@ -32,18 +32,50 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler
 {
 	/// <summary>
-	/// Description of DecompilerException.
+	/// Represents an exception that occurred while decompiling a metadata entity.
 	/// </summary>
+	/// <remarks>
+	/// This type preserves decompilation context (module, file, and target entity) and
+	/// formats the stack trace in a stable, language-independent form for diagnostics.
+	/// </remarks>
 	public class DecompilerException : Exception, ISerializable
 	{
+		/// <summary>
+		/// Gets the simple assembly name associated with the decompilation attempt.
+		/// </summary>
 		public string AssemblyName => File.Name;
 
+		/// <summary>
+		/// Gets the input file path that was being decompiled.
+		/// </summary>
 		public string FileName => File.FileName;
 
+		/// <summary>
+		/// Gets the entity that triggered this exception.
+		/// </summary>
 		public IEntity DecompiledEntity { get; }
+
+		/// <summary>
+		/// Gets the metadata module used for the failed decompilation operation.
+		/// </summary>
 		public IModule Module { get; }
+
+		/// <summary>
+		/// Gets the metadata file that contains the failing entity.
+		/// </summary>
 		public MetadataFile File { get; }
 
+		/// <summary>
+		/// Initializes a new instance of the <see cref="DecompilerException"/> class for an exception
+		/// that occurred while decompiling a specific entity from a metadata module.
+		/// </summary>
+		/// <param name="module">The metadata module that was being decompiled.</param>
+		/// <param name="decompiledEntity">The entity that failed to decompile.</param>
+		/// <param name="innerException">The underlying exception thrown during decompilation.</param>
+		/// <param name="message">
+		/// An optional message. If <see langword="null"/>, a default message is generated from
+		/// <paramref name="decompiledEntity"/>.
+		/// </param>
 		public DecompilerException(MetadataModule module, IEntity decompiledEntity,
 			Exception innerException, string message = null)
 			: base(message ?? GetDefaultMessage(decompiledEntity), innerException)
@@ -53,6 +85,13 @@ namespace ICSharpCode.Decompiler
 			this.DecompiledEntity = decompiledEntity;
 		}
 
+		/// <summary>
+		/// Initializes a new instance of the <see cref="DecompilerException"/> class for a failure
+		/// associated with a specific metadata file.
+		/// </summary>
+		/// <param name="file">The metadata file involved in the failure.</param>
+		/// <param name="message">The error message that describes the failure.</param>
+		/// <param name="innerException">The underlying exception that caused the failure.</param>
 		public DecompilerException(MetadataFile file, string message, Exception innerException)
 			: base(message, innerException)
 		{
@@ -67,12 +106,24 @@ namespace ICSharpCode.Decompiler
 		}
 
 		// This constructor is needed for serialization.
+		/// <summary>
+		/// Initializes a new instance of the <see cref="DecompilerException"/> class from serialized data.
+		/// </summary>
+		/// <param name="info">The serialization information used to deserialize the exception.</param>
+		/// <param name="context">The streaming context that describes the source and destination.</param>
 		protected DecompilerException(SerializationInfo info, StreamingContext context) : base(info, context)
 		{
 		}
 
+		/// <summary>
+		/// Gets a normalized stack trace string for this exception and nested inner exceptions.
+		/// </summary>
 		public override string StackTrace => GetStackTrace(this);
 
+		/// <summary>
+		/// Returns a diagnostic string that includes decompilation context and normalized stack traces.
+		/// </summary>
+		/// <returns>A formatted error string suitable for logging and diagnostics.</returns>
 		public override string ToString() => ToString(this);
 
 		string ToString(Exception exception)

@@ -26,19 +26,56 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler
 {
+	/// <summary>
+	/// Holds per-run state shared across a single decompilation pipeline execution.
+	/// </summary>
 	internal class DecompileRun
 	{
+		/// <summary>
+		/// Gets symbols that should be treated as defined for conditional compilation output.
+		/// </summary>
 		public HashSet<string> DefinedSymbols { get; } = new HashSet<string>();
+
+		/// <summary>
+		/// Gets or sets namespaces required by the current decompilation target.
+		/// </summary>
 		public HashSet<string> Namespaces { get; set; }
+
+		/// <summary>
+		/// Gets or sets the cancellation token used by long-running transforms.
+		/// </summary>
 		public CancellationToken CancellationToken { get; set; }
+
+		/// <summary>
+		/// Gets the decompiler settings used for this run.
+		/// </summary>
 		public DecompilerSettings Settings { get; }
+
+		/// <summary>
+		/// Gets or sets the documentation provider used to resolve XML documentation text.
+		/// </summary>
 		public IDocumentationProvider DocumentationProvider { get; set; }
+
+		/// <summary>
+		/// Gets a cache of synthesized record helper decompilers keyed by type definition.
+		/// </summary>
 		public Dictionary<ITypeDefinition, RecordDecompiler> RecordDecompilers { get; } = new Dictionary<ITypeDefinition, RecordDecompiler>();
 
+		/// <summary>
+		/// Gets a cache that tracks whether a type hierarchy was fully resolved.
+		/// </summary>
 		public Dictionary<ITypeDefinition, bool> TypeHierarchyIsKnown { get; } = new();
 
+		/// <summary>
+		/// Gets the root using scope used for type/name resolution during this run.
+		/// </summary>
 		public CSharp.TypeSystem.UsingScope UsingScope { get; }
 
+		/// <summary>
+		/// Initializes a new <see cref="DecompileRun"/> instance.
+		/// </summary>
+		/// <param name="settings">Decompiler options to apply for this run.</param>
+		/// <param name="usingScope">Resolved using scope used by the C# resolver.</param>
 		public DecompileRun(DecompilerSettings settings, CSharp.TypeSystem.UsingScope usingScope)
 		{
 			this.Settings = settings ?? throw new ArgumentNullException(nameof(settings));
