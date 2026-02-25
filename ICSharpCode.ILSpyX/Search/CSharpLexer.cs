@@ -228,6 +228,7 @@ namespace ICSharpCode.ILSpyX.Search
 		/// <summary>
 		/// Constructor for the abstract lexer class.
 		/// </summary>
+		/// <param name="reader">Character source consumed by the lexer; ownership is transferred and the reader is closed by <see cref="Dispose"/>.</param>
 		protected AbstractLexer(TextReader reader)
 		{
 			this.reader = new LATextReader(reader);

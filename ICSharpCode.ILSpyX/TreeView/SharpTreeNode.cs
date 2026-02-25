@@ -726,6 +726,7 @@ namespace ICSharpCode.ILSpyX.TreeView
 		/// <summary>
 		/// Gets called when the item is double-clicked.
 		/// </summary>
+		/// <param name="e">Platform event data for the activation gesture, forwarded by the tree host.</param>
 		public virtual void ActivateItem(IPlatformRoutedEventArgs e)
 		{
 		}
@@ -733,6 +734,7 @@ namespace ICSharpCode.ILSpyX.TreeView
 		/// <summary>
 		/// Gets called when the item is clicked with the middle mouse button.
 		/// </summary>
+		/// <param name="e">Platform event data for the secondary activation gesture.</param>
 		public virtual void ActivateItemSecondary(IPlatformRoutedEventArgs e)
 		{
 		}

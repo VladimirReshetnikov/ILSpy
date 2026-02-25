@@ -62,6 +62,8 @@ namespace ICSharpCode.ILSpyX.Analyzers.Builtin
 		/// <summary>
 		/// Constructs a FindTypeInAttributeDecoder that can be used to find <paramref name="type"/> in signatures from <paramref name="currentModule"/>.
 		/// </summary>
+		/// <param name="currentModule">Metadata module whose custom-attribute signatures are being decoded.</param>
+		/// <param name="type">Type definition token to match while traversing decoded attribute type operands.</param>
 		public FindTypeInAttributeDecoder(MetadataModule currentModule, ITypeDefinition type)
 		{
 			this.currentModule = currentModule;

@@ -90,6 +90,8 @@ namespace ICSharpCode.ILSpyX
 		/// <summary>
 		/// Loads an assembly list from XML.
 		/// </summary>
+		/// <param name="manager">Owning manager that supplies persistence and load-policy settings for this list.</param>
+		/// <param name="listElement">XML element containing the list name and persisted <c>Assembly</c> entries to reopen.</param>
 		internal AssemblyList(AssemblyListManager manager, XElement listElement)
 			: this(manager, (string?)listElement.Attribute("name") ?? AssemblyListManager.DefaultListName)
 		{

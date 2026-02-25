@@ -494,6 +494,7 @@ namespace ICSharpCode.ILSpyX
 			/// 8) search C:\Windows\Microsoft.NET\Framework64\v4.0.30319
 			/// 9) try to find match by asm name (no tfm/version) in loaded assemblies
 			/// </summary>
+			/// <param name="reference">Assembly identity requested by metadata import for the current decompilation context.</param>
 			public async Task<MetadataFile?> ResolveAsync(IAssemblyReference reference)
 			{
 				MetadataFile? module;
