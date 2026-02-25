@@ -29,6 +29,9 @@ namespace ICSharpCode.Decompiler.PowerShell
 		[Parameter(Mandatory = true)]
 		public string[] Types { get; set; }
 
+		/// <summary>
+		/// Enumerates types from the main module and returns only definitions whose <see cref="TypeKind"/> matches <see cref="Types"/>.
+		/// </summary>
 		protected override void ProcessRecord()
 		{
 			HashSet<TypeKind> kinds = TypesParser.ParseSelection(Types);

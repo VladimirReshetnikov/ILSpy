@@ -18,6 +18,9 @@ namespace ICSharpCode.Decompiler.PowerShell
 		[Parameter(Position = 0, Mandatory = true)]
 		public CSharpDecompiler Decompiler { get; set; }
 
+		/// <summary>
+		/// Reads the module target framework moniker from metadata and writes it to the pipeline.
+		/// </summary>
 		protected override void ProcessRecord()
 		{
 			MetadataFile module = Decompiler.TypeSystem.MainModule.MetadataFile;

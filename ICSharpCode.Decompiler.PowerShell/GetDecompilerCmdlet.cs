@@ -51,6 +51,9 @@ namespace ICSharpCode.Decompiler.PowerShell
 		[Parameter(HelpMessage = "Use PDB")]
 		public string PDBFilePath { get; set; }
 
+		/// <summary>
+		/// Resolves the requested assembly path, initializes a <see cref="CSharpDecompiler"/>, and writes it to the pipeline.
+		/// </summary>
 		protected override void ProcessRecord()
 		{
 			string path = GetUnresolvedProviderPathFromPSPath(LiteralPath);

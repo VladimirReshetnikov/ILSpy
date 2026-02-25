@@ -54,6 +54,9 @@ namespace ICSharpCode.Decompiler.PowerShell
 			}
 		}
 
+		/// <summary>
+		/// Validates the output directory, runs project decompilation, and forwards progress updates to the PowerShell host.
+		/// </summary>
 		protected override void ProcessRecord()
 		{
 			string path = GetUnresolvedProviderPathFromPSPath(LiteralPath);

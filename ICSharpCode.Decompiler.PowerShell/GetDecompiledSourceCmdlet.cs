@@ -29,6 +29,9 @@ namespace ICSharpCode.Decompiler.PowerShell
 		[Parameter]
 		public string TypeName { get; set; } = string.Empty;
 
+		/// <summary>
+		/// Decompiles either the whole module or <see cref="TypeName"/> and writes the generated C# text to the pipeline.
+		/// </summary>
 		protected override void ProcessRecord()
 		{
 			try

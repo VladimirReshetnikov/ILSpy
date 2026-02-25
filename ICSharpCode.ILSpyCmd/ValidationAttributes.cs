@@ -7,10 +7,10 @@ using McMaster.Extensions.CommandLineUtils.Validation;
 
 namespace ICSharpCode.ILSpyCmd
 {
-	[AttributeUsage(AttributeTargets.Class)]
 	/// <summary>
 	/// Enforces that <c>--project</c> is only used when an output directory is provided.
 	/// </summary>
+	[AttributeUsage(AttributeTargets.Class)]
 	public sealed class ProjectOptionRequiresOutputDirectoryValidationAttribute : ValidationAttribute
 	{
 		/// <summary>
@@ -39,11 +39,11 @@ namespace ICSharpCode.ILSpyCmd
 		}
 	}
 
-	[AttributeUsage(AttributeTargets.Property)]
 	/// <summary>
 	/// Validates that a file path option is either omitted or points to an existing file.
 	/// Relative paths are resolved against the command working directory.
 	/// </summary>
+	[AttributeUsage(AttributeTargets.Property)]
 	public sealed class FileExistsOrNullAttribute : ValidationAttribute
 	{
 		/// <summary>
@@ -74,11 +74,11 @@ namespace ICSharpCode.ILSpyCmd
 		}
 	}
 
-	[AttributeUsage(AttributeTargets.Property)]
 	/// <summary>
 	/// Validates that one or more file path arguments refer to existing files.
 	/// Relative paths are resolved against the command working directory.
 	/// </summary>
+	[AttributeUsage(AttributeTargets.Property)]
 	public sealed class FilesExistAttribute : ValidationAttribute
 	{
 		/// <summary>

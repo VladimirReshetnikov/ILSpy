@@ -12,6 +12,9 @@ namespace ICSharpCode.Decompiler.PowerShell
 	[OutputType(typeof(string))]
 	public class GetDecompilerVersion : PSCmdlet
 	{
+		/// <summary>
+		/// Writes the version of <c>ICSharpCode.Decompiler</c> currently loaded in this PowerShell session.
+		/// </summary>
 		protected override void ProcessRecord()
 		{
 			WriteObject(typeof(FullTypeName).Assembly.GetName().Version.ToString());
