@@ -558,8 +558,11 @@ namespace ICSharpCode.Decompiler
 
 		#region Attribute extensions
 		/// <summary>
-		/// Gets the type of the attribute.
+		/// Gets the attribute type referenced by a custom attribute constructor.
 		/// </summary>
+		/// <param name="attribute">The custom attribute to inspect.</param>
+		/// <param name="reader">The metadata reader used to resolve constructor handles.</param>
+		/// <returns>The metadata handle of the attribute type.</returns>
 		public static EntityHandle GetAttributeType(this SRM.CustomAttribute attribute, MetadataReader reader)
 		{
 			switch (attribute.Constructor.Kind)

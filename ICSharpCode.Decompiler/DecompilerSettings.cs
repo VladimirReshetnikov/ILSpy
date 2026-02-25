@@ -40,6 +40,7 @@ namespace ICSharpCode.Decompiler
 		/// Creates a new DecompilerSettings instance with initial settings
 		/// appropriate for the specified language version.
 		/// </summary>
+		/// <param name="languageVersion">The language version used to disable newer reconstruction features.</param>
 		/// <remarks>
 		/// This does not imply that the resulting code strictly uses only language features from
 		/// that version. Language constructs like generics or ref locals cannot be removed from
@@ -53,6 +54,7 @@ namespace ICSharpCode.Decompiler
 		/// <summary>
 		/// Deactivates all language features from versions newer than <paramref name="languageVersion"/>.
 		/// </summary>
+		/// <param name="languageVersion">The highest C# language version the decompiler should target.</param>
 		public void SetLanguageVersion(CSharp.LanguageVersion languageVersion)
 		{
 			// By default, all decompiler features are enabled.

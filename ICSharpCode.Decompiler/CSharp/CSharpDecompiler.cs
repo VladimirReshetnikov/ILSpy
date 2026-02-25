@@ -234,6 +234,8 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Creates a new <see cref="CSharpDecompiler"/> instance from the given <paramref name="fileName"/> using the given <paramref name="settings"/>.
 		/// </summary>
+		/// <param name="fileName">Path to the main module that should be decompiled.</param>
+		/// <param name="settings">Decompiler feature and formatting settings.</param>
 		public CSharpDecompiler(string fileName, DecompilerSettings settings)
 			: this(CreateTypeSystemFromFile(fileName, settings), settings)
 		{
@@ -242,6 +244,9 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Creates a new <see cref="CSharpDecompiler"/> instance from the given <paramref name="fileName"/> using the given <paramref name="assemblyResolver"/> and <paramref name="settings"/>.
 		/// </summary>
+		/// <param name="fileName">Path to the main module that should be decompiled.</param>
+		/// <param name="assemblyResolver">Resolver used to load referenced assemblies.</param>
+		/// <param name="settings">Decompiler feature and formatting settings.</param>
 		public CSharpDecompiler(string fileName, IAssemblyResolver assemblyResolver, DecompilerSettings settings)
 			: this(LoadPEFile(fileName, settings), assemblyResolver, settings)
 		{
@@ -250,6 +255,9 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Creates a new <see cref="CSharpDecompiler"/> instance from the given <paramref name="module"/> using the given <paramref name="assemblyResolver"/> and <paramref name="settings"/>.
 		/// </summary>
+		/// <param name="module">The already loaded module to decompile.</param>
+		/// <param name="assemblyResolver">Resolver used to load referenced assemblies.</param>
+		/// <param name="settings">Decompiler feature and formatting settings.</param>
 		public CSharpDecompiler(MetadataFile module, IAssemblyResolver assemblyResolver, DecompilerSettings settings)
 			: this(new DecompilerTypeSystem(module, assemblyResolver, settings), settings)
 		{
@@ -258,6 +266,8 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Creates a new <see cref="CSharpDecompiler"/> instance from the given <paramref name="typeSystem"/> and the given <paramref name="settings"/>.
 		/// </summary>
+		/// <param name="typeSystem">Type-system view used for entity resolution during decompilation.</param>
+		/// <param name="settings">Decompiler feature and formatting settings.</param>
 		public CSharpDecompiler(IDecompilerTypeSystem typeSystem, DecompilerSettings settings)
 		{
 			this.typeSystem = typeSystem ?? throw new ArgumentNullException(nameof(typeSystem));
@@ -682,6 +692,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Creates an <see cref="ILTransformContext"/> for the given <paramref name="function"/>.
 		/// </summary>
+		/// <param name="function">The IL function currently being transformed.</param>
 		public ILTransformContext CreateILTransformContext(ILFunction function)
 		{
 			var namespaces = new HashSet<string>();
@@ -696,6 +707,8 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Determines the "code-mappings" for a given TypeDef or MethodDef. See <see cref="CodeMappingInfo"/> for more information.
 		/// </summary>
+		/// <param name="module">The metadata module that owns <paramref name="member"/>.</param>
+		/// <param name="member">The TypeDef or MethodDef used as the mapping root.</param>
 		public static CodeMappingInfo GetCodeMappingInfo(MetadataFile module, EntityHandle member)
 		{
 			var declaringType = (TypeDefinitionHandle)member.GetDeclaringType(module.Metadata);
@@ -922,6 +935,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Decompile the given types.
 		/// </summary>
+		/// <param name="types">The type definitions to decompile.</param>
 		/// <remarks>
 		/// Unlike Decompile(IMemberDefinition[]), this method will add namespace declarations around the type definitions.
 		/// </remarks>
@@ -949,6 +963,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Decompile the given types.
 		/// </summary>
+		/// <param name="types">The type definitions to decompile.</param>
 		/// <remarks>
 		/// Unlike Decompile(IMemberDefinition[]), this method will add namespace declarations around the type definitions.
 		/// </remarks>
@@ -960,6 +975,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Decompile the given type.
 		/// </summary>
+		/// <param name="fullTypeName">The full metadata name of the type to decompile.</param>
 		/// <remarks>
 		/// Unlike Decompile(IMemberDefinition[]), this method will add namespace declarations around the type definition.
 		/// Note that decompiling types from modules other than the main module is not supported.
@@ -984,6 +1000,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Decompile the given type.
 		/// </summary>
+		/// <param name="fullTypeName">The full metadata name of the type to decompile.</param>
 		/// <remarks>
 		/// Unlike Decompile(IMemberDefinition[]), this method will add namespace declarations around the type definition.
 		/// </remarks>
@@ -995,6 +1012,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Decompile the specified types and/or members.
 		/// </summary>
+		/// <param name="definitions">Type and member handles to include in the output syntax tree.</param>
 		public SyntaxTree Decompile(params EntityHandle[] definitions)
 		{
 			return Decompile((IEnumerable<EntityHandle>)definitions);
@@ -1003,6 +1021,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Decompile the specified types and/or members.
 		/// </summary>
+		/// <param name="definitions">Type and member handles to include in the output syntax tree.</param>
 		public SyntaxTree Decompile(IEnumerable<EntityHandle> definitions)
 		{
 			if (definitions == null)
@@ -1098,6 +1117,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Decompile the specified types and/or members.
 		/// </summary>
+		/// <param name="definitions">Type and member handles to include in the decompiled output.</param>
 		public string DecompileAsString(params EntityHandle[] definitions)
 		{
 			return SyntaxTreeToString(Decompile(definitions));
@@ -1106,6 +1126,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <summary>
 		/// Decompile the specified types and/or members.
 		/// </summary>
+		/// <param name="definitions">Type and member handles to include in the decompiled output.</param>
 		public string DecompileAsString(IEnumerable<EntityHandle> definitions)
 		{
 			return SyntaxTreeToString(Decompile(definitions));
@@ -2188,6 +2209,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// 
 		/// This only works correctly when the nodes in the syntax tree have line/column information.
 		/// </summary>
+		/// <param name="syntaxTree">The syntax tree produced by this decompiler run.</param>
 		public Dictionary<ILFunction, List<DebugInfo.SequencePoint>> CreateSequencePoints(SyntaxTree syntaxTree)
 		{
 			SequencePointBuilder spb = new SequencePointBuilder();
