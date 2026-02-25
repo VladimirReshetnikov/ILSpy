@@ -24,8 +24,20 @@ using ICSharpCode.Decompiler.Metadata;
 
 namespace ICSharpCode.ILSpyX.FileLoaders
 {
+	/// <summary>
+	/// Loads WebCIL files used by Blazor and other WebAssembly-hosted .NET workloads.
+	/// </summary>
 	public sealed class WebCilFileLoader : IFileLoader
 	{
+		/// <summary>
+		/// Attempts to parse the input file as WebCIL.
+		/// </summary>
+		/// <param name="fileName">Path of the file to inspect.</param>
+		/// <param name="stream">Candidate stream for probing. Not used because WebCIL loading reopens <paramref name="fileName"/>.</param>
+		/// <param name="settings">Load options and parent-bundle context for the current operation.</param>
+		/// <returns>
+		/// A metadata result for valid WebCIL files; otherwise <see langword="null"/>.
+		/// </returns>
 		public Task<LoadResult?> Load(string fileName, Stream stream, FileLoadContext settings)
 		{
 			if (settings.ParentBundle != null)

@@ -29,8 +29,20 @@ using K4os.Compression.LZ4;
 
 namespace ICSharpCode.ILSpyX.FileLoaders
 {
+	/// <summary>
+	/// Loads Xamarin assemblies stored in the XALZ-compressed container format.
+	/// </summary>
 	public sealed class XamarinCompressedFileLoader : IFileLoader
 	{
+		/// <summary>
+		/// Detects Xamarin's compressed header, decompresses the payload, and opens it as a PE image.
+		/// </summary>
+		/// <param name="fileName">Display name or source path of the file being loaded.</param>
+		/// <param name="stream">Input stream containing the candidate compressed payload.</param>
+		/// <param name="context">Load options that influence metadata reader behavior.</param>
+		/// <returns>
+		/// A metadata result for valid compressed Xamarin modules; otherwise <see langword="null"/>.
+		/// </returns>
 		public async Task<LoadResult?> Load(string fileName, Stream stream, FileLoadContext context)
 		{
 			const uint CompressedDataMagic = 0x5A4C4158; // Magic used for Xamarin compressed module header ('XALZ', little-endian)

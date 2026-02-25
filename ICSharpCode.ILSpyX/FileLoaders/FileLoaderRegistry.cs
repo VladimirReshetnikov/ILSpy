@@ -21,12 +21,23 @@ using System.Collections.Generic;
 
 namespace ICSharpCode.ILSpyX.FileLoaders
 {
+	/// <summary>
+	/// Stores ordered <see cref="IFileLoader"/> registrations used to probe files.
+	/// </summary>
 	public sealed class FileLoaderRegistry
 	{
 		readonly List<IFileLoader> registeredLoaders = new List<IFileLoader>();
 
+		/// <summary>
+		/// Gets registered file loaders in probing order.
+		/// </summary>
 		public IReadOnlyList<IFileLoader> RegisteredLoaders => registeredLoaders;
 
+		/// <summary>
+		/// Adds a format loader to the end of the probing sequence.
+		/// </summary>
+		/// <param name="loader">The loader instance to register.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="loader"/> is <see langword="null"/>.</exception>
 		public void Register(IFileLoader loader)
 		{
 			if (loader is null)
@@ -37,6 +48,9 @@ namespace ICSharpCode.ILSpyX.FileLoaders
 			registeredLoaders.Add(loader);
 		}
 
+		/// <summary>
+		/// Initializes the registry with ILSpy's default loader order.
+		/// </summary>
 		public FileLoaderRegistry()
 		{
 			Register(new XamarinCompressedFileLoader());

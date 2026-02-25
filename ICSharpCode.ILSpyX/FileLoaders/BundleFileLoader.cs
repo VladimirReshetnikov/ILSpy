@@ -21,8 +21,20 @@ using System.Threading.Tasks;
 
 namespace ICSharpCode.ILSpyX.FileLoaders
 {
+	/// <summary>
+	/// Loads .NET single-file bundle containers.
+	/// </summary>
 	public sealed class BundleFileLoader : IFileLoader
 	{
+		/// <summary>
+		/// Attempts to open the input file as a .NET bundle package.
+		/// </summary>
+		/// <param name="fileName">Path of the file to inspect.</param>
+		/// <param name="stream">Candidate stream for probing. Not used because bundle loading reopens <paramref name="fileName"/>.</param>
+		/// <param name="settings">Load options and parent-bundle context for the current operation.</param>
+		/// <returns>
+		/// A package result when the file contains a bundle manifest; otherwise <see langword="null"/>.
+		/// </returns>
 		public Task<LoadResult?> Load(string fileName, Stream stream, FileLoadContext settings)
 		{
 			if (settings.ParentBundle != null)

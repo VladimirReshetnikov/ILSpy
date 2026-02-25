@@ -21,8 +21,20 @@ using System.Threading.Tasks;
 
 namespace ICSharpCode.ILSpyX.FileLoaders
 {
+	/// <summary>
+	/// Loads ZIP-based packages that may contain multiple managed assemblies.
+	/// </summary>
 	public sealed class ArchiveFileLoader : IFileLoader
 	{
+		/// <summary>
+		/// Attempts to open the input file as a ZIP package.
+		/// </summary>
+		/// <param name="fileName">Path of the archive to inspect.</param>
+		/// <param name="stream">Candidate stream for probing. Not used because package loading reopens <paramref name="fileName"/>.</param>
+		/// <param name="settings">Load options and parent-bundle context for the current operation.</param>
+		/// <returns>
+		/// A package result when the input is a supported archive; otherwise <see langword="null"/>.
+		/// </returns>
 		public Task<LoadResult?> Load(string fileName, Stream stream, FileLoadContext settings)
 		{
 			if (settings.ParentBundle != null)
