@@ -26,13 +26,47 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 	{
 		internal const string RepoUrl = "https://github.com/icsharpcode/ILSpy";
 
+		/// <summary>
+		/// Gets or sets the path to the assembly that is analyzed to build the diagrammer model.
+		/// </summary>
 		public required string Assembly { get; set; }
+
+		/// <summary>
+		/// Gets or sets the output directory for generated files.
+		/// When not specified, output is written next to <see cref="Assembly"/> in a
+		/// <c>&lt;AssemblyName&gt; diagrammer</c> folder.
+		/// </summary>
 		public string? OutputFolder { get; set; }
 
+		/// <summary>
+		/// Gets or sets a regular expression that must match <c>Type.FullName</c> for a type
+		/// to be included in the diagrammer model.
+		/// </summary>
 		public string? Include { get; set; }
+
+		/// <summary>
+		/// Gets or sets a regular expression that excludes matching <c>Type.FullName</c> values
+		/// from the diagrammer model after include filtering.
+		/// </summary>
 		public string? Exclude { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether only <c>model.json</c> should be produced.
+		/// When <see langword="false"/>, an <c>index.html</c> app and its static assets are emitted.
+		/// </summary>
 		public bool JsonOnly { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether a report with excluded type names is written
+		/// to <c>excluded types.txt</c> in the output folder.
+		/// </summary>
 		public bool ReportExcludedTypes { get; set; }
+
+		/// <summary>
+		/// Gets or sets the path (or <c>file://</c> URI) to the XML documentation file used to
+		/// annotate generated type and member entries.
+		/// When not set, the generator probes for a sibling <c>.xml</c> file next to <see cref="Assembly"/>.
+		/// </summary>
 		public string? XmlDocs { get; set; }
 
 		/// <summary>Namespaces to strip from <see cref="XmlDocs"/>.
