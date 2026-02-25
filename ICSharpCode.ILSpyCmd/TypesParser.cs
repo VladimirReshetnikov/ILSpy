@@ -6,8 +6,23 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.ILSpyCmd
 {
+	/// <summary>
+	/// Parses command-line <c>-l/--list</c> entity selectors into a normalized set of <see cref="TypeKind"/> values.
+	/// </summary>
 	public static class TypesParser
 	{
+		/// <summary>
+		/// Converts the user-provided type selector tokens into unique type kinds.
+		/// </summary>
+		/// <param name="values">
+		/// Raw selector values from the command line. Supported forms are explicit names
+		/// (<c>class</c>, <c>struct</c>, <c>interface</c>, <c>delegate</c>, <c>enum</c>) and compact letter forms
+		/// (<c>c</c>, <c>s</c>, <c>i</c>, <c>d</c>, <c>e</c>).
+		/// </param>
+		/// <returns>
+		/// A set of distinct <see cref="TypeKind"/> values recognized from <paramref name="values"/>.
+		/// Unknown tokens are ignored.
+		/// </returns>
 		public static HashSet<TypeKind> ParseSelection(string[] values)
 		{
 			var possibleValues = new Dictionary<string, TypeKind>(StringComparer.OrdinalIgnoreCase) { ["class"] = TypeKind.Class, ["struct"] = TypeKind.Struct, ["interface"] = TypeKind.Interface, ["enum"] = TypeKind.Enum, ["delegate"] = TypeKind.Delegate };
