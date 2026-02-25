@@ -28,6 +28,15 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 
 	partial class ClassDiagrammerFactory
 	{
+		/// <summary>
+		/// Selects direct one-to-one property relations where the property type resolves to one of the
+		/// currently selected diagram types.
+		/// </summary>
+		/// <param name="properties">Candidate properties declared by a diagram type.</param>
+		/// <returns>
+		/// Properties that should be emitted as <c>has-one</c> relationships, including nullable wrappers
+		/// whose underlying type is selected.
+		/// </returns>
 		private IProperty[] GetHasOneRelations(IProperty[] properties) => properties.Where(property => {
 			IType type = property.ReturnType;
 
@@ -37,6 +46,13 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 			return selectedTypes!.Contains(type);
 		}).ToArray();
 
+		/// <summary>
+		/// Selects collection-like properties that represent one-to-many relations to selected diagram types.
+		/// </summary>
+		/// <param name="properties">Candidate properties declared by a diagram type.</param>
+		/// <returns>
+		/// Tuples containing the source property and the discovered element type for each qualifying relation.
+		/// </returns>
 		private (IProperty property, IType elementType)[] GetManyRelations(IProperty[] properties)
 			=> properties.Select(property => {
 				IType elementType = property.ReturnType.GetElementTypeFromIEnumerable(property.Compilation, true, out bool? isGeneric);
@@ -122,6 +138,12 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 			return (to: id, label);
 		}
 
+		/// <summary>
+		/// Tracks references to types that are not part of the selected diagram set so the frontend
+		/// can render placeholder labels for external nodes.
+		/// </summary>
+		/// <param name="typeId">Stable identifier used as the relationship target in the generated model.</param>
+		/// <param name="type">Referenced type represented by <paramref name="typeId"/>.</param>
 		private void AddOutsideReference(string typeId, IType type)
 		{
 			if (!selectedTypes!.Contains(type) && outsideReferences?.ContainsKey(typeId) == false)
