@@ -56,6 +56,7 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 
 		/// <summary>Returns the relevant direct super type the <paramref name="type"/> inherits from
 		/// in a format matching <see cref="CD.Type.BaseType"/>.</summary>
+		/// <param name="type">Type for which the direct base class relationship should be produced.</param>
 		private Dictionary<string, string?>? GetBaseType(IType type)
 		{
 			IType? relevantBaseType = type.DirectBaseTypes.SingleOrDefault(t => !t.IsInterface() && !t.IsObject());
@@ -64,6 +65,7 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 
 		/// <summary>Returns the direct interfaces implemented by <paramref name="type"/>
 		/// in a format matching <see cref="CD.Type.Interfaces"/>.</summary>
+		/// <param name="type">Type whose directly implemented interfaces should be mapped.</param>
 		private Dictionary<string, string?[]>? GetInterfaces(ITypeDefinition type)
 		{
 			var interfaces = type.DirectBaseTypes.Where(t => t.IsInterface()).ToArray();
@@ -75,6 +77,8 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 
 		/// <summary>Returns the one-to-one relations from <paramref name="type"/> to other <see cref="CD.Type"/>s
 		/// in a format matching <see cref="CD.Relationships.HasOne"/>.</summary>
+		/// <param name="hasOneRelationsByType">Precomputed one-to-one properties grouped by declaring type.</param>
+		/// <param name="type">Declaring type whose one-to-one relations should be exported.</param>
 		private Dictionary<string, string>? MapHasOneRelations(Dictionary<IType, IProperty[]> hasOneRelationsByType, IType type)
 			=> hasOneRelationsByType.GetValue(type)?.Select(p => {
 				IType type = p.ReturnType;
@@ -94,6 +98,8 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 
 		/// <summary>Returns the one-to-many relations from <paramref name="type"/> to other <see cref="CD.Type"/>s
 		/// in a format matching <see cref="CD.Relationships.HasMany"/>.</summary>
+		/// <param name="hasManyRelationsByType">Precomputed one-to-many properties grouped by declaring type.</param>
+		/// <param name="type">Declaring type whose one-to-many relations should be exported.</param>
 		private Dictionary<string, string>? MapHasManyRelations(Dictionary<IType, (IProperty property, IType elementType)[]> hasManyRelationsByType, IType type)
 			=> hasManyRelationsByType.GetValue(type)?.Select(relation => {
 				(IProperty property, IType elementType) = relation;
@@ -104,6 +110,7 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 		/// recording outside references on the way and applying labels if required.</summary>
 		/// <param name="type">The type to reference.</param>
 		/// <param name="propertyName">Used only for property one/many relations.</param>
+		/// <returns>A tuple with the target type id and an optional edge label.</returns>
 		private (string to, string? label) BuildRelationship(IType type, string? propertyName = null)
 		{
 			(string id, IType? openGeneric) = GetIdAndOpenGeneric(type);

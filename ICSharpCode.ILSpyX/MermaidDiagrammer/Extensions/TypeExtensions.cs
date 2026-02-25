@@ -42,11 +42,14 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer.Extensions
 	{
 		/// <summary>Groups the <paramref name="members"/> into a dictionary
 		/// with <see cref="IMember.DeclaringType"/> keys.</summary>
+		/// <param name="members">Members to group by their declaring type.</param>
 		internal static Dictionary<IType, T[]> GroupByDeclaringType<T>(this IEnumerable<T> members) where T : IMember
 			=> members.GroupByDeclaringType(m => m);
 
 		/// <summary>Groups the <paramref name="objectsWithMembers"/> into a dictionary
 		/// with <see cref="IMember.DeclaringType"/> keys using <paramref name="getMember"/>.</summary>
+		/// <param name="objectsWithMembers">Objects whose associated members should be grouped.</param>
+		/// <param name="getMember">Accessor that extracts the member used for grouping.</param>
 		internal static Dictionary<IType, T[]> GroupByDeclaringType<T>(this IEnumerable<T> objectsWithMembers, Func<T, IMember> getMember)
 			=> objectsWithMembers.GroupBy(m => getMember(m).DeclaringType).ToDictionary(g => g.Key, g => g.ToArray());
 	}
@@ -55,6 +58,8 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer.Extensions
 	{
 		/// <summary>Returns the <paramref name="dictionary"/>s value for the specified <paramref name="key"/>
 		/// if available and otherwise the default for <typeparamref name="Tout"/>.</summary>
+		/// <param name="dictionary">Dictionary to query.</param>
+		/// <param name="key">Lookup key.</param>
 		internal static Tout? GetValue<T, Tout>(this IDictionary<T, Tout> dictionary, T key)
 			=> dictionary.TryGetValue(key, out Tout? value) ? value : default;
 	}
