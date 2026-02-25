@@ -36,10 +36,19 @@ using SRM = System.Reflection.Metadata;
 
 namespace ICSharpCode.ILSpyX.PdbProvider
 {
+	/// <summary>
+	/// Reads Windows PDB debug information via Mono.Cecil and exposes it through <see cref="IDebugInfoProvider"/>.
+	/// </summary>
 	public class MonoCecilDebugInfoProvider : IDebugInfoProvider
 	{
 		readonly Dictionary<SRM.MethodDefinitionHandle, (IList<SequencePoint> SequencePoints, IList<Variable> Variables)> debugInfo;
 
+		/// <summary>
+		/// Loads method sequence points and local variable names from a PDB file.
+		/// </summary>
+		/// <param name="module">PE file whose metadata tokens are used to map debug records to methods.</param>
+		/// <param name="pdbFileName">Path to the PDB file to read.</param>
+		/// <param name="description">Optional human-readable provider description shown to users.</param>
 		public unsafe MonoCecilDebugInfoProvider(PEFile module, string pdbFileName, string? description = null)
 		{
 			if (module == null)

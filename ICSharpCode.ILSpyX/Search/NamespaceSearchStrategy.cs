@@ -26,13 +26,26 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.ILSpyX.Search
 {
+	/// <summary>
+	/// Searches namespaces that contain at least one type and whose full name matches the request.
+	/// </summary>
 	public class NamespaceSearchStrategy : AbstractSearchStrategy
 	{
+		/// <summary>
+		/// Initializes a namespace search strategy.
+		/// </summary>
+		/// <param name="request">Parsed search request containing query text and matching options.</param>
+		/// <param name="resultQueue">Queue that receives matched namespace results.</param>
 		public NamespaceSearchStrategy(SearchRequest request, IProducerConsumerCollection<SearchResult> resultQueue)
 			: base(request, resultQueue)
 		{
 		}
 
+		/// <summary>
+		/// Executes the namespace search on a single module.
+		/// </summary>
+		/// <param name="module">Module whose namespace tree is traversed.</param>
+		/// <param name="cancellationToken">Cancellation token used to abort traversal.</param>
 		public override void Search(MetadataFile module, CancellationToken cancellationToken)
 		{
 			cancellationToken.ThrowIfCancellationRequested();

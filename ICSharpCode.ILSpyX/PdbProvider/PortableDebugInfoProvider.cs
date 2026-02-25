@@ -32,6 +32,9 @@ using static ICSharpCode.Decompiler.Metadata.MetadataFile;
 
 namespace ICSharpCode.ILSpyX.PdbProvider
 {
+	/// <summary>
+	/// Reads portable PDB data and projects sequence points, local names, and selected custom debug info.
+	/// </summary>
 	public class PortableDebugInfoProvider : IDebugInfoProvider
 	{
 		string? pdbFileName;

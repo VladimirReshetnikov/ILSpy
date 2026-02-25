@@ -23,10 +23,19 @@ using ICSharpCode.Decompiler.Metadata;
 
 namespace ICSharpCode.ILSpyX.Search
 {
+	/// <summary>
+	/// Searches assembly-level metadata fields such as name, version, and public key token.
+	/// </summary>
 	public class AssemblySearchStrategy : AbstractSearchStrategy
 	{
 		readonly AssemblySearchKind searchKind;
 
+		/// <summary>
+		/// Initializes an assembly metadata search strategy.
+		/// </summary>
+		/// <param name="request">Parsed search request containing query text and matching rules.</param>
+		/// <param name="resultQueue">Queue that receives matched search results.</param>
+		/// <param name="searchKind">Assembly field to inspect for matches.</param>
 		public AssemblySearchStrategy(SearchRequest request,
 			IProducerConsumerCollection<SearchResult> resultQueue, AssemblySearchKind searchKind)
 			: base(request, resultQueue)
@@ -34,6 +43,11 @@ namespace ICSharpCode.ILSpyX.Search
 			this.searchKind = searchKind;
 		}
 
+		/// <summary>
+		/// Executes the search against one metadata file.
+		/// </summary>
+		/// <param name="module">Metadata file to inspect.</param>
+		/// <param name="cancellationToken">Cancellation token used to abort long-running searches.</param>
 		public override void Search(MetadataFile module, CancellationToken cancellationToken)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
@@ -103,16 +117,46 @@ namespace ICSharpCode.ILSpyX.Search
 		}
 	}
 
+	/// <summary>
+	/// Selects which assembly metadata field is matched by <see cref="AssemblySearchStrategy"/>.
+	/// </summary>
 	public enum AssemblySearchKind
 	{
+		/// <summary>
+		/// Match either simple assembly name or file name.
+		/// </summary>
 		NameOrFileName,
+		/// <summary>
+		/// Match simple assembly name.
+		/// </summary>
 		Name,
+		/// <summary>
+		/// Match full assembly display name.
+		/// </summary>
 		FullName,
+		/// <summary>
+		/// Match the original file path.
+		/// </summary>
 		FilePath,
+		/// <summary>
+		/// Match assembly culture name.
+		/// </summary>
 		Culture,
+		/// <summary>
+		/// Match assembly version.
+		/// </summary>
 		Version,
+		/// <summary>
+		/// Match public key token.
+		/// </summary>
 		PublicKey,
+		/// <summary>
+		/// Match hash algorithm identifier.
+		/// </summary>
 		HashAlgorithm,
+		/// <summary>
+		/// Match assembly flags.
+		/// </summary>
 		Flags
 	}
 }

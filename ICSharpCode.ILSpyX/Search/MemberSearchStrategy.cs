@@ -24,10 +24,21 @@ using ICSharpCode.ILSpyX.Abstractions;
 
 namespace ICSharpCode.ILSpyX.Search
 {
+	/// <summary>
+	/// Searches type and member definitions by language-specific display name.
+	/// </summary>
 	public class MemberSearchStrategy : AbstractEntitySearchStrategy
 	{
 		readonly MemberSearchKind searchKind;
 
+		/// <summary>
+		/// Initializes a member search strategy.
+		/// </summary>
+		/// <param name="language">Language service used to build member names.</param>
+		/// <param name="apiVisibility">Accessibility filter applied to candidate members.</param>
+		/// <param name="searchRequest">Parsed search request with query keywords and options.</param>
+		/// <param name="resultQueue">Queue that receives matched entities.</param>
+		/// <param name="searchKind">Subset of members that should be scanned.</param>
 		public MemberSearchStrategy(ILanguage language, ApiVisibility apiVisibility, SearchRequest searchRequest,
 			IProducerConsumerCollection<SearchResult> resultQueue, MemberSearchKind searchKind = MemberSearchKind.All)
 			: base(language, apiVisibility, searchRequest, resultQueue)
@@ -35,6 +46,11 @@ namespace ICSharpCode.ILSpyX.Search
 			this.searchKind = searchKind;
 		}
 
+		/// <summary>
+		/// Executes the member search against one module.
+		/// </summary>
+		/// <param name="module">Module whose metadata tables are traversed.</param>
+		/// <param name="cancellationToken">Cancellation token used to stop scanning early.</param>
 		public override void Search(MetadataFile module, CancellationToken cancellationToken)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
@@ -120,14 +136,38 @@ namespace ICSharpCode.ILSpyX.Search
 		}
 	}
 
+	/// <summary>
+	/// Selects which definition tables <see cref="MemberSearchStrategy"/> should inspect.
+	/// </summary>
 	public enum MemberSearchKind
 	{
+		/// <summary>
+		/// Search all supported type/member tables.
+		/// </summary>
 		All,
+		/// <summary>
+		/// Search type definitions only.
+		/// </summary>
 		Type,
+		/// <summary>
+		/// Search all member definitions (methods, fields, properties, events).
+		/// </summary>
 		Member,
+		/// <summary>
+		/// Search field definitions.
+		/// </summary>
 		Field,
+		/// <summary>
+		/// Search property definitions.
+		/// </summary>
 		Property,
+		/// <summary>
+		/// Search event definitions.
+		/// </summary>
 		Event,
+		/// <summary>
+		/// Search method definitions.
+		/// </summary>
 		Method
 	}
 }
