@@ -101,8 +101,10 @@ namespace ICSharpCode.ILSpyX
 		}
 
 		/// <summary>
-		/// Creates a copy of an assembly list.
+		/// Creates a shallow copy of another assembly list, reusing existing <see cref="LoadedAssembly"/> instances.
 		/// </summary>
+		/// <param name="list">Source list whose current assembly entries are copied.</param>
+		/// <param name="newName">Name assigned to the cloned list.</param>
 		public AssemblyList(AssemblyList list, string newName)
 			: this(list.manager, newName)
 		{
@@ -250,8 +252,10 @@ namespace ICSharpCode.ILSpyX
 		}
 
 		/// <summary>
-		/// Find an assembly that was previously opened.
+		/// Finds an already opened assembly by file path.
 		/// </summary>
+		/// <param name="file">Assembly path to look up. Relative paths are normalized to full paths.</param>
+		/// <returns>The loaded assembly entry, or <see langword="null"/> when no matching file is open.</returns>
 		public LoadedAssembly? FindAssembly(string file)
 		{
 			file = Path.GetFullPath(file);
@@ -263,6 +267,12 @@ namespace ICSharpCode.ILSpyX
 			return null;
 		}
 
+		/// <summary>
+		/// Opens an assembly using the public URI/file entry point.
+		/// </summary>
+		/// <param name="assemblyUri">Path or URI accepted by the active file-loader pipeline.</param>
+		/// <param name="isAutoLoaded">Marks the resulting entry as dependency-loaded instead of user-loaded.</param>
+		/// <returns>The existing or newly created <see cref="LoadedAssembly"/> for <paramref name="assemblyUri"/>.</returns>
 		public LoadedAssembly Open(string assemblyUri, bool isAutoLoaded = false)
 		{
 			return OpenAssembly(assemblyUri, isAutoLoaded);
@@ -272,6 +282,9 @@ namespace ICSharpCode.ILSpyX
 		/// Opens an assembly from disk.
 		/// Returns the existing assembly node if it is already loaded.
 		/// </summary>
+		/// <param name="file">Assembly file path.</param>
+		/// <param name="isAutoLoaded"><see langword="true"/> when the assembly is being added by dependency resolution.</param>
+		/// <returns>The existing or newly loaded assembly entry.</returns>
 		/// <remarks>
 		/// If called on the UI thread, the newly opened assembly is added to the list synchronously.
 		/// If called on another thread, the newly opened assembly won't be returned by GetAssemblies()
@@ -291,6 +304,10 @@ namespace ICSharpCode.ILSpyX
 		/// <summary>
 		/// Opens an assembly from a stream.
 		/// </summary>
+		/// <param name="file">Logical assembly file name used as the identity key within the list.</param>
+		/// <param name="stream">Stream providing assembly bytes. May be <see langword="null"/> to defer loading.</param>
+		/// <param name="isAutoLoaded"><see langword="true"/> when this entry originates from automatic dependency loading.</param>
+		/// <returns>The existing or newly loaded assembly entry.</returns>
 		public LoadedAssembly OpenAssembly(string file, Stream? stream, bool isAutoLoaded = false)
 		{
 			file = Path.GetFullPath(file);
@@ -333,9 +350,11 @@ namespace ICSharpCode.ILSpyX
 		}
 
 		/// <summary>
-		/// Replace the assembly object model from a crafted stream, without disk I/O
-		/// Returns null if it is not already loaded.
+		/// Replaces an already loaded assembly with a new object model from an in-memory stream.
 		/// </summary>
+		/// <param name="file">Path of the assembly entry to replace.</param>
+		/// <param name="stream">Stream containing the replacement assembly image.</param>
+		/// <returns>The replacement assembly entry, or <see langword="null"/> when the target is not currently loaded.</returns>
 		public LoadedAssembly? HotReplaceAssembly(string file, Stream stream)
 		{
 			VerifyAccess();
@@ -360,6 +379,11 @@ namespace ICSharpCode.ILSpyX
 			}
 		}
 
+		/// <summary>
+		/// Reloads a loaded assembly from disk by file name while preserving its position in the list.
+		/// </summary>
+		/// <param name="file">Assembly path to reload.</param>
+		/// <returns>The reloaded entry, or <see langword="null"/> if the assembly is not present in the list.</returns>
 		public LoadedAssembly? ReloadAssembly(string file)
 		{
 			VerifyAccess();
@@ -372,6 +396,11 @@ namespace ICSharpCode.ILSpyX
 			return ReloadAssembly(target);
 		}
 
+		/// <summary>
+		/// Reloads a loaded assembly entry from its original file and debug-symbol path.
+		/// </summary>
+		/// <param name="target">Existing assembly entry to replace.</param>
+		/// <returns>The replacement entry, or <see langword="null"/> when <paramref name="target"/> is no longer in this list.</returns>
 		public LoadedAssembly? ReloadAssembly(LoadedAssembly target)
 		{
 			VerifyAccess();
@@ -390,6 +419,10 @@ namespace ICSharpCode.ILSpyX
 			return newAsm;
 		}
 
+		/// <summary>
+		/// Removes an assembly from the list and filename index.
+		/// </summary>
+		/// <param name="assembly">Assembly entry to remove.</param>
 		public void Unload(LoadedAssembly assembly)
 		{
 			VerifyAccess();
@@ -409,11 +442,21 @@ namespace ICSharpCode.ILSpyX
 				byFilename.Clear();
 			}
 		}
+		/// <summary>
+		/// Sorts the full assembly list using the specified comparer.
+		/// </summary>
+		/// <param name="comparer">Comparer that defines the target order.</param>
 		public void Sort(IComparer<LoadedAssembly> comparer)
 		{
 			Sort(0, int.MaxValue, comparer);
 		}
 
+		/// <summary>
+		/// Sorts a range within the assembly list.
+		/// </summary>
+		/// <param name="index">Zero-based start index of the range to sort.</param>
+		/// <param name="count">Maximum number of items to sort from <paramref name="index"/>.</param>
+		/// <param name="comparer">Comparer that defines the target order.</param>
 		public void Sort(int index, int count, IComparer<LoadedAssembly> comparer)
 		{
 			VerifyAccess();

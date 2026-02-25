@@ -78,8 +78,9 @@ namespace ICSharpCode.ILSpyX.Settings
 		}
 
 		/// <summary>
-		/// Saves a setting section.
+		/// Saves or replaces a complete top-level settings section.
 		/// </summary>
+		/// <param name="section">Section element to persist under the root <c>ILSpy</c> node.</param>
 		public void SaveSettings(XElement section)
 		{
 			Update(rootElement => {
@@ -92,10 +93,11 @@ namespace ICSharpCode.ILSpyX.Settings
 		}
 
 		/// <summary>
-		/// Updates the saved settings.
+		/// Updates the persisted settings document under an inter-process mutex.
 		/// We always reload the file on updates to ensure we aren't overwriting unrelated changes performed
 		/// by another ILSpy instance.
 		/// </summary>
+		/// <param name="action">Mutation callback that receives the root <c>ILSpy</c> element before saving.</param>
 		public void Update(Action<XElement> action)
 		{
 			using (new MutexProtector(ConfigFileMutex))
@@ -141,6 +143,10 @@ namespace ICSharpCode.ILSpyX.Settings
 		{
 			readonly Mutex mutex;
 
+			/// <summary>
+			/// Acquires (or waits for) the named system mutex.
+			/// </summary>
+			/// <param name="name">Global mutex name used to serialize access.</param>
 			public MutexProtector(string name)
 			{
 				this.mutex = new Mutex(true, name, out bool createdNew);

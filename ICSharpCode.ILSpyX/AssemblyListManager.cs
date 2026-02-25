@@ -41,6 +41,13 @@ namespace ICSharpCode.ILSpyX
 
 		private readonly ISettingsProvider settingsProvider;
 
+		/// <summary>
+		/// Creates a manager backed by the provided settings store and initializes <see cref="AssemblyLists"/>
+		/// from the persisted list metadata.
+		/// </summary>
+		/// <param name="settingsProvider">
+		/// Settings source used to load and persist the <c>AssemblyLists</c> section.
+		/// </param>
 		public AssemblyListManager(ISettingsProvider settingsProvider)
 		{
 			this.settingsProvider = settingsProvider;
@@ -67,6 +74,8 @@ namespace ICSharpCode.ILSpyX
 		/// Loads an assembly list from the ILSpySettings.
 		/// If no list with the specified name is found, the default list is loaded instead.
 		/// </summary>
+		/// <param name="listName">Name of the list to load.</param>
+		/// <returns>The requested list, or a new default list when the name does not exist in settings.</returns>
 		public AssemblyList LoadList(string listName)
 		{
 			AssemblyList list = DoLoadList(listName);
@@ -110,6 +119,7 @@ namespace ICSharpCode.ILSpyX
 		/// <summary>
 		/// Saves the specified assembly list into the config file.
 		/// </summary>
+		/// <param name="list">Assembly list snapshot to persist.</param>
 		public void SaveList(AssemblyList list)
 		{
 			this.settingsProvider.Update(
@@ -130,6 +140,11 @@ namespace ICSharpCode.ILSpyX
 				});
 		}
 
+		/// <summary>
+		/// Adds a list name to the manager and persists the list when that name is not already present.
+		/// </summary>
+		/// <param name="list">List to register and save.</param>
+		/// <returns><see langword="true"/> when the list was newly added; otherwise <see langword="false"/>.</returns>
 		public bool AddListIfNotExists(AssemblyList list)
 		{
 			if (!AssemblyLists.Contains(list.ListName))
@@ -141,9 +156,14 @@ namespace ICSharpCode.ILSpyX
 			return false;
 		}
 
-		public bool DeleteList(string Name)
+		/// <summary>
+		/// Removes a persisted assembly list by name.
+		/// </summary>
+		/// <param name="name">Exact list name to remove.</param>
+		/// <returns><see langword="true"/> when a list with the given name existed and was deleted.</returns>
+		public bool DeleteList(string name)
 		{
-			if (AssemblyLists.Remove(Name))
+			if (AssemblyLists.Remove(name))
 			{
 				this.settingsProvider.Update(
 					delegate (XElement root) {
@@ -152,7 +172,7 @@ namespace ICSharpCode.ILSpyX
 						{
 							return;
 						}
-						XElement? listElement = doc.Elements("List").FirstOrDefault(e => (string?)e.Attribute("name") == Name);
+						XElement? listElement = doc.Elements("List").FirstOrDefault(e => (string?)e.Attribute("name") == name);
 						if (listElement != null)
 							listElement.Remove();
 					});
@@ -204,11 +224,23 @@ namespace ICSharpCode.ILSpyX
 			}
 		}
 
+		/// <summary>
+		/// Creates a new in-memory list with the specified name.
+		/// </summary>
+		/// <param name="name">Name assigned to the created list.</param>
+		/// <returns>A list instance that can be populated and then saved via <see cref="AddListIfNotExists"/>.</returns>
 		public AssemblyList CreateList(string name)
 		{
 			return new AssemblyList(this, name);
 		}
 
+		/// <summary>
+		/// Creates one of ILSpy's predefined framework assembly lists.
+		/// </summary>
+		/// <param name="name">Preconfigured list identifier (for example <see cref="DotNet4List"/>).</param>
+		/// <param name="path">Optional framework installation path used by some list templates.</param>
+		/// <param name="newName">Optional display name override for the resulting list.</param>
+		/// <returns>A populated list that may be empty when none of the expected assemblies are found.</returns>
 		public AssemblyList CreateDefaultList(string name, string? path = null, string? newName = null)
 		{
 			var list = new AssemblyList(this, newName ?? name);
