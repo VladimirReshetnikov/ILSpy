@@ -26,6 +26,13 @@ namespace ICSharpCode.Decompiler.Metadata
 {
 	public static class MetadataTokenHelpers
 	{
+		/// <summary>
+		/// Attempts to decode a raw metadata token as an <see cref="EntityHandle"/>.
+		/// </summary>
+		/// <param name="metadataToken">Raw metadata token value read from IL or custom debug blobs.</param>
+		/// <returns>
+		/// The decoded handle when the token is valid and non-negative; otherwise <see langword="null"/>.
+		/// </returns>
 		public static EntityHandle? TryAsEntityHandle(int metadataToken)
 		{
 			// SRM would interpret negative token values as virtual tokens,
@@ -42,6 +49,13 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Decodes a raw metadata token and falls back to a nil handle when the token cannot be represented.
+		/// </summary>
+		/// <param name="metadataToken">Raw metadata token value read from IL or custom debug blobs.</param>
+		/// <returns>
+		/// A valid decoded handle, or the nil entity handle when the token is negative or malformed.
+		/// </returns>
 		public static EntityHandle EntityHandleOrNil(int metadataToken)
 		{
 			// SRM would interpret negative token values as virtual tokens,

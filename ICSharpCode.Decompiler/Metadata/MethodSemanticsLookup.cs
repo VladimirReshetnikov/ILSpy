@@ -59,6 +59,11 @@ namespace ICSharpCode.Decompiler.Metadata
 		// entries, sorted by MethodRowNumber
 		readonly List<Entry> entries;
 
+		/// <summary>
+		/// Builds a compact lookup from accessor methods to their associated property/event semantics.
+		/// </summary>
+		/// <param name="metadata">Metadata reader used to enumerate property and event accessor records.</param>
+		/// <param name="filter">Semantics flags that should be indexed.</param>
 		public MethodSemanticsLookup(MetadataReader metadata, MethodSemanticsAttributes filter = csharpAccessors)
 		{
 			if ((filter & MethodSemanticsAttributes.Other) != 0)
@@ -91,6 +96,13 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Gets the associated property/event handle and accessor semantics for a method.
+		/// </summary>
+		/// <param name="method">Method definition handle to look up.</param>
+		/// <returns>
+		/// A tuple of association handle and semantics flags; returns <c>(default, 0)</c> when no entry exists.
+		/// </returns>
 		public (EntityHandle, MethodSemanticsAttributes) GetSemantics(MethodDefinitionHandle method)
 		{
 			int pos = entries.BinarySearch(new Entry(0, method, default(EntityHandle)));
