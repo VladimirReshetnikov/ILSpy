@@ -118,6 +118,9 @@ namespace ICSharpCode.ILSpyX
 			this.dirty = false;
 		}
 
+		/// <summary>
+		/// Raised when the list's top-level assembly collection changes.
+		/// </summary>
 		public event NotifyCollectionChangedEventHandler CollectionChanged {
 			add {
 				VerifyAccess();
@@ -129,8 +132,17 @@ namespace ICSharpCode.ILSpyX
 			}
 		}
 
+		/// <summary>
+		/// Gets or sets whether metadata readers created for this list apply Windows Runtime projections.
+		/// </summary>
 		public bool ApplyWinRTProjections { get; set; }
+		/// <summary>
+		/// Gets or sets whether assemblies in this list should load and use debug symbol information when available.
+		/// </summary>
 		public bool UseDebugSymbols { get; set; }
+		/// <summary>
+		/// Gets the shared file-loader registry used to open files added to this list.
+		/// </summary>
 		public FileLoaderRegistry LoaderRegistry => this.manager.LoaderRegistry;
 
 		/// <summary>
@@ -160,6 +172,9 @@ namespace ICSharpCode.ILSpyX
 			return GetSnapshot().GetAllAssembliesAsync();
 		}
 
+		/// <summary>
+		/// Gets the current number of top-level assemblies in the list.
+		/// </summary>
 		public int Count {
 			get {
 				lock (lockObj)
@@ -188,6 +203,11 @@ namespace ICSharpCode.ILSpyX
 			get { return listName; }
 		}
 
+		/// <summary>
+		/// Reorders one or more assemblies within the list.
+		/// </summary>
+		/// <param name="assembliesToMove">Assemblies to move as a block.</param>
+		/// <param name="index">Target insertion index in the remaining list after removal.</param>
 		public void Move(LoadedAssembly[] assembliesToMove, int index)
 		{
 			VerifyAccess();
@@ -232,6 +252,9 @@ namespace ICSharpCode.ILSpyX
 			}
 		}
 
+		/// <summary>
+		/// Marks the list as dirty and schedules a save through the owning manager.
+		/// </summary>
 		public void RefreshSave()
 		{
 			// Whenever the assembly list is modified, mark it as dirty
@@ -433,6 +456,9 @@ namespace ICSharpCode.ILSpyX
 			}
 		}
 
+		/// <summary>
+		/// Removes all top-level assemblies from this list.
+		/// </summary>
 		public void Clear()
 		{
 			VerifyAccess();

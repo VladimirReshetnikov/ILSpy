@@ -21,17 +21,25 @@ using System;
 namespace ICSharpCode.ILSpyX.Settings
 {
 	/// <summary>
-	/// Used in scenarios where the user passes a path and that is to be used, eg ilspycmd parameter
+	/// <see cref="ISettingsFilePathProvider"/> implementation that always returns a caller-supplied path.
 	/// </summary>
 	public class DefaultSettingsFilePathProvider : ISettingsFilePathProvider
 	{
 		private readonly string _providedPath;
 
+		/// <summary>
+		/// Creates a path provider that points to a specific settings file.
+		/// </summary>
+		/// <param name="providedPath">Path that should be returned from <see cref="GetSettingsFilePath"/>.</param>
 		public DefaultSettingsFilePathProvider(string providedPath)
 		{
 			_providedPath = providedPath;
 		}
 
+		/// <summary>
+		/// Returns the settings file path supplied when this instance was created.
+		/// </summary>
+		/// <returns>The unchanged path value provided to the constructor.</returns>
 		public string GetSettingsFilePath()
 		{
 			return _providedPath;

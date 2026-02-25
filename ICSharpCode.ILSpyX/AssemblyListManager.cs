@@ -35,8 +35,11 @@ namespace ICSharpCode.ILSpyX
 	/// </summary>
 	public sealed class AssemblyListManager
 	{
+		/// <summary>Built-in list template name for .NET Framework 4.x desktop assemblies.</summary>
 		public const string DotNet4List = ".NET 4 (WPF)";
+		/// <summary>Built-in list template name for .NET Framework 3.5 assemblies.</summary>
 		public const string DotNet35List = ".NET 3.5";
+		/// <summary>Built-in list template name for ASP.NET MVC 3 assemblies.</summary>
 		public const string ASPDotNetMVC3List = "ASP.NET (MVC3)";
 
 		private readonly ISettingsProvider settingsProvider;
@@ -62,12 +65,24 @@ namespace ICSharpCode.ILSpyX
 			}
 		}
 
+		/// <summary>
+		/// Gets or sets whether newly loaded assemblies in this manager should use WinRT metadata projections.
+		/// </summary>
 		public bool ApplyWinRTProjections { get; set; }
 
+		/// <summary>
+		/// Gets or sets whether newly loaded assemblies should attempt to consume debug symbols.
+		/// </summary>
 		public bool UseDebugSymbols { get; set; }
 
+		/// <summary>
+		/// Gets the currently known assembly list names, suitable for data binding in host UIs.
+		/// </summary>
 		public ObservableCollection<string> AssemblyLists { get; } = [];
 
+		/// <summary>
+		/// Gets the shared file-loader registry used when opening assemblies for lists managed by this instance.
+		/// </summary>
 		public FileLoaderRegistry LoaderRegistry { get; } = new();
 
 		/// <summary>
@@ -100,6 +115,12 @@ namespace ICSharpCode.ILSpyX
 			return new AssemblyList(this, listName ?? DefaultListName);
 		}
 
+		/// <summary>
+		/// Clones an existing list into a new list name.
+		/// </summary>
+		/// <param name="selectedAssemblyList">Name of the list to copy from.</param>
+		/// <param name="newListName">Name for the cloned list.</param>
+		/// <returns><see langword="true"/> when the clone was created; <see langword="false"/> when the target name already exists.</returns>
 		public bool CloneList(string selectedAssemblyList, string newListName)
 		{
 			var list = DoLoadList(selectedAssemblyList);
@@ -107,6 +128,12 @@ namespace ICSharpCode.ILSpyX
 			return AddListIfNotExists(newList);
 		}
 
+		/// <summary>
+		/// Renames a list by copying its contents to a new name and deleting the original entry.
+		/// </summary>
+		/// <param name="selectedAssemblyList">Current list name.</param>
+		/// <param name="newListName">Replacement list name.</param>
+		/// <returns><see langword="true"/> when the rename succeeded; otherwise <see langword="false"/>.</returns>
 		public bool RenameList(string selectedAssemblyList, string newListName)
 		{
 			var list = DoLoadList(selectedAssemblyList);
@@ -114,6 +141,7 @@ namespace ICSharpCode.ILSpyX
 			return DeleteList(selectedAssemblyList) && AddListIfNotExists(newList);
 		}
 
+		/// <summary>Default name assigned when no explicit list name is provided.</summary>
 		public const string DefaultListName = "(Default)";
 
 		/// <summary>
@@ -181,6 +209,9 @@ namespace ICSharpCode.ILSpyX
 			return false;
 		}
 
+		/// <summary>
+		/// Removes all known list names and deletes the persisted <c>AssemblyLists</c> section from settings.
+		/// </summary>
 		public void ClearAll()
 		{
 			AssemblyLists.Clear();
@@ -191,6 +222,9 @@ namespace ICSharpCode.ILSpyX
 				});
 		}
 
+		/// <summary>
+		/// Creates ILSpy's predefined framework lists when no lists are currently available.
+		/// </summary>
 		public void CreateDefaultAssemblyLists()
 		{
 			if (AssemblyLists.Count > 0)

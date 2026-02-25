@@ -18,8 +18,15 @@
 
 namespace ICSharpCode.ILSpyX.Settings
 {
+	/// <summary>
+	/// Resolves the full path to the ILSpy settings file.
+	/// </summary>
 	public interface ISettingsFilePathProvider
 	{
+		/// <summary>
+		/// Returns the path ILSpy should use when loading and saving settings.
+		/// </summary>
+		/// <returns>Absolute or relative file path to the settings XML file.</returns>
 		string GetSettingsFilePath();
 	}
 }
