@@ -30,6 +30,9 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 	[NonShared]
 	partial class ReadyToRunOptionPage
 	{
+		/// <summary>
+		/// Initializes the ReadyToRun options view and wires its XAML-defined controls.
+		/// </summary>
 		public ReadyToRunOptionPage()
 		{
 			InitializeComponent();
@@ -42,18 +45,31 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 	{
 		private ReadyToRunOptions options;
 
+		/// <summary>
+		/// Gets or sets the mutable ReadyToRun settings object currently being edited by the page.
+		/// </summary>
 		public ReadyToRunOptions Options {
 			get => options;
 			set => SetProperty(ref options, value);
 		}
 
+		/// <summary>
+		/// Gets the localized title displayed for this option page in ILSpy's settings dialog.
+		/// </summary>
 		public string Title => global::ILSpy.ReadyToRun.Properties.Resources.ReadyToRun;
 
+		/// <summary>
+		/// Loads the persisted ReadyToRun options from the provided settings snapshot.
+		/// </summary>
+		/// <param name="snapshot">Snapshot that supplies existing settings sections for the options dialog session.</param>
 		public void Load(SettingsSnapshot snapshot)
 		{
 			Options = snapshot.GetSettings<ReadyToRunOptions>();
 		}
 
+		/// <summary>
+		/// Restores default ReadyToRun option values by loading from an empty settings element.
+		/// </summary>
 		public void LoadDefaults()
 		{
 			Options.LoadFromXml(new("empty"));
