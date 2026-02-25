@@ -36,6 +36,8 @@ namespace ICSharpCode.Decompiler.Documentation
 		/// <summary>
 		/// Gets the ID string (C# 4.0 spec, §A.3.1) for the specified entity.
 		/// </summary>
+		/// <param name="entity">The entity to encode as a documentation member ID.</param>
+		/// <returns>The documentation ID prefixed with the symbol-kind marker (for example, <c>T:</c> or <c>M:</c>).</returns>
 		public static string GetIdString(this IEntity entity)
 		{
 			StringBuilder b = new StringBuilder();
@@ -100,6 +102,11 @@ namespace ICSharpCode.Decompiler.Documentation
 		#endregion
 
 		#region GetTypeName
+		/// <summary>
+		/// Converts a type into its XML documentation ID-string type-name form.
+		/// </summary>
+		/// <param name="type">The type to encode using documentation ID-string conventions.</param>
+		/// <returns>The encoded type-name segment used by documentation IDs.</returns>
 		public static string GetTypeName(IType type)
 		{
 			if (type == null)

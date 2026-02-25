@@ -24,6 +24,9 @@ using System.Text;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Utility helpers for converting raw metadata token integers into SRM handle values in a fault-tolerant way.
+	/// </summary>
 	public static class MetadataTokenHelpers
 	{
 		/// <summary>

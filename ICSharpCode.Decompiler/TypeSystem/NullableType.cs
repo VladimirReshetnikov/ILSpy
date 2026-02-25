@@ -26,8 +26,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	public static class NullableType
 	{
 		/// <summary>
-		/// Gets whether the specified type is a nullable type.
+		/// Gets whether the specified type is a nullable value type (<c>System.Nullable&lt;T&gt;</c>).
 		/// </summary>
+		/// <param name="type">The type to inspect.</param>
+		/// <returns><see langword="true"/> when <paramref name="type"/> resolves to <c>Nullable&lt;T&gt;</c> after modifier stripping.</returns>
 		public static bool IsNullable(IType type)
 		{
 			if (type == null)
@@ -36,6 +38,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			return pt != null && pt.TypeParameterCount == 1 && pt.GenericType.IsKnownType(KnownTypeCode.NullableOfT);
 		}
 
+		/// <summary>
+		/// Gets whether the specified type is a value type that is not wrapped in <c>Nullable&lt;T&gt;</c>.
+		/// </summary>
+		/// <param name="type">The type to inspect.</param>
+		/// <returns><see langword="true"/> for non-nullable value types; otherwise <see langword="false"/>.</returns>
 		public static bool IsNonNullableValueType(IType type)
 		{
 			return type.IsReferenceType == false && !IsNullable(type);
@@ -45,6 +52,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Returns the element type, if <paramref name="type"/> is a nullable type.
 		/// Otherwise, returns the type itself.
 		/// </summary>
+		/// <param name="type">The type whose nullable wrapper should be removed.</param>
+		/// <returns>The underlying type argument for <c>Nullable&lt;T&gt;</c>, or <paramref name="type"/> when no wrapper exists.</returns>
 		public static IType GetUnderlyingType(IType type)
 		{
 			if (type == null)
@@ -59,6 +68,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Creates a nullable type.
 		/// </summary>
+		/// <param name="compilation">Compilation used to resolve <c>System.Nullable&lt;T&gt;</c>.</param>
+		/// <param name="elementType">The value type argument that should become nullable.</param>
+		/// <returns>A parameterized nullable type when the definition is available; otherwise the unresolved known nullable type.</returns>
 		public static IType Create(ICompilation compilation, IType elementType)
 		{
 			if (compilation == null)
@@ -77,6 +89,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Creates a nullable type reference.
 		/// </summary>
+		/// <param name="elementType">The type reference used as the <c>T</c> argument of <c>Nullable&lt;T&gt;</c>.</param>
+		/// <returns>A parameterized type reference for <c>System.Nullable&lt;T&gt;</c>.</returns>
 		public static ParameterizedTypeReference Create(ITypeReference elementType)
 		{
 			if (elementType == null)
