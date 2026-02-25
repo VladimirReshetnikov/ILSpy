@@ -93,6 +93,10 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Calculates the intersection between this interval and the other interval.
 		/// </summary>
+		/// <param name="other">The interval to intersect with this instance.</param>
+		/// <returns>
+		/// A new interval representing the overlap of both intervals, or the default empty interval when they do not overlap.
+		/// </returns>
 		public Interval Intersect(Interval other)
 		{
 			int start = Math.Max(this.Start, other.Start);
@@ -192,6 +196,9 @@ namespace ICSharpCode.Decompiler.Util
 		/// 
 		/// This method cannot be used to construct an empty interval.
 		/// </summary>
+		/// <param name="start">Inclusive start value of the interval.</param>
+		/// <param name="inclusiveEnd">Inclusive end value of the interval.</param>
+		/// <returns>A <see cref="LongInterval"/> spanning from <paramref name="start"/> to <paramref name="inclusiveEnd"/> (inclusive).</returns>
 		public static LongInterval Inclusive(long start, long inclusiveEnd)
 		{
 			if (!(start <= inclusiveEnd))
@@ -229,6 +236,10 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Calculates the intersection between this interval and the other interval.
 		/// </summary>
+		/// <param name="other">The interval to intersect with this instance.</param>
+		/// <returns>
+		/// A new interval representing the overlap of both intervals, or the default empty interval when they do not overlap.
+		/// </returns>
 		public LongInterval Intersect(LongInterval other)
 		{
 			long start = Math.Max(this.Start, other.Start);

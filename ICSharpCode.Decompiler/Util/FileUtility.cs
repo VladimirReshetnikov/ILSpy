@@ -217,6 +217,12 @@ namespace ICSharpCode.Decompiler.Util
 		/// Converts a given absolute path and a given base path to a path that leads
 		/// from the base path to the absoulte path. (as a relative path)
 		/// </summary>
+		/// <param name="baseDirectoryPath">Base directory that the returned relative path should be rooted at.</param>
+		/// <param name="absPath">Target path to express relative to <paramref name="baseDirectoryPath"/>.</param>
+		/// <returns>
+		/// A relative path from <paramref name="baseDirectoryPath"/> to <paramref name="absPath"/>,
+		/// or <paramref name="absPath"/> unchanged when no relative path can be computed.
+		/// </returns>
 		public static string GetRelativePath(string? baseDirectoryPath, string absPath)
 		{
 			if (baseDirectoryPath == null || baseDirectoryPath.Length == 0)

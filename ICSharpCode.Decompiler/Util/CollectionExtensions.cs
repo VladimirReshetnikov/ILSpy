@@ -134,6 +134,9 @@ namespace ICSharpCode.Decompiler.Util
 		/// Equivalent to <code>collection.Select(func).ToArray()</code>, but more efficient as it makes
 		/// use of the input collection's known size.
 		/// </summary>
+		/// <param name="collection">Input collection that provides the elements and target array size.</param>
+		/// <param name="func">Projection applied to every input element.</param>
+		/// <returns>An array containing one projected value for each element in <paramref name="collection"/>.</returns>
 		public static U[] SelectArray<T, U>(this ICollection<T> collection, Func<T, U> func)
 		{
 			U[] result = new U[collection.Count];
@@ -149,6 +152,9 @@ namespace ICSharpCode.Decompiler.Util
 		/// Equivalent to <code>collection.Select(func).ToImmutableArray()</code>, but more efficient as it makes
 		/// use of the input collection's known size.
 		/// </summary>
+		/// <param name="collection">Input collection that provides the elements and builder capacity hint.</param>
+		/// <param name="func">Projection applied to every input element.</param>
+		/// <returns>An immutable array containing one projected value for each element in <paramref name="collection"/>.</returns>
 		public static ImmutableArray<U> SelectImmutableArray<T, U>(this IReadOnlyCollection<T> collection, Func<T, U> func)
 		{
 			var builder = ImmutableArray.CreateBuilder<U>(collection.Count);
@@ -163,6 +169,9 @@ namespace ICSharpCode.Decompiler.Util
 		/// Equivalent to <code>collection.Select(func).ToArray()</code>, but more efficient as it makes
 		/// use of the input collection's known size.
 		/// </summary>
+		/// <param name="collection">Input collection that provides the elements and target array size.</param>
+		/// <param name="func">Projection applied to every input element.</param>
+		/// <returns>An array containing one projected value for each element in <paramref name="collection"/>.</returns>
 		public static U[] SelectReadOnlyArray<T, U>(this IReadOnlyCollection<T> collection, Func<T, U> func)
 		{
 			U[] result = new U[collection.Count];
@@ -178,6 +187,9 @@ namespace ICSharpCode.Decompiler.Util
 		/// Equivalent to <code>collection.Select(func).ToArray()</code>, but more efficient as it makes
 		/// use of the input collection's known size.
 		/// </summary>
+		/// <param name="collection">Input list that provides the elements and target array size.</param>
+		/// <param name="func">Projection applied to every input element.</param>
+		/// <returns>An array containing one projected value for each element in <paramref name="collection"/>.</returns>
 		public static U[] SelectArray<T, U>(this List<T> collection, Func<T, U> func)
 		{
 			U[] result = new U[collection.Count];
@@ -193,6 +205,9 @@ namespace ICSharpCode.Decompiler.Util
 		/// Equivalent to <code>collection.Select(func).ToArray()</code>, but more efficient as it makes
 		/// use of the input collection's known size.
 		/// </summary>
+		/// <param name="collection">Input array that provides the elements and target array size.</param>
+		/// <param name="func">Projection applied to every input element.</param>
+		/// <returns>An array containing one projected value for each element in <paramref name="collection"/>.</returns>
 		public static U[] SelectArray<T, U>(this T[] collection, Func<T, U> func)
 		{
 			U[] result = new U[collection.Length];
@@ -208,6 +223,9 @@ namespace ICSharpCode.Decompiler.Util
 		/// Equivalent to <code>collection.Select(func).ToList()</code>, but more efficient as it makes
 		/// use of the input collection's known size.
 		/// </summary>
+		/// <param name="collection">Input collection that provides the elements and initial list capacity.</param>
+		/// <param name="func">Projection applied to every input element.</param>
+		/// <returns>A list containing one projected value for each element in <paramref name="collection"/>.</returns>
 		public static List<U> SelectList<T, U>(this ICollection<T> collection, Func<T, U> func)
 		{
 			List<U> result = new List<U>(collection.Count);
@@ -238,6 +256,10 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// The merge step of merge sort.
 		/// </summary>
+		/// <param name="input1">First input sequence, expected to be sorted with the same ordering as <paramref name="comparison"/>.</param>
+		/// <param name="input2">Second input sequence, expected to be sorted with the same ordering as <paramref name="comparison"/>.</param>
+		/// <param name="comparison">Ordering function used to interleave values from the two sorted input sequences.</param>
+		/// <returns>A lazily-evaluated merged sequence that preserves sorted order.</returns>
 		public static IEnumerable<T> Merge<T>(this IEnumerable<T> input1, IEnumerable<T> input2, Comparison<T> comparison)
 		{
 			using (var enumA = input1.GetEnumerator())
@@ -274,6 +296,9 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Returns the minimum element.
 		/// </summary>
+		/// <param name="source">Sequence to scan.</param>
+		/// <param name="keySelector">Selector that produces the key used for ordering elements.</param>
+		/// <returns>The element whose key is smallest according to the default comparer for <typeparamref name="K"/>.</returns>
 		/// <exception cref="InvalidOperationException">The input sequence is empty</exception>
 		public static T MinBy<T, K>(this IEnumerable<T> source, Func<T, K> keySelector) where K : IComparable<K>
 		{
@@ -283,6 +308,10 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Returns the minimum element.
 		/// </summary>
+		/// <param name="source">Sequence to scan.</param>
+		/// <param name="keySelector">Selector that produces the key used for ordering elements.</param>
+		/// <param name="keyComparer">Comparer used to compare keys. If <see langword="null"/>, <see cref="Comparer{T}.Default"/> is used.</param>
+		/// <returns>The element whose key is smallest according to <paramref name="keyComparer"/>.</returns>
 		/// <exception cref="InvalidOperationException">The input sequence is empty</exception>
 		public static T MinBy<T, K>(this IEnumerable<T> source, Func<T, K> keySelector, IComparer<K>? keyComparer)
 		{
@@ -316,6 +345,9 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Returns the maximum element.
 		/// </summary>
+		/// <param name="source">Sequence to scan.</param>
+		/// <param name="keySelector">Selector that produces the key used for ordering elements.</param>
+		/// <returns>The element whose key is largest according to the default comparer for <typeparamref name="K"/>.</returns>
 		/// <exception cref="InvalidOperationException">The input sequence is empty</exception>
 		public static T MaxBy<T, K>(this IEnumerable<T> source, Func<T, K> keySelector) where K : IComparable<K>
 		{
@@ -325,6 +357,10 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Returns the maximum element.
 		/// </summary>
+		/// <param name="source">Sequence to scan.</param>
+		/// <param name="keySelector">Selector that produces the key used for ordering elements.</param>
+		/// <param name="keyComparer">Comparer used to compare keys. If <see langword="null"/>, <see cref="Comparer{T}.Default"/> is used.</param>
+		/// <returns>The element whose key is largest according to <paramref name="keyComparer"/>.</returns>
 		/// <exception cref="InvalidOperationException">The input sequence is empty</exception>
 		public static T MaxBy<T, K>(this IEnumerable<T> source, Func<T, K> keySelector, IComparer<K>? keyComparer)
 		{
