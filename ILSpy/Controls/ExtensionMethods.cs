@@ -30,6 +30,9 @@ namespace ICSharpCode.ILSpy.Controls
 		/// <summary>
 		/// Sets the value of a dependency property on <paramref name="targetObject"/> using a markup extension.
 		/// </summary>
+		/// <param name="targetObject">Object that owns the dependency property.</param>
+		/// <param name="property">Dependency property to assign.</param>
+		/// <param name="markupExtension">Markup extension that produces the value.</param>
 		/// <remarks>This method does not support markup extensions like x:Static that depend on
 		/// having a XAML file as context.</remarks>
 		public static void SetValueToExtension(this DependencyObject targetObject, DependencyProperty property, MarkupExtension markupExtension)

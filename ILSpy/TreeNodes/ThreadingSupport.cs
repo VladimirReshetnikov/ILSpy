@@ -61,6 +61,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// <summary>
 		/// Starts loading the children of the specified node.
 		/// </summary>
+		/// <param name="node">Node whose children should be populated.</param>
+		/// <param name="fetchChildren">Callback that produces child nodes and honors cancellation.</param>
 		public void LoadChildren(SharpTreeNode node, Func<CancellationToken, IEnumerable<SharpTreeNode>> fetchChildren)
 		{
 			stopwatch.Restart();

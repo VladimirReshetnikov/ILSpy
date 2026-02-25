@@ -86,20 +86,31 @@ namespace ICSharpCode.ILSpy.TextView
 		/// It uses the <see cref="ITextRunConstructionContext.VisualLine"/> and its
 		/// <see cref="VisualLineElement.RelativeTextOffset"/> to find the actual text string.
 		/// </summary>
+		/// <param name="parentVisualLine">The visual line that owns this text element.</param>
+		/// <param name="length">The number of document characters represented by this element.</param>
+		/// <param name="parent">The generator that created this element.</param>
+		/// <param name="referenceSegment">Reference metadata used for cursor and navigation behavior.</param>
 		public VisualLineReferenceText(VisualLine parentVisualLine, int length, ReferenceElementGenerator parent, ReferenceSegment referenceSegment) : base(parentVisualLine, length)
 		{
 			this.parent = parent;
 			this.referenceSegment = referenceSegment;
 		}
 
-		/// <inheritdoc/>
+		/// <summary>
+		/// Updates the mouse cursor to indicate whether the reference is navigable.
+		/// </summary>
+		/// <param name="e">Cursor query event data.</param>
 		protected override void OnQueryCursor(QueryCursorEventArgs e)
 		{
 			e.Handled = true;
 			e.Cursor = referenceSegment.IsLocal ? Cursors.Arrow : Cursors.Hand;
 		}
 
-		/// <inheritdoc/>
+		/// <summary>
+		/// Creates another reference-aware text run for split visual lines.
+		/// </summary>
+		/// <param name="length">Length of the new visual text run.</param>
+		/// <returns>A new <see cref="VisualLineReferenceText"/> instance.</returns>
 		protected override VisualLineText CreateInstance(int length)
 		{
 			return new VisualLineReferenceText(ParentVisualLine, length, parent, referenceSegment);

@@ -596,6 +596,10 @@ namespace ICSharpCode.ILSpy.TextView
 		/// the task.
 		/// If another task is started before the previous task finishes running, the previous task is cancelled.
 		/// </summary>
+		/// <typeparam name="T">Result type produced by the operation.</typeparam>
+		/// <param name="taskCreation">Factory that starts the operation when given a cancellation token.</param>
+		/// <param name="progressTitle">Optional title shown while work is in progress.</param>
+		/// <returns>The active operation task, or a canceled/faulted task if setup fails.</returns>
 		public Task<T> RunWithCancellation<T>(Func<CancellationToken, Task<T>> taskCreation, string? progressTitle = null)
 		{
 			if (waitAdorner.Visibility != Visibility.Visible)
@@ -699,6 +703,9 @@ namespace ICSharpCode.ILSpy.TextView
 		/// Shows the given output in the text view.
 		/// Cancels any currently running decompilation tasks.
 		/// </summary>
+		/// <param name="textOutput">Output document to show.</param>
+		/// <param name="nodes">Associated tree nodes used for navigation context.</param>
+		/// <param name="highlighting">Optional syntax highlighting definition for the displayed text.</param>
 		public void ShowNodes(AvalonEditTextOutput textOutput, ILSpyTreeNode[]? nodes, IHighlightingDefinition? highlighting = null)
 		{
 			// Cancel the decompilation task:
@@ -828,6 +835,11 @@ namespace ICSharpCode.ILSpy.TextView
 		/// If any errors occur, the error message is displayed in the text view, and the task returned by this method completes successfully.
 		/// If the operation is cancelled (by starting another decompilation action); the returned task is marked as cancelled.
 		/// </summary>
+		/// <param name="language">Language used for decompilation.</param>
+		/// <param name="treeNodes">Tree nodes to decompile.</param>
+		/// <param name="source">Originator token used to suppress stale updates from earlier requests.</param>
+		/// <param name="options">Decompilation options to apply.</param>
+		/// <returns>A task representing completion of UI update scheduling and display.</returns>
 		public Task DecompileAsync(ILSpy.Language language, IEnumerable<ILSpyTreeNode> treeNodes, object? source, DecompilationOptions options)
 		{
 			// Some actions like loading an assembly list cause several selection changes in the tree view,
@@ -1093,6 +1105,9 @@ namespace ICSharpCode.ILSpy.TextView
 		/// <summary>
 		/// Shows the 'save file dialog', prompting the user to save the decompiled nodes to disk.
 		/// </summary>
+		/// <param name="language">Language used for output file extension and serialization.</param>
+		/// <param name="treeNodes">Nodes whose decompiled output should be saved.</param>
+		/// <param name="options">Decompilation settings used while writing the file.</param>
 		public void SaveToDisk(ILSpy.Language language, IEnumerable<ILSpyTreeNode> treeNodes, DecompilationOptions options)
 		{
 			if (!treeNodes.Any())

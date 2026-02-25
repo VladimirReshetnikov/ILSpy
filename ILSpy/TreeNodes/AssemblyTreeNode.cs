@@ -335,6 +335,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// <summary>
 		/// Finds the node for a top-level type.
 		/// </summary>
+		/// <param name="type">Type definition to locate.</param>
+		/// <returns>The corresponding type node, or <see langword="null"/> if it is not loaded.</returns>
 		public TypeTreeNode FindTypeNode(ITypeDefinition type)
 		{
 			if (type == null)
@@ -350,6 +352,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// <summary>
 		/// Finds the node for a namespace.
 		/// </summary>
+		/// <param name="namespaceName">Namespace name to locate.</param>
+		/// <returns>The matching namespace node, or <see langword="null"/> if unavailable.</returns>
 		public NamespaceTreeNode FindNamespaceNode(string namespaceName)
 		{
 			if (string.IsNullOrEmpty(namespaceName))

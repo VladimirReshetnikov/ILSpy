@@ -54,6 +54,9 @@ namespace ICSharpCode.ILSpy
 		/// Takes at most <paramref name="length" /> first characters from string, and appends '...' if string is longer.
 		/// String can be null.
 		/// </summary>
+		/// <param name="s">The source string, or <see langword="null"/>.</param>
+		/// <param name="length">Maximum number of leading characters to keep before appending ellipsis.</param>
+		/// <returns>The original string when short enough; otherwise a truncated string with trailing <c>...</c>.</returns>
 		public static string TakeStartEllipsis(this string s, int length)
 		{
 			if (string.IsNullOrEmpty(s) || length >= s.Length)
@@ -65,6 +68,11 @@ namespace ICSharpCode.ILSpy
 		/// Equivalent to <code>collection.Select(func).ToArray()</code>, but more efficient as it makes
 		/// use of the input collection's known size.
 		/// </summary>
+		/// <typeparam name="T">Input element type.</typeparam>
+		/// <typeparam name="U">Projected element type.</typeparam>
+		/// <param name="collection">The source collection to project.</param>
+		/// <param name="func">Projection applied to each source element.</param>
+		/// <returns>An array with one projected value for each source element.</returns>
 		public static U[] SelectArray<T, U>(this ICollection<T> collection, Func<T, U> func)
 		{
 			U[] result = new U[collection.Count];

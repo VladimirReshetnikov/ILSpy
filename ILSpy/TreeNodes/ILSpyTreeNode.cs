@@ -73,6 +73,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// This method is called on the main thread when only a single item is selected.
 		/// If it returns false, normal decompilation is used to view the item.
 		/// </summary>
+		/// <param name="tabPage">Target tab page that should display the item.</param>
+		/// <returns><see langword="true"/> when the node handled display itself; otherwise <see langword="false"/>.</returns>
 		public virtual bool View(ViewModels.TabPageModel tabPage)
 		{
 			return false;
@@ -92,6 +94,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// This method is called on the main thread when only a single item is selected.
 		/// If it returns false, normal decompilation is used to save the item.
 		/// </summary>
+		/// <param name="tabPage">Tab page context from which save was initiated.</param>
+		/// <returns><see langword="true"/> when the node handled saving itself; otherwise <see langword="false"/>.</returns>
 		public virtual bool Save(ViewModels.TabPageModel tabPage)
 		{
 			return false;

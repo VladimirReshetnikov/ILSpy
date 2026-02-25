@@ -57,6 +57,9 @@ namespace ICSharpCode.ILSpy.Analyzers
 		/// <summary>
 		/// Handles changes to the assembly list.
 		/// </summary>
+		/// <param name="removedAssemblies">Assemblies removed from the active list.</param>
+		/// <param name="addedAssemblies">Assemblies newly added to the active list.</param>
+		/// <returns><see langword="true"/> if this analyzer should remain visible; otherwise <see langword="false"/>.</returns>
 		public abstract bool HandleAssemblyListChanged(ICollection<LoadedAssembly> removedAssemblies, ICollection<LoadedAssembly> addedAssemblies);
 	}
 }

@@ -218,6 +218,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// Looks up the type node corresponding to the type definition.
 		/// Returns null if no matching node is found.
 		/// </summary>
+		/// <param name="def">Type definition to locate in the tree.</param>
+		/// <returns>The matching type node, or <see langword="null"/> if it is not present.</returns>
 		public TypeTreeNode FindTypeNode(ITypeDefinition def)
 		{
 			if (def == null)
@@ -247,6 +249,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// Looks up the method node corresponding to the method definition.
 		/// Returns null if no matching node is found.
 		/// </summary>
+		/// <param name="def">Method definition to locate.</param>
+		/// <returns>The method node, accessor owner node, or <see langword="null"/> if nothing matches.</returns>
 		public ILSpyTreeNode FindMethodNode(IMethod def)
 		{
 			TypeTreeNode typeNode = FindTypeNode(def.DeclaringTypeDefinition);
@@ -288,6 +292,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// Looks up the field node corresponding to the field definition.
 		/// Returns null if no matching node is found.
 		/// </summary>
+		/// <param name="def">Field definition to locate.</param>
+		/// <returns>The matching field node, or <see langword="null"/>.</returns>
 		public FieldTreeNode FindFieldNode(IField def)
 		{
 			TypeTreeNode typeNode = FindTypeNode(def.DeclaringTypeDefinition);
@@ -301,6 +307,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// Looks up the property node corresponding to the property definition.
 		/// Returns null if no matching node is found.
 		/// </summary>
+		/// <param name="def">Property definition to locate.</param>
+		/// <returns>The matching property node, or <see langword="null"/>.</returns>
 		public PropertyTreeNode FindPropertyNode(IProperty def)
 		{
 			TypeTreeNode typeNode = FindTypeNode(def.DeclaringTypeDefinition);
@@ -314,6 +322,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// Looks up the event node corresponding to the event definition.
 		/// Returns null if no matching node is found.
 		/// </summary>
+		/// <param name="def">Event definition to locate.</param>
+		/// <returns>The matching event node, or <see langword="null"/>.</returns>
 		public EventTreeNode FindEventNode(IEvent def)
 		{
 			TypeTreeNode typeNode = FindTypeNode(def.DeclaringTypeDefinition);
@@ -327,6 +337,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// Looks up the event node corresponding to the namespace definition.
 		/// Returns null if no matching node is found.
 		/// </summary>
+		/// <param name="def">Namespace to locate.</param>
+		/// <returns>The matching namespace node, or <see langword="null"/>.</returns>
 		public NamespaceTreeNode FindNamespaceNode(INamespace def)
 		{
 			var module = def.ContributingModules.FirstOrDefault();

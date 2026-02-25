@@ -57,6 +57,8 @@ namespace ICSharpCode.ILSpy.Updates
 		/// Returns the download URL if an update is available.
 		/// Returns null if no update is available, or if no check was performed.
 		/// </summary>
+		/// <param name="settings">Persisted update settings controlling cadence and opt-in state.</param>
+		/// <returns>The update download URL, or <see langword="null"/> when no action is needed.</returns>
 		public static async Task<string> CheckForUpdatesIfEnabledAsync(UpdateSettings settings)
 		{
 			// If we're in an MSIX package, updates work differently

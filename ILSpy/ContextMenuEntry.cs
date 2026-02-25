@@ -182,6 +182,7 @@ namespace ICSharpCode.ILSpy
 		/// <summary>
 		/// Enables extensible context menu support for the specified tree view.
 		/// </summary>
+		/// <param name="treeView">The tree view whose context menu should be provided by exported entries.</param>
 		public static void Add(SharpTreeView treeView)
 		{
 			var provider = new ContextMenuProvider(treeView);

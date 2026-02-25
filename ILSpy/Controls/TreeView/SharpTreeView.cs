@@ -407,6 +407,7 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 		/// <summary>
 		/// Scrolls the specified node in view and sets keyboard focus on it.
 		/// </summary>
+		/// <param name="node">The node to reveal and focus.</param>
 		public void FocusNode(SharpTreeNode node)
 		{
 			ArgumentNullException.ThrowIfNull(node);

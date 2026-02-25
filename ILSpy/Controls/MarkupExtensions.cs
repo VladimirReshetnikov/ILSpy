@@ -36,6 +36,7 @@ namespace ICSharpCode.ILSpy.Controls
 		/// <summary>
 		/// val: Color value in the range 105..255.
 		/// </summary>
+		/// <param name="val">Brightness value in the inclusive range 105..255.</param>
 		public ControlColor(float val)
 		{
 			if (!(val >= 105 && val <= 255))

@@ -36,9 +36,17 @@ namespace ICSharpCode.ILSpy
 		/// <summary>
 		/// Inserts an interactive UI element at the current position in the text output.
 		/// </summary>
+		/// <param name="element">Factory that creates the element when the output view is materialized.</param>
 		void AddUIElement(Func<UIElement> element);
 
+		/// <summary>
+		/// Starts a highlight span for subsequently written text.
+		/// </summary>
+		/// <param name="highlightingColor">The highlighting style to apply until <see cref="EndSpan"/> is called.</param>
 		void BeginSpan(HighlightingColor highlightingColor);
+		/// <summary>
+		/// Ends the current highlight span created by <see cref="BeginSpan"/>.
+		/// </summary>
 		void EndSpan();
 
 		/// <summary>
@@ -50,8 +58,12 @@ namespace ICSharpCode.ILSpy
 	public static class SmartTextOutputExtensions
 	{
 		/// <summary>
-		/// Creates a button.
+		/// Adds a themed button to the output stream.
 		/// </summary>
+		/// <param name="output">The output surface that should host the button.</param>
+		/// <param name="icon">Optional icon displayed before <paramref name="text"/>.</param>
+		/// <param name="text">Caption shown on the button.</param>
+		/// <param name="click">Handler invoked when the user clicks the button.</param>
 		public static void AddButton(this ISmartTextOutput output, ImageSource icon, string text, RoutedEventHandler click)
 		{
 			output.AddUIElement(

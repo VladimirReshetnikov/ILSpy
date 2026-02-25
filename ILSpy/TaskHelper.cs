@@ -23,37 +23,64 @@ using System.Threading.Tasks;
 using ICSharpCode.ILSpy.Docking;
 using ICSharpCode.ILSpy.TextView;
 
-namespace ICSharpCode.ILSpy
-{
-	public static class TaskHelper
+	namespace ICSharpCode.ILSpy
 	{
-		public static readonly Task CompletedTask = FromResult<object>(null);
-
-		public static Task<T> FromResult<T>(T result)
+		/// <summary>
+		/// Provides task-composition helpers used by the UI layer to chain background work
+		/// back onto the WPF synchronization context.
+		/// </summary>
+		public static class TaskHelper
 		{
+			/// <summary>
+			/// A pre-completed non-generic task.
+			/// </summary>
+			public static readonly Task CompletedTask = FromResult<object>(null);
+
+			/// <summary>
+			/// Creates a completed task containing <paramref name="result"/>.
+			/// </summary>
+			/// <typeparam name="T">The result type.</typeparam>
+			/// <param name="result">The value to expose through the returned task.</param>
+			/// <returns>A task in the <see cref="TaskStatus.RanToCompletion"/> state.</returns>
+			public static Task<T> FromResult<T>(T result)
+			{
 			TaskCompletionSource<T> tcs = new TaskCompletionSource<T>();
 			tcs.SetResult(result);
 			return tcs.Task;
 		}
 
-		public static Task<T> FromException<T>(Exception ex)
-		{
+			/// <summary>
+			/// Creates a faulted task that propagates <paramref name="ex"/>.
+			/// </summary>
+			/// <typeparam name="T">The result type.</typeparam>
+			/// <param name="ex">The exception to attach to the returned task.</param>
+			/// <returns>A task in the <see cref="TaskStatus.Faulted"/> state.</returns>
+			public static Task<T> FromException<T>(Exception ex)
+			{
 			var tcs = new TaskCompletionSource<T>();
 			tcs.SetException(ex);
 			return tcs.Task;
 		}
 
-		public static Task<T> FromCancellation<T>()
-		{
+			/// <summary>
+			/// Creates a canceled task.
+			/// </summary>
+			/// <typeparam name="T">The result type.</typeparam>
+			/// <returns>A task in the <see cref="TaskStatus.Canceled"/> state.</returns>
+			public static Task<T> FromCancellation<T>()
+			{
 			var tcs = new TaskCompletionSource<T>();
 			tcs.SetCanceled();
 			return tcs.Task;
 		}
 
-		/// <summary>
-		/// Sets the result of the TaskCompletionSource based on the result of the finished task.
-		/// </summary>
-		public static void SetFromTask<T>(this TaskCompletionSource<T> tcs, Task<T> task)
+			/// <summary>
+			/// Sets the result of the TaskCompletionSource based on the result of the finished task.
+			/// </summary>
+			/// <typeparam name="T">The task result type.</typeparam>
+			/// <param name="tcs">The completion source to update.</param>
+			/// <param name="task">The already-completed task whose status should be mirrored.</param>
+			public static void SetFromTask<T>(this TaskCompletionSource<T> tcs, Task<T> task)
 		{
 			switch (task.Status)
 			{
@@ -71,10 +98,12 @@ namespace ICSharpCode.ILSpy
 			}
 		}
 
-		/// <summary>
-		/// Sets the result of the TaskCompletionSource based on the result of the finished task.
-		/// </summary>
-		public static void SetFromTask(this TaskCompletionSource<object> tcs, Task task)
+			/// <summary>
+			/// Sets the result of the TaskCompletionSource based on the result of the finished task.
+			/// </summary>
+			/// <param name="tcs">The completion source to update.</param>
+			/// <param name="task">The already-completed task whose status should be mirrored.</param>
+			public static void SetFromTask(this TaskCompletionSource<object> tcs, Task task)
 		{
 			switch (task.Status)
 			{
@@ -160,12 +189,15 @@ namespace ICSharpCode.ILSpy
 			}, CancellationToken.None, TaskContinuationOptions.NotOnCanceled, TaskScheduler.FromCurrentSynchronizationContext()).Unwrap();
 		}
 
-		/// <summary>
-		/// If the input task fails, calls the action to handle the error.
-		/// </summary>
-		/// <returns>
-		/// Returns a task that finishes successfully when error handling has completed.
-		/// If the input task ran successfully, the returned task completes successfully.
+			/// <summary>
+			/// If the input task fails, calls the action to handle the error.
+			/// </summary>
+			/// <typeparam name="TException">The exception type that should be handled.</typeparam>
+			/// <param name="task">The task whose failure should be observed.</param>
+			/// <param name="action">The handler invoked when the task fails with <typeparamref name="TException"/>.</param>
+			/// <returns>
+			/// Returns a task that finishes successfully when error handling has completed.
+			/// If the input task ran successfully, the returned task completes successfully.
 		/// If the input task was cancelled, the returned task is cancelled as well.
 		/// </returns>
 		public static Task Catch<TException>(this Task task, Action<TException> action) where TException : Exception
@@ -186,17 +218,19 @@ namespace ICSharpCode.ILSpy
 			}, CancellationToken.None, TaskContinuationOptions.NotOnCanceled, TaskScheduler.FromCurrentSynchronizationContext());
 		}
 
-		/// <summary>
-		/// Ignore exceptions thrown by the task.
-		/// </summary>
-		public static void IgnoreExceptions(this Task task)
-		{
-		}
+			/// <summary>
+			/// Ignore exceptions thrown by the task.
+			/// </summary>
+			/// <param name="task">The task to observe and intentionally ignore.</param>
+			public static void IgnoreExceptions(this Task task)
+			{
+			}
 
-		/// <summary>
-		/// Handle exceptions by displaying the error message in the text view.
-		/// </summary>
-		public static void HandleExceptions(this Task task)
+			/// <summary>
+			/// Handle exceptions by displaying the error message in the text view.
+			/// </summary>
+			/// <param name="task">The task whose unhandled exceptions should be reported to the UI.</param>
+			public static void HandleExceptions(this Task task)
 		{
 			task.Catch<Exception>(exception => App.Current.Dispatcher.BeginInvoke(new Action(delegate {
 				AvalonEditTextOutput output = new();

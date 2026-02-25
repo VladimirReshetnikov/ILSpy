@@ -574,6 +574,12 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 		/// <summary>
 		/// Retrieves a node using the .ToString() representations of its ancestors.
 		/// </summary>
+		/// <param name="path">Path segments previously produced by <see cref="GetPathForNode"/>.</param>
+		/// <param name="returnBestMatch">
+		/// <see langword="true"/> to return the deepest existing ancestor when an exact match is unavailable;
+		/// otherwise return <see langword="null"/> for incomplete matches.
+		/// </param>
+		/// <returns>The matching node, best match, or <see langword="null"/> depending on <paramref name="returnBestMatch"/>.</returns>
 		public SharpTreeNode? FindNodeByPath(string[]? path, bool returnBestMatch)
 		{
 			if (path == null)
@@ -597,6 +603,8 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 		/// <summary>
 		/// Gets the .ToString() representation of the node's ancestors.
 		/// </summary>
+		/// <param name="node">The node for which to produce a stable selection path.</param>
+		/// <returns>A root-to-node path excluding the synthetic root, or <see langword="null"/> for a null node.</returns>
 		public static string[]? GetPathForNode(SharpTreeNode? node)
 		{
 			if (node == null)
