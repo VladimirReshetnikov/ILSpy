@@ -45,6 +45,10 @@ namespace ICSharpCode.ILSpyX
 			DisplayName = name ?? Version.ToString();
 		}
 
+		/// <summary>
+		/// Returns a diagnostic string that includes both the display name and raw version token.
+		/// </summary>
+		/// <returns>A formatted representation useful in logs and debugger views.</returns>
 		public override string ToString()
 		{
 			return $"[LanguageVersion DisplayName={DisplayName}, Version={Version}]";

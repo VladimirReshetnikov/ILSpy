@@ -32,6 +32,9 @@ namespace ICSharpCode.ILSpyX.Analyzers
 	/// </summary>
 	public class AnalyzerContext
 	{
+		/// <summary>
+		/// Gets the active assembly-list session that determines which assemblies are in analysis scope.
+		/// </summary>
 		public required AssemblyList AssemblyList { get; init; }
 
 		/// <summary>
@@ -51,6 +54,14 @@ namespace ICSharpCode.ILSpyX.Analyzers
 		/// </summary>
 		public bool SortResults { get; set; }
 
+		/// <summary>
+		/// Tries to read the IL method body for a metadata-backed method symbol.
+		/// </summary>
+		/// <param name="method">Method to inspect.</param>
+		/// <returns>
+		/// A decoded method body when the symbol has a valid metadata token and readable body data;
+		/// otherwise <see langword="null"/>.
+		/// </returns>
 		public MethodBodyBlock? GetMethodBody(IMethod method)
 		{
 			if (!method.HasBody || method.MetadataToken.IsNil || method.ParentModule?.MetadataFile == null)
@@ -67,6 +78,11 @@ namespace ICSharpCode.ILSpyX.Analyzers
 			}
 		}
 
+		/// <summary>
+		/// Creates an analyzer scope rooted at the specified symbol.
+		/// </summary>
+		/// <param name="entity">The symbol that defines the assembly/module search boundary.</param>
+		/// <returns>A scope object used by built-in analyzers to enumerate candidate symbols.</returns>
 		public AnalyzerScope GetScopeOf(IEntity entity)
 		{
 			return new AnalyzerScope(AssemblyList, entity);
@@ -74,6 +90,11 @@ namespace ICSharpCode.ILSpyX.Analyzers
 
 		readonly ConcurrentDictionary<MetadataFile, DecompilerTypeSystem> typeSystemCache = new();
 
+		/// <summary>
+		/// Gets a cached <see cref="DecompilerTypeSystem"/> for a metadata module, creating one on first use.
+		/// </summary>
+		/// <param name="module">Metadata module that should be wrapped in a decompiler type system.</param>
+		/// <returns>The cached or newly created type-system instance for <paramref name="module"/>.</returns>
 		public DecompilerTypeSystem GetOrCreateTypeSystem(MetadataFile module)
 		{
 			return typeSystemCache.GetOrAdd(module, m => new DecompilerTypeSystem(m, m.GetAssemblyResolver()));

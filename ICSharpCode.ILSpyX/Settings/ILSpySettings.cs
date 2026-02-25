@@ -41,6 +41,13 @@ namespace ICSharpCode.ILSpyX.Settings
 			this.root = root ?? new XElement("ILSpy");
 		}
 
+		/// <summary>
+		/// Gets a top-level settings section by name from the in-memory settings document.
+		/// </summary>
+		/// <param name="section">Qualified section name under the root <c>ILSpy</c> element.</param>
+		/// <returns>
+		/// The stored section element when present; otherwise a new empty element with the requested name.
+		/// </returns>
 		public XElement this[XName section] {
 			get {
 				return root.Element(section) ?? new XElement(section);
@@ -162,6 +169,9 @@ namespace ICSharpCode.ILSpyX.Settings
 				}
 			}
 
+			/// <summary>
+			/// Releases the held mutex and disposes the underlying <see cref="Mutex"/> instance.
+			/// </summary>
 			public void Dispose()
 			{
 				mutex.ReleaseMutex();
