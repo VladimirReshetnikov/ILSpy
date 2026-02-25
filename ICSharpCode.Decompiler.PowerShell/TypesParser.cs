@@ -7,8 +7,18 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.PowerShell
 {
+	/// <summary>
+	/// Parses user-facing type selection tokens used by the PowerShell cmdlets into
+	/// <see cref="TypeKind"/> values.
+	/// </summary>
 	public static class TypesParser
 	{
+		/// <summary>
+		/// Converts explicit names (<c>class</c>, <c>interface</c>, ...) or compact single-letter
+		/// combinations (for example <c>cis</c>) into a set of type kinds.
+		/// </summary>
+		/// <param name="values">The user-provided type selection tokens.</param>
+		/// <returns>A set of requested <see cref="TypeKind"/> values.</returns>
 		public static HashSet<TypeKind> ParseSelection(string[] values)
 		{
 			var possibleValues = new Dictionary<string, TypeKind>(StringComparer.OrdinalIgnoreCase) { ["class"] = TypeKind.Class, ["struct"] = TypeKind.Struct, ["interface"] = TypeKind.Interface, ["enum"] = TypeKind.Enum, ["delegate"] = TypeKind.Delegate };

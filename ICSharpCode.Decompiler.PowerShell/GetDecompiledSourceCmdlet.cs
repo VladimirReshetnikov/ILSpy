@@ -9,13 +9,23 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.PowerShell
 {
+	/// <summary>
+	/// Decompiles either an entire module or a single type and returns the generated C# source text.
+	/// </summary>
 	[Cmdlet(VerbsCommon.Get, "DecompiledSource")]
 	[OutputType(typeof(string))]
 	public class GetDecompiledSourceCmdlet : PSCmdlet
 	{
+		/// <summary>
+		/// Gets or sets the decompiler session that provides metadata and decompilation settings.
+		/// </summary>
 		[Parameter(Position = 0, Mandatory = true)]
 		public CSharpDecompiler Decompiler { get; set; }
 
+		/// <summary>
+		/// Gets or sets the full type name to decompile. Leave this value as <see langword="null"/>
+		/// to decompile the whole module instead of a single type.
+		/// </summary>
 		[Parameter]
 		public string TypeName { get; set; } = string.Empty;
 

@@ -10,13 +10,22 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.PowerShell
 {
+	/// <summary>
+	/// Returns type definitions from the main module that match the requested type-kind filter.
+	/// </summary>
 	[Cmdlet(VerbsCommon.Get, "DecompiledTypes")]
 	[OutputType(typeof(ITypeDefinition[]))]
 	public class GetDecompiledTypesCmdlet : PSCmdlet
 	{
+		/// <summary>
+		/// Gets or sets the decompiler session whose main module will be inspected.
+		/// </summary>
 		[Parameter(Position = 0, Mandatory = true)]
 		public CSharpDecompiler Decompiler { get; set; }
 
+		/// <summary>
+		/// Gets or sets one or more type-kind selectors (for example <c>class</c>, <c>struct</c>, or compact forms such as <c>cis</c>).
+		/// </summary>
 		[Parameter(Mandatory = true)]
 		public string[] Types { get; set; }
 
