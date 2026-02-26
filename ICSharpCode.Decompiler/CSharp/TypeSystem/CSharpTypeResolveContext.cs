@@ -22,6 +22,13 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.TypeSystem
 {
+	/// <summary>
+	/// Captures the lexical type-resolution state used by the C# resolver while decompiling code.
+	/// </summary>
+	/// <remarks>
+	/// Instances are immutable snapshots: methods prefixed with <c>With</c> return a new context
+	/// with one component replaced, so resolver pipelines can branch safely without mutating shared state.
+	/// </remarks>
 	public sealed class CSharpTypeResolveContext : ITypeResolveContext
 	{
 		readonly IModule module;
@@ -30,6 +37,13 @@ namespace ICSharpCode.Decompiler.CSharp.TypeSystem
 		readonly IMember currentMember;
 		readonly string[] methodTypeParameterNames;
 
+		/// <summary>
+		/// Initializes a new resolve context rooted in a module, with optional scope and member anchors.
+		/// </summary>
+		/// <param name="module">Module that provides the compilation and global type system for lookups.</param>
+		/// <param name="usingScope">Current using/namespace scope used for namespace and extension-method lookup.</param>
+		/// <param name="typeDefinition">Current containing type, if resolution runs inside a type body.</param>
+		/// <param name="member">Current containing member, if resolution runs inside a member body.</param>
 		public CSharpTypeResolveContext(IModule module, UsingScope usingScope = null, ITypeDefinition typeDefinition = null, IMember member = null)
 		{
 			if (module == null)
@@ -49,26 +63,46 @@ namespace ICSharpCode.Decompiler.CSharp.TypeSystem
 			this.methodTypeParameterNames = methodTypeParameterNames;
 		}
 
+		/// <summary>
+		/// Gets the active using scope.
+		/// </summary>
 		public UsingScope CurrentUsingScope {
 			get { return currentUsingScope; }
 		}
 
+		/// <summary>
+		/// Gets the compilation associated with <see cref="CurrentModule"/>.
+		/// </summary>
 		public ICompilation Compilation {
 			get { return module.Compilation; }
 		}
 
+		/// <summary>
+		/// Gets the module that acts as the root for metadata and type lookup.
+		/// </summary>
 		public IModule CurrentModule {
 			get { return module; }
 		}
 
+		/// <summary>
+		/// Gets the current containing type, or <see langword="null"/> when resolution is not in a type body.
+		/// </summary>
 		public ITypeDefinition CurrentTypeDefinition {
 			get { return currentTypeDefinition; }
 		}
 
+		/// <summary>
+		/// Gets the current containing member, or <see langword="null"/> when resolution is not in a member body.
+		/// </summary>
 		public IMember CurrentMember {
 			get { return currentMember; }
 		}
 
+		/// <summary>
+		/// Creates a copy of this context with a different current type.
+		/// </summary>
+		/// <param name="typeDefinition">Type to set as the active containing type.</param>
+		/// <returns>A new context that keeps all other state from this instance.</returns>
 		public CSharpTypeResolveContext WithCurrentTypeDefinition(ITypeDefinition typeDefinition)
 		{
 			return new CSharpTypeResolveContext(module, currentUsingScope, typeDefinition, currentMember, methodTypeParameterNames);
@@ -79,6 +113,11 @@ namespace ICSharpCode.Decompiler.CSharp.TypeSystem
 			return WithCurrentTypeDefinition(typeDefinition);
 		}
 
+		/// <summary>
+		/// Creates a copy of this context with a different current member.
+		/// </summary>
+		/// <param name="member">Member to set as the active containing member.</param>
+		/// <returns>A new context that keeps all other state from this instance.</returns>
 		public CSharpTypeResolveContext WithCurrentMember(IMember member)
 		{
 			return new CSharpTypeResolveContext(module, currentUsingScope, currentTypeDefinition, member, methodTypeParameterNames);
@@ -89,6 +128,11 @@ namespace ICSharpCode.Decompiler.CSharp.TypeSystem
 			return WithCurrentMember(member);
 		}
 
+		/// <summary>
+		/// Creates a copy of this context with a different using scope.
+		/// </summary>
+		/// <param name="usingScope">Using scope to use for namespace and alias lookup.</param>
+		/// <returns>A new context that keeps all other state from this instance.</returns>
 		public CSharpTypeResolveContext WithUsingScope(UsingScope usingScope)
 		{
 			return new CSharpTypeResolveContext(module, usingScope, currentTypeDefinition, currentMember, methodTypeParameterNames);
