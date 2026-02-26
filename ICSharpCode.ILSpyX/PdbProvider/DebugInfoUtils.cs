@@ -30,8 +30,16 @@ using ICSharpCode.Decompiler.Metadata;
 
 namespace ICSharpCode.ILSpyX.PdbProvider
 {
+	/// <summary>
+	/// Loads debug-symbol providers for PE files by probing embedded, Portable PDB, and legacy Windows PDB sources.
+	/// </summary>
 	public static class DebugInfoUtils
 	{
+		/// <summary>
+		/// Attempts to load symbols for a module using its debug directory and side-by-side PDB conventions.
+		/// </summary>
+		/// <param name="module">Module to inspect for debug-directory records and default PDB locations.</param>
+		/// <returns>An initialized debug-info provider, or <see langword="null"/> when no usable symbols are found.</returns>
 		public static IDebugInfoProvider? LoadSymbols(PEFile module)
 		{
 			try
@@ -61,6 +69,12 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 			return null;
 		}
 
+		/// <summary>
+		/// Loads symbols from a specific PDB path, auto-detecting legacy Windows versus Portable PDB format.
+		/// </summary>
+		/// <param name="module">Module whose metadata is paired with the supplied symbol file.</param>
+		/// <param name="pdbFileName">Path to the symbol file to read.</param>
+		/// <returns>A debug-info provider for the file, or <see langword="null"/> if the file is missing or unreadable.</returns>
 		public static IDebugInfoProvider? FromFile(PEFile module, string pdbFileName)
 		{
 			if (string.IsNullOrEmpty(pdbFileName))

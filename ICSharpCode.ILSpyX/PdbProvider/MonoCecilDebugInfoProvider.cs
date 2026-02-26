@@ -108,10 +108,13 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 			}
 		}
 
+		/// <inheritdoc />
 		public string Description { get; }
 
+		/// <inheritdoc />
 		public string SourceFileName { get; }
 
+		/// <inheritdoc />
 		public IList<SequencePoint> GetSequencePoints(SRM.MethodDefinitionHandle handle)
 		{
 			if (!debugInfo.TryGetValue(handle, out var info))
@@ -122,6 +125,7 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 			return info.SequencePoints;
 		}
 
+		/// <inheritdoc />
 		public IList<Variable> GetVariables(SRM.MethodDefinitionHandle handle)
 		{
 			if (!debugInfo.TryGetValue(handle, out var info))
@@ -132,6 +136,7 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 			return info.Variables;
 		}
 
+		/// <inheritdoc />
 		public bool TryGetName(SRM.MethodDefinitionHandle handle, int index, [NotNullWhen(true)] out string? name)
 		{
 			name = null;
@@ -145,6 +150,7 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 			return name != null;
 		}
 
+		/// <inheritdoc />
 		public bool TryGetExtraTypeInfo(SRM.MethodDefinitionHandle method, int index, out PdbExtraTypeInfo extraTypeInfo)
 		{
 			// Mono.Cecil's WindowsPDB reader is unable to read tuple element names

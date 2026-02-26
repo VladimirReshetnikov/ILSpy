@@ -43,8 +43,18 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 		MetadataReaderOptions options;
 		bool hasError;
 
+		/// <summary>
+		/// Gets whether debug metadata came from an embedded Portable PDB stream inside the PE file.
+		/// </summary>
 		public bool IsEmbedded => pdbFileName == null;
 
+		/// <summary>
+		/// Creates a provider over Portable PDB metadata.
+		/// </summary>
+		/// <param name="moduleFileName">Path to the owning module; used as source identity when symbols are embedded.</param>
+		/// <param name="provider">Metadata reader provider for the Portable PDB payload.</param>
+		/// <param name="options">Metadata reader options used when projecting the PDB as a <see cref="MetadataFile"/>.</param>
+		/// <param name="pdbFileName">Optional external PDB path; leave <see langword="null"/> for embedded symbols.</param>
 		public PortableDebugInfoProvider(string moduleFileName, MetadataReaderProvider provider,
 			MetadataReaderOptions options = MetadataReaderOptions.Default,
 			string? pdbFileName = null)
@@ -55,6 +65,7 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 			this.pdbFileName = pdbFileName;
 		}
 
+		/// <inheritdoc />
 		public string Description {
 			get {
 				if (pdbFileName == null)
@@ -72,6 +83,10 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 			}
 		}
 
+		/// <summary>
+		/// Opens the Portable PDB metadata reader and records load failures for <see cref="Description"/>.
+		/// </summary>
+		/// <returns>The metadata reader, or <see langword="null"/> when the PDB stream cannot be read.</returns>
 		public MetadataReader? GetMetadataReader()
 		{
 			try
@@ -91,8 +106,10 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 			}
 		}
 
+		/// <inheritdoc />
 		public string SourceFileName => pdbFileName ?? moduleFileName;
 
+		/// <inheritdoc />
 		public IList<Decompiler.DebugInfo.SequencePoint> GetSequencePoints(MethodDefinitionHandle method)
 		{
 			var metadata = GetMetadataReader();
@@ -135,6 +152,7 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 			}
 		}
 
+		/// <inheritdoc />
 		public IList<Variable> GetVariables(MethodDefinitionHandle method)
 		{
 			var metadata = GetMetadataReader();
@@ -155,6 +173,7 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 			return variables;
 		}
 
+		/// <inheritdoc />
 		public bool TryGetName(MethodDefinitionHandle method, int index, [NotNullWhen(true)] out string? name)
 		{
 			var metadata = GetMetadataReader();
@@ -178,6 +197,7 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 			return false;
 		}
 
+		/// <inheritdoc />
 		public bool TryGetExtraTypeInfo(MethodDefinitionHandle method, int index, out PdbExtraTypeInfo extraTypeInfo)
 		{
 			var metadata = GetMetadataReader();
@@ -250,6 +270,10 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 			return extraTypeInfo.TupleElementNames != null || extraTypeInfo.DynamicFlags != null;
 		}
 
+		/// <summary>
+		/// Wraps this provider as a <see cref="MetadataFile"/> for metadata-tree inspection in the ILSpy UI.
+		/// </summary>
+		/// <returns>A metadata file that exposes Portable PDB tables and heaps.</returns>
 		public MetadataFile ToMetadataFile()
 		{
 			var kind = IsEmbedded || Path.GetExtension(SourceFileName).Equals(".pdb", StringComparison.OrdinalIgnoreCase) ? MetadataFileKind.ProgramDebugDatabase : MetadataFileKind.Metadata;
