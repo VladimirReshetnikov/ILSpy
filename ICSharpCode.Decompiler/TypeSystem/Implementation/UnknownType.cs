@@ -38,6 +38,10 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		/// <param name="namespaceName">Namespace name, if known. Can be null if unknown.</param>
 		/// <param name="name">Name of the type, must not be null.</param>
 		/// <param name="typeParameterCount">Type parameter count, zero if unknown.</param>
+		/// <param name="isReferenceType">
+		/// Optional reference/value-type hint propagated from metadata signature decoding.
+		/// Use <see langword="null"/> when the originating metadata did not encode that distinction.
+		/// </param>
 		public UnknownType(string namespaceName, string name, int typeParameterCount = 0, bool? isReferenceType = null)
 		{
 			if (name == null)
@@ -51,6 +55,10 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		/// Creates a new unknown type.
 		/// </summary>
 		/// <param name="fullTypeName">Full name of the unknown type.</param>
+		/// <param name="isReferenceType">
+		/// Optional reference/value-type hint propagated from metadata signature decoding.
+		/// Use <see langword="null"/> when the originating metadata did not encode that distinction.
+		/// </param>
 		public UnknownType(FullTypeName fullTypeName, bool? isReferenceType = null)
 		{
 			this.isReferenceType = isReferenceType;

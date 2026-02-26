@@ -36,7 +36,8 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		/// </summary>
 		/// <param name="declaringTypeRef">Reference to the declaring type.</param>
 		/// <param name="name">Name of the nested class</param>
-		/// <param name="additionalTypeParameterCount">Number of type parameters on the inner class (without type parameters on baseTypeRef)</param>
+		/// <param name="additionalTypeParameterCount">Number of type parameters declared by the nested type itself (excluding declaring-type parameters).</param>
+		/// <param name="isReferenceType">Optional reference/value-type hint for unresolved fallbacks returned by <see cref="Resolve(ITypeResolveContext)"/>.</param>
 		/// <remarks>
 		/// <paramref name="declaringTypeRef"/> must be exactly the (unbound) declaring type, not a derived type, not a parameterized type.
 		/// NestedTypeReference thus always resolves to a type definition, never to (partially) parameterized types.
