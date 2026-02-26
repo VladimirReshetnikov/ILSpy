@@ -25,6 +25,10 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.ILSpyX.Extensions
 {
+	/// <summary>
+	/// Provides collection helpers used by ILSpyX search/indexing code paths where callers
+	/// need insertion-point semantics and allocation-free stack probing.
+	/// </summary>
 	public static class CollectionExtensions
 	{
 		internal static void AddRange<T>(this ICollection<T> list, IEnumerable<T> items)
@@ -34,6 +38,16 @@ namespace ICSharpCode.ILSpyX.Extensions
 					list.Add(item);
 		}
 
+		/// <summary>
+		/// Returns the current top element of a stack, or the default value for <typeparamref name="T"/>
+		/// when the stack is empty.
+		/// </summary>
+		/// <typeparam name="T">Element type stored in <paramref name="stack"/>.</typeparam>
+		/// <param name="stack">The stack to inspect without modifying it.</param>
+		/// <returns>
+		/// The element that would be returned by <see cref="Stack{T}.Peek"/>, or
+		/// <see langword="default"/> when no element is available.
+		/// </returns>
 		public static T? PeekOrDefault<T>(this Stack<T> stack)
 		{
 			if (stack.Count == 0)
@@ -41,6 +55,20 @@ namespace ICSharpCode.ILSpyX.Extensions
 			return stack.Peek();
 		}
 
+		/// <summary>
+		/// Performs a binary search over a sorted list segment and returns either the index of a match
+		/// or the bitwise complement of the insertion index.
+		/// </summary>
+		/// <typeparam name="T">Element type stored in <paramref name="list"/>.</typeparam>
+		/// <param name="list">Sorted list containing the search segment.</param>
+		/// <param name="item">Item to locate in the specified segment.</param>
+		/// <param name="start">Zero-based index of the first element in the segment to search.</param>
+		/// <param name="count">Number of elements to include in the search segment.</param>
+		/// <param name="comparer">Comparer that defines the same ordering used to sort the segment.</param>
+		/// <returns>
+		/// The index of <paramref name="item"/> when found; otherwise the bitwise complement of the index
+		/// at which <paramref name="item"/> should be inserted to preserve ordering.
+		/// </returns>
 		public static int BinarySearch<T>(this IList<T> list, T item, int start, int count, IComparer<T> comparer)
 		{
 			if (list == null)
@@ -64,6 +92,19 @@ namespace ICSharpCode.ILSpyX.Extensions
 			return ~start;
 		}
 
+		/// <summary>
+		/// Performs a binary search over a list sorted by a projected key and returns either the index of an
+		/// equal key or the bitwise complement of the insertion index.
+		/// </summary>
+		/// <typeparam name="T">Element type stored in <paramref name="instance"/>.</typeparam>
+		/// <typeparam name="TKey">Comparable key type used for ordering.</typeparam>
+		/// <param name="instance">Sorted list to search.</param>
+		/// <param name="itemKey">Key value to locate in <paramref name="instance"/>.</param>
+		/// <param name="keySelector">Projection that extracts the sort key from each element.</param>
+		/// <returns>
+		/// The index of an element whose projected key equals <paramref name="itemKey"/>, or the bitwise complement
+		/// of the insertion index when no exact match exists.
+		/// </returns>
 		public static int BinarySearch<T, TKey>(this IList<T> instance, TKey itemKey, Func<T, TKey> keySelector)
 			where TKey : IComparable<TKey>, IComparable
 		{
@@ -90,6 +131,13 @@ namespace ICSharpCode.ILSpyX.Extensions
 			return ~start;
 		}
 
+		/// <summary>
+		/// Inserts an item into a sorted list at the position determined by <paramref name="comparer"/>.
+		/// </summary>
+		/// <typeparam name="T">Element type stored in <paramref name="list"/>.</typeparam>
+		/// <param name="list">Destination list that is already sorted according to <paramref name="comparer"/>.</param>
+		/// <param name="item">Item to insert.</param>
+		/// <param name="comparer">Comparer that defines the list ordering.</param>
 		public static void InsertSorted<T>(this IList<T> list, T item, IComparer<T> comparer)
 		{
 			if (list == null)
