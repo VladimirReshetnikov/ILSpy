@@ -31,21 +31,57 @@ using System.Threading.Tasks;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Represents CLR runtime generations inferred from metadata image flags.
+	/// </summary>
 	public enum TargetRuntime
 	{
+		/// <summary>
+		/// Runtime information could not be derived from metadata.
+		/// </summary>
 		Unknown,
+		/// <summary>
+		/// .NET Framework 1.0 runtime (CLR 1.0).
+		/// </summary>
 		Net_1_0,
+		/// <summary>
+		/// .NET Framework 1.1 runtime (CLR 1.1).
+		/// </summary>
 		Net_1_1,
+		/// <summary>
+		/// .NET Framework 2.0-3.5 runtime family (CLR 2.0).
+		/// </summary>
 		Net_2_0,
+		/// <summary>
+		/// .NET Framework 4.x runtime family (CLR 4.0).
+		/// </summary>
 		Net_4_0
 	}
 
+	/// <summary>
+	/// High-level target framework families recognized by <see cref="UniversalAssemblyResolver"/>.
+	/// </summary>
 	public enum TargetFrameworkIdentifier
 	{
+		/// <summary>
+		/// Classic .NET Framework (up to 4.x).
+		/// </summary>
 		NETFramework,
+		/// <summary>
+		/// .NET Core application target prior to .NET 5.
+		/// </summary>
 		NETCoreApp,
+		/// <summary>
+		/// .NET Standard contract target.
+		/// </summary>
 		NETStandard,
+		/// <summary>
+		/// Silverlight target framework.
+		/// </summary>
 		Silverlight,
+		/// <summary>
+		/// Unified .NET target (.NET 5+).
+		/// </summary>
 		NET
 	}
 
@@ -83,6 +119,10 @@ namespace ICSharpCode.Decompiler.Metadata
 		static readonly List<string> gac_paths = GetGacPaths();
 		static readonly DecompilerRuntime decompilerRuntime;
 
+		/// <summary>
+		/// Adds a directory to the probing list used before framework and runtime-pack fallback locations.
+		/// </summary>
+		/// <param name="directory">Directory path to probe; <see langword="null"/> entries are ignored during probing.</param>
 		public void AddSearchDirectory(string? directory)
 		{
 			directories.Add(directory);
@@ -92,6 +132,10 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Removes a directory from the current probing list.
+		/// </summary>
+		/// <param name="directory">Directory path that was previously registered.</param>
 		public void RemoveSearchDirectory(string? directory)
 		{
 			directories.Remove(directory);
@@ -101,6 +145,10 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Returns the currently configured probe directories in priority order.
+		/// </summary>
+		/// <returns>A snapshot of the directory list used by this resolver.</returns>
 		public string?[] GetSearchDirectories()
 		{
 			return directories.ToArray();
@@ -210,12 +258,28 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 #if !VSADDIN
+		/// <summary>
+		/// Resolves an assembly reference and opens the resolved file as <see cref="MetadataFile"/>.
+		/// </summary>
+		/// <param name="name">Assembly identity to resolve.</param>
+		/// <returns>
+		/// Loaded metadata file for the resolved assembly, or <see langword="null"/> when resolution fails and
+		/// <c>throwOnError</c> is disabled.
+		/// </returns>
 		public MetadataFile? Resolve(IAssemblyReference name)
 		{
 			var file = FindAssemblyFile(name);
 			return CreatePEFileFromFileName(file, ex => new ResolutionException(name, file, ex));
 		}
 
+		/// <summary>
+		/// Resolves a module file relative to the directory of its owning assembly.
+		/// </summary>
+		/// <param name="mainModule">Main assembly that references the module.</param>
+		/// <param name="moduleName">File name of the module to resolve (for example, a netmodule).</param>
+		/// <returns>
+		/// Loaded metadata file for the module when found; otherwise <see langword="null"/>.
+		/// </returns>
 		public MetadataFile? ResolveModule(MetadataFile mainModule, string moduleName)
 		{
 			string? baseDirectory = Path.GetDirectoryName(mainModule.FileName);
@@ -252,22 +316,47 @@ namespace ICSharpCode.Decompiler.Metadata
 			return null;
 		}
 
+		/// <summary>
+		/// Asynchronously resolves an assembly reference.
+		/// </summary>
+		/// <param name="name">Assembly identity to resolve.</param>
+		/// <returns>A task that yields the resolved <see cref="MetadataFile"/>, or <see langword="null"/>.</returns>
 		public Task<MetadataFile?> ResolveAsync(IAssemblyReference name)
 		{
 			return Task.Run(() => Resolve(name));
 		}
 
+		/// <summary>
+		/// Asynchronously resolves a module relative to <paramref name="mainModule"/>.
+		/// </summary>
+		/// <param name="mainModule">Main assembly that references the module.</param>
+		/// <param name="moduleName">File name of the module to resolve.</param>
+		/// <returns>A task that yields the resolved <see cref="MetadataFile"/>, or <see langword="null"/>.</returns>
 		public Task<MetadataFile?> ResolveModuleAsync(MetadataFile mainModule, string moduleName)
 		{
 			return Task.Run(() => ResolveModule(mainModule, moduleName));
 		}
 #endif
 
+		/// <summary>
+		/// Determines whether a reference maps to a shared runtime assembly discoverable via .NET runtime packs.
+		/// </summary>
+		/// <param name="reference">Assembly identity to test.</param>
+		/// <param name="runtimePack">When successful, receives the runtime-pack identifier used for resolution.</param>
+		/// <returns><see langword="true"/> if a shared assembly location was found; otherwise <see langword="false"/>.</returns>
 		public override bool IsSharedAssembly(IAssemblyReference reference, [NotNullWhen(true)] out string? runtimePack)
 		{
 			return dotNetCorePathFinder.Value.TryResolveDotNetCoreShared(reference, out runtimePack) != null;
 		}
 
+		/// <summary>
+		/// Resolves an assembly reference to a physical file path.
+		/// </summary>
+		/// <param name="name">Assembly identity to resolve.</param>
+		/// <returns>
+		/// Full file path when resolution succeeds; otherwise <see langword="null"/>.
+		/// Throws only when the resolver was created with <c>throwOnError: true</c>.
+		/// </returns>
 		public string? FindAssemblyFile(IAssemblyReference name)
 		{
 			if (name.IsWindowsRuntime)
@@ -634,6 +723,10 @@ namespace ICSharpCode.Decompiler.Metadata
 			return path;
 		}
 
+		/// <summary>
+		/// Returns candidate Global Assembly Cache roots for the current runtime and operating system.
+		/// </summary>
+		/// <returns>List of existing GAC root directories that should be probed.</returns>
 		public static List<string> GetGacPaths()
 		{
 			if (decompilerRuntime == DecompilerRuntime.Mono)
@@ -682,6 +775,11 @@ namespace ICSharpCode.Decompiler.Metadata
 				"gac");
 		}
 
+		/// <summary>
+		/// Tries to locate an assembly in the machine-wide GAC.
+		/// </summary>
+		/// <param name="reference">Assembly identity including name, version, culture, and public key token.</param>
+		/// <returns>Path to the matching assembly in the GAC, or <see langword="null"/> if no match exists.</returns>
 		public static string? GetAssemblyInGac(IAssemblyReference reference)
 		{
 			if (reference.PublicKeyToken == null || reference.PublicKeyToken.Length == 0)
