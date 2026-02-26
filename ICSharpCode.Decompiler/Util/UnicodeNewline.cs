@@ -28,8 +28,15 @@ using System;
 
 namespace ICSharpCode.Decompiler.Util
 {
+	/// <summary>
+	/// Identifies newline delimiters recognized by <see cref="NewLine"/>, including
+	/// Unicode single-code-point separators and the two-character CRLF sequence.
+	/// </summary>
 	public enum UnicodeNewline
 	{
+		/// <summary>
+		/// The input does not represent a recognized newline delimiter.
+		/// </summary>
 		Unknown,
 
 		/// <summary>
@@ -37,6 +44,9 @@ namespace ICSharpCode.Decompiler.Util
 		/// </summary>
 		LF = 0x0A,
 
+		/// <summary>
+		/// Carriage Return followed by Line Feed (<c>\r\n</c>), U+000D U+000A.
+		/// </summary>
 		CRLF = 0x0D0A,
 
 		/// <summary>
@@ -333,6 +343,8 @@ namespace ICSharpCode.Decompiler.Util
 		/// Note that the only 2 char wide new line is CR LF and both chars are new line
 		/// chars on their own. For most cases GetDelimiterLength is the better choice.
 		/// </summary>
+		/// <param name="ch">The character to test.</param>
+		/// <returns><see langword="true"/> if <paramref name="ch"/> is any supported newline code point; otherwise, <see langword="false"/>.</returns>
 		public static bool IsNewLine(char ch)
 		{
 			return
@@ -348,6 +360,8 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Gets the new line as a string.
 		/// </summary>
+		/// <param name="newLine">The newline kind to convert.</param>
+		/// <returns>The corresponding newline string, or an empty string for <see cref="UnicodeNewline.Unknown"/>.</returns>
 		public static string GetString(UnicodeNewline newLine)
 		{
 			switch (newLine)
@@ -376,4 +390,3 @@ namespace ICSharpCode.Decompiler.Util
 		}
 	}
 }
-
