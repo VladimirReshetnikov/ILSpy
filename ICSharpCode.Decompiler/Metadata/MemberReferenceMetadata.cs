@@ -31,11 +31,24 @@ namespace ICSharpCode.Decompiler.Metadata
 	{
 		readonly MemberReference entry;
 
+		/// <summary>
+		/// Gets the metadata reader that owns this member reference row.
+		/// </summary>
 		public MetadataReader Metadata { get; }
+
+		/// <summary>
+		/// Gets the handle that identifies the underlying <see cref="MemberReference"/> row.
+		/// </summary>
 		public MemberReferenceHandle Handle { get; }
 
 		string? name;
 
+		/// <summary>
+		/// Gets the simple member name stored in the member reference row.
+		/// </summary>
+		/// <remarks>
+		/// If metadata is malformed, a stable fallback string containing the row handle is returned.
+		/// </remarks>
 		public string Name {
 			get {
 				try
@@ -49,10 +62,23 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Gets the metadata handle for the declaring type or module referenced by this member.
+		/// </summary>
 		public EntityHandle Parent => entry.Parent;
 
+		/// <summary>
+		/// Gets whether this reference points to a method or a field.
+		/// </summary>
 		public MemberReferenceKind MemberReferenceKind => entry.GetKind();
 
+		/// <summary>
+		/// Creates a metadata projection for a member reference row.
+		/// </summary>
+		/// <param name="metadata">Metadata reader containing the member reference table.</param>
+		/// <param name="handle">Handle identifying the member reference row to project.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="metadata"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentNullException"><paramref name="handle"/> is nil.</exception>
 		public MemberReferenceMetadata(MetadataReader metadata, MemberReferenceHandle handle)
 		{
 			Metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
@@ -62,6 +88,9 @@ namespace ICSharpCode.Decompiler.Metadata
 			entry = metadata.GetMemberReference(handle);
 		}
 
+		/// <summary>
+		/// Returns the member name for debugger and tree display scenarios.
+		/// </summary>
 		public override string ToString()
 			=> Name;
 	}

@@ -38,11 +38,29 @@ namespace ICSharpCode.Decompiler.Metadata
 
 		readonly struct Entry : IComparable<Entry>
 		{
+			/// <summary>
+			/// Gets the semantic role that the accessor method fulfills.
+			/// </summary>
 			public readonly MethodSemanticsAttributes Semantics;
+			/// <summary>
+			/// Gets the method definition row number used for lookup ordering.
+			/// </summary>
 			public readonly int MethodRowNumber;
+			/// <summary>
+			/// Gets the accessor method handle reconstructed from <see cref="MethodRowNumber"/>.
+			/// </summary>
 			public MethodDefinitionHandle Method => MetadataTokens.MethodDefinitionHandle(MethodRowNumber);
+			/// <summary>
+			/// Gets the associated event or property handle.
+			/// </summary>
 			public readonly EntityHandle Association;
 
+			/// <summary>
+			/// Initializes a lookup entry for one accessor method.
+			/// </summary>
+			/// <param name="semantics">Semantic role of the accessor method.</param>
+			/// <param name="method">Method definition handle for the accessor.</param>
+			/// <param name="association">Associated event or property handle.</param>
 			public Entry(MethodSemanticsAttributes semantics, MethodDefinitionHandle method, EntityHandle association)
 			{
 				Semantics = semantics;
@@ -50,6 +68,11 @@ namespace ICSharpCode.Decompiler.Metadata
 				Association = association;
 			}
 
+			/// <summary>
+			/// Compares entries by method row number so they can be binary-searched by accessor method.
+			/// </summary>
+			/// <param name="other">Entry to compare against.</param>
+			/// <returns>A value indicating relative order by method row number.</returns>
 			public int CompareTo(Entry other)
 			{
 				return MethodRowNumber.CompareTo(other.MethodRowNumber);
