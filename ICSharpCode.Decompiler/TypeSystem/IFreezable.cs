@@ -20,6 +20,9 @@
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
+	/// <summary>
+	/// Exposes a two-phase mutability contract where an object can be built and then permanently frozen.
+	/// </summary>
 	public interface IFreezable
 	{
 		/// <summary>
@@ -28,8 +31,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		bool IsFrozen { get; }
 
 		/// <summary>
-		/// Freezes this instance.
+		/// Freezes this instance so subsequent mutation attempts are rejected.
 		/// </summary>
+		/// <remarks>
+		/// Implementations are expected to make freezing idempotent and to freeze owned child objects where appropriate.
+		/// </remarks>
 		void Freeze();
 	}
 }

@@ -12,8 +12,17 @@ using ICSharpCode.Decompiler.Metadata;
 
 namespace ICSharpCode.Decompiler
 {
+	/// <summary>
+	/// Provides compatibility helpers and extension methods for System.Reflection.Metadata APIs.
+	/// </summary>
 	public static partial class SRMExtensions
 	{
+		/// <summary>
+		/// Backported flag value for generic parameters constrained to byref-like types.
+		/// </summary>
+		/// <remarks>
+		/// Some target frameworks do not expose this enum member directly, so ILSpy carries the raw bit value.
+		/// </remarks>
 		internal const GenericParameterAttributes AllowByRefLike = (GenericParameterAttributes)0x0020;
 
 		/// <summary>
