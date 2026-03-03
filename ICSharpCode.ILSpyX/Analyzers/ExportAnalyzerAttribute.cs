@@ -24,17 +24,40 @@ using System.Reflection;
 
 namespace ICSharpCode.ILSpyX.Analyzers
 {
+	/// <summary>
+	/// Marks a class as an analyzer export and supplies metadata used by analyzer menus.
+	/// </summary>
+	/// <remarks>
+	/// The attribute derives from <see cref="ExportAttribute"/> so ILSpy's composition container can discover
+	/// analyzers without additional registration code.
+	/// </remarks>
 	[MetadataAttribute]
 	[AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
 	public class ExportAnalyzerAttribute : ExportAttribute, IAnalyzerMetadata
 	{
+		/// <summary>
+		/// Initializes an analyzer export with the contract name expected by ILSpy's analyzer host.
+		/// </summary>
 		public ExportAnalyzerAttribute() : base("Analyzer", typeof(IAnalyzer))
 		{ }
 
+		/// <summary>
+		/// Gets the UI header shown for the analyzer root node.
+		/// </summary>
 		public required string Header { get; init; }
 
+		/// <summary>
+		/// Gets or sets the relative ordering used when analyzers are listed in menus.
+		/// Lower values appear first.
+		/// </summary>
 		public int Order { get; set; }
 
+		/// <summary>
+		/// Enumerates analyzer types from the current assembly that are decorated with <see cref="ExportAnalyzerAttribute"/>.
+		/// </summary>
+		/// <returns>
+		/// A sequence of tuples containing attribute metadata and the analyzer implementation type.
+		/// </returns>
 		public static IEnumerable<(ExportAnalyzerAttribute AttributeData, Type AnalyzerType)> GetAnnotatedAnalyzers()
 		{
 			foreach (var type in typeof(ExportAnalyzerAttribute).Assembly.GetTypes())

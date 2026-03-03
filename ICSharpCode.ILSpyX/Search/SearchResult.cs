@@ -124,6 +124,10 @@ namespace ICSharpCode.ILSpyX.Search
 		/// </summary>
 		public required object AssemblyImage { get; set; }
 
+		/// <summary>
+		/// Returns the display name used by list controls and diagnostics.
+		/// </summary>
+		/// <returns>The value of <see cref="Name"/>.</returns>
 		public override string ToString()
 		{
 			return Name;

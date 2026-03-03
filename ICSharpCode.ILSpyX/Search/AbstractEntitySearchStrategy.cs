@@ -25,11 +25,36 @@ namespace ICSharpCode.ILSpyX.Search
 	using ICSharpCode.Decompiler.TypeSystem;
 	using ICSharpCode.ILSpyX.Abstractions;
 
+	/// <summary>
+	/// Base class for search strategies that operate on decompiler entities (<see cref="IEntity"/>).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This class centralizes two filters that are shared by member-, literal-, and token-based searches:
+	/// API-level visibility filtering (based on <see cref="ApiVisibility"/>) and optional scope narrowing through
+	/// <c>inassembly:</c>/<c>innamespace:</c> query prefixes.
+	/// </para>
+	/// <para>
+	/// Concrete strategies are responsible for traversing candidate entities, then calling
+	/// <see cref="CheckVisibility"/>, <see cref="IsInNamespaceOrAssembly"/>, and <see cref="OnFoundResult(IEntity)"/>
+	/// in that order before emitting matches.
+	/// </para>
+	/// </remarks>
 	public abstract class AbstractEntitySearchStrategy : AbstractSearchStrategy
 	{
 		protected readonly ILanguage language;
 		protected readonly ApiVisibility apiVisibility;
 
+		/// <summary>
+		/// Initializes a strategy that searches entities using language-aware visibility checks.
+		/// </summary>
+		/// <param name="language">
+		/// Active language service used for <see cref="ApiVisibility.PublicAndInternal"/> filtering via
+		/// <see cref="ILanguage.ShowMember(IEntity)"/>.
+		/// </param>
+		/// <param name="apiVisibility">Visibility policy configured by the host UI.</param>
+		/// <param name="searchRequest">Parsed query options and collaborator services.</param>
+		/// <param name="resultQueue">Concurrent queue receiving search results.</param>
 		protected AbstractEntitySearchStrategy(ILanguage language, ApiVisibility apiVisibility,
 			SearchRequest searchRequest, IProducerConsumerCollection<SearchResult> resultQueue)
 			: base(searchRequest, resultQueue)
@@ -38,6 +63,14 @@ namespace ICSharpCode.ILSpyX.Search
 			this.apiVisibility = apiVisibility;
 		}
 
+		/// <summary>
+		/// Determines whether an entity and all of its declaring types satisfy the configured visibility filter.
+		/// </summary>
+		/// <param name="entity">Entity to validate. May be <see langword="null"/>.</param>
+		/// <returns>
+		/// <see langword="true"/> when <paramref name="entity"/> is visible under the current
+		/// <see cref="ApiVisibility"/> policy; otherwise <see langword="false"/>.
+		/// </returns>
 		protected bool CheckVisibility(IEntity? entity)
 		{
 			if (apiVisibility == ApiVisibility.All)
@@ -63,6 +96,14 @@ namespace ICSharpCode.ILSpyX.Search
 			return true;
 		}
 
+		/// <summary>
+		/// Applies optional <c>inassembly:</c> and <c>innamespace:</c> query constraints to a candidate entity.
+		/// </summary>
+		/// <param name="entity">Entity being evaluated for scope restrictions.</param>
+		/// <returns>
+		/// <see langword="true"/> when the entity is inside the requested namespace and assembly scope (if any);
+		/// otherwise <see langword="false"/>.
+		/// </returns>
 		protected bool IsInNamespaceOrAssembly(IEntity entity)
 		{
 			if (searchRequest.InAssembly != null)
@@ -90,6 +131,10 @@ namespace ICSharpCode.ILSpyX.Search
 			return true;
 		}
 
+		/// <summary>
+		/// Converts a matched entity into a <see cref="SearchResult"/> and enqueues it.
+		/// </summary>
+		/// <param name="entity">Matched entity to publish.</param>
 		protected void OnFoundResult(IEntity entity)
 		{
 			OnFoundResult(searchRequest.SearchResultFactory.Create(entity));

@@ -32,17 +32,29 @@ namespace ICSharpCode.ILSpyX.Search
 	/// </summary>
 	public enum SearchMode
 	{
+		/// <summary>Search types and members together.</summary>
 		TypeAndMember,
+		/// <summary>Search only type definitions.</summary>
 		Type,
+		/// <summary>Search members using <see cref="MemberSearchKind"/> to refine the target.</summary>
 		Member,
+		/// <summary>Search only method members.</summary>
 		Method,
+		/// <summary>Search only field members.</summary>
 		Field,
+		/// <summary>Search only property members.</summary>
 		Property,
+		/// <summary>Search only event members.</summary>
 		Event,
+		/// <summary>Search literal values inside member bodies.</summary>
 		Literal,
+		/// <summary>Search entities by metadata token value.</summary>
 		Token,
+		/// <summary>Search manifest and embedded resources.</summary>
 		Resource,
+		/// <summary>Search assembly-level metadata.</summary>
 		Assembly,
+		/// <summary>Search namespace names.</summary>
 		Namespace
 	}
 
@@ -51,17 +63,29 @@ namespace ICSharpCode.ILSpyX.Search
 	/// </summary>
 	public struct SearchRequest
 	{
+		/// <summary>Decompiler settings snapshot used when a strategy needs language-specific formatting details.</summary>
 		public DecompilerSettings DecompilerSettings;
+		/// <summary>Factory used by resource-oriented strategies to build tree nodes for recursive traversal.</summary>
 		public ITreeNodeFactory TreeNodeFactory;
+		/// <summary>Factory that projects matched objects into concrete <see cref="SearchResult"/> instances.</summary>
 		public ISearchResultFactory SearchResultFactory;
+		/// <summary>Primary domain to search.</summary>
 		public SearchMode Mode;
+		/// <summary>Assembly metadata field selected when <see cref="Mode"/> is <see cref="SearchMode.Assembly"/>.</summary>
 		public AssemblySearchKind AssemblySearchKind;
+		/// <summary>Member category selected when <see cref="Mode"/> is <see cref="SearchMode.Member"/>.</summary>
 		public MemberSearchKind MemberSearchKind;
+		/// <summary>Parsed keyword tokens from the query (operators such as <c>+</c>, <c>-</c>, <c>=</c>, and <c>~</c> are preserved).</summary>
 		public string[] Keywords;
+		/// <summary>Regular expression filter parsed from the query, or <see langword="null"/> when keyword matching is used.</summary>
 		public Regex? RegEx;
+		/// <summary>Indicates that name matching should include fully qualified names, not only simple member/type names.</summary>
 		public bool FullNameSearch;
+		/// <summary>Indicates that generic arity and arguments should be omitted before matching plain-text keywords.</summary>
 		public bool OmitGenerics;
+		/// <summary>Optional namespace substring restriction from the <c>innamespace:</c> prefix.</summary>
 		public string InNamespace;
+		/// <summary>Optional assembly-name restriction from the <c>inassembly:</c> prefix.</summary>
 		public string InAssembly;
 	}
 
