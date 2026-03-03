@@ -30,6 +30,23 @@ using LightJson.Serialization;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Resolves assembly file paths for .NET Core/.NET runtimes and SDK reference packs.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The resolver combines multiple lookup sources:
+	/// </para>
+	/// <list type="bullet">
+	/// <item><description>Directories explicitly added through <see cref="AddSearchDirectory(string)"/>.</description></item>
+	/// <item><description>Package runtime assets listed in an application's <c>.deps.json</c>.</description></item>
+	/// <item><description>The shared runtime installation under the local <c>dotnet</c> host.</description></item>
+	/// </list>
+	/// <para>
+	/// The implementation is intentionally filename-based and does not validate assembly identity while probing.
+	/// Identity checks are performed by higher-level resolver logic.
+	/// </para>
+	/// </remarks>
 	public class DotNetCorePathFinder
 	{
 		class DotNetCorePackageInfo
@@ -78,6 +95,12 @@ namespace ICSharpCode.Decompiler.Metadata
 		readonly string dotnetBasePath = FindDotNetExeDirectory();
 		readonly string preferredRuntimePack;
 
+		/// <summary>
+		/// Initializes a resolver that probes globally installed .NET runtime packs.
+		/// </summary>
+		/// <param name="targetFramework">The target framework family used to interpret runtime pack compatibility.</param>
+		/// <param name="targetFrameworkVersion">The requested target framework version.</param>
+		/// <param name="preferredRuntimePack">An optional runtime pack name that is probed before built-in defaults.</param>
 		public DotNetCorePathFinder(TargetFrameworkIdentifier targetFramework, Version targetFrameworkVersion,
 			string preferredRuntimePack)
 		{
@@ -94,6 +117,15 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Initializes a resolver rooted at an application's output directory and optional <c>.deps.json</c> graph.
+		/// </summary>
+		/// <param name="parentAssemblyFileName">The main assembly path that provides the initial probing directory.</param>
+		/// <param name="targetFrameworkIdString">The target framework moniker key used to select <c>targets</c> entries in <c>.deps.json</c>.</param>
+		/// <param name="preferredRuntimePack">An optional runtime pack name that is probed before built-in defaults.</param>
+		/// <param name="targetFramework">The target framework family used to interpret runtime pack compatibility.</param>
+		/// <param name="targetFrameworkVersion">The requested target framework version.</param>
+		/// <param name="loadInfo">Optional sink for non-fatal loading diagnostics, such as missing <c>.deps.json</c> files.</param>
 		public DotNetCorePathFinder(string parentAssemblyFileName, string targetFrameworkIdString, string preferredRuntimePack,
 			TargetFrameworkIdentifier targetFramework, Version targetFrameworkVersion, ReferenceLoadInfo loadInfo = null)
 			: this(targetFramework, targetFrameworkVersion, preferredRuntimePack)
@@ -132,16 +164,32 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Adds a directory that is searched before shared runtime packs.
+		/// </summary>
+		/// <param name="path">The directory to append to the probing list.</param>
 		public void AddSearchDirectory(string path)
 		{
 			this.searchPaths.Add(path);
 		}
 
+		/// <summary>
+		/// Removes one matching directory from the probing list.
+		/// </summary>
+		/// <param name="path">The directory value previously passed to <see cref="AddSearchDirectory(string)"/>.</param>
 		public void RemoveSearchDirectory(string path)
 		{
 			this.searchPaths.Remove(path);
 		}
 
+		/// <summary>
+		/// Attempts to resolve a referenced assembly from application-local and package-derived search paths,
+		/// then falls back to shared runtime packs.
+		/// </summary>
+		/// <param name="name">The reference to resolve.</param>
+		/// <returns>
+		/// The resolved <c>.dll</c> or <c>.exe</c> path, or <see langword="null"/> when no matching file is found.
+		/// </returns>
 		public string TryResolveDotNetCore(IAssemblyReference name)
 		{
 			foreach (var basePath in searchPaths.Concat(packageBasePaths))
@@ -211,6 +259,16 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Attempts to resolve a referenced assembly from globally installed shared runtime packs.
+		/// </summary>
+		/// <param name="name">The reference to resolve.</param>
+		/// <param name="runtimePack">
+		/// Receives the runtime pack that produced a hit. When resolution fails, receives <see langword="null"/>.
+		/// </param>
+		/// <returns>
+		/// The resolved <c>.dll</c> or <c>.exe</c> path, or <see langword="null"/> when no shared runtime pack contains the file.
+		/// </returns>
 		public string TryResolveDotNetCoreShared(IAssemblyReference name, out string runtimePack)
 		{
 			if (dotnetBasePath == null)
@@ -286,6 +344,16 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Tries to locate the directory that contains the <c>dotnet</c> host executable.
+		/// </summary>
+		/// <remarks>
+		/// On Unix, symbolic links in <c>PATH</c> entries are resolved through <c>realpath</c> so the returned directory points
+		/// to the actual installation root.
+		/// </remarks>
+		/// <returns>
+		/// The directory containing <c>dotnet</c>/<c>dotnet.exe</c>, or <see langword="null"/> if the executable cannot be found.
+		/// </returns>
 		public static string FindDotNetExeDirectory()
 		{
 			string dotnetExeName = (Environment.OSVersion.Platform == PlatformID.Unix) ? "dotnet" : "dotnet.exe";

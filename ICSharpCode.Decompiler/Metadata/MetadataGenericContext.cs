@@ -23,12 +23,24 @@ using System.Reflection.Metadata.Ecma335;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Carries the metadata context required to resolve generic parameter names and handles for a declaring type and optional method.
+	/// </summary>
+	/// <remarks>
+	/// This value type is used by metadata decoders that need stable generic-parameter lookup without materializing a full type-system symbol.
+	/// If the stored metadata reader is unavailable, name lookup methods fall back to returning numeric indices.
+	/// </remarks>
 	public readonly struct MetadataGenericContext
 	{
 		readonly MetadataReader? metadata;
 		readonly TypeDefinitionHandle declaringType;
 		readonly MethodDefinitionHandle method;
 
+		/// <summary>
+		/// Creates a context for method-level and declaring-type generic parameter lookup using a module-backed metadata reader.
+		/// </summary>
+		/// <param name="method">The method definition that contributes method generic parameters.</param>
+		/// <param name="module">The module that contains the method metadata.</param>
 		public MetadataGenericContext(MethodDefinitionHandle method, MetadataFile module)
 		{
 			this.metadata = module.Metadata;
@@ -36,6 +48,11 @@ namespace ICSharpCode.Decompiler.Metadata
 			this.declaringType = module.Metadata.GetMethodDefinition(method).GetDeclaringType();
 		}
 
+		/// <summary>
+		/// Creates a context for method-level and declaring-type generic parameter lookup using an explicit metadata reader.
+		/// </summary>
+		/// <param name="method">The method definition that contributes method generic parameters.</param>
+		/// <param name="metadata">The metadata reader that owns <paramref name="method"/>.</param>
 		public MetadataGenericContext(MethodDefinitionHandle method, MetadataReader metadata)
 		{
 			this.metadata = metadata;
@@ -43,6 +60,11 @@ namespace ICSharpCode.Decompiler.Metadata
 			this.declaringType = metadata.GetMethodDefinition(method).GetDeclaringType();
 		}
 
+		/// <summary>
+		/// Creates a context for type-level generic parameter lookup using a module-backed metadata reader.
+		/// </summary>
+		/// <param name="declaringType">The declaring type that contributes type generic parameters.</param>
+		/// <param name="module">The module that contains the type metadata.</param>
 		public MetadataGenericContext(TypeDefinitionHandle declaringType, MetadataFile module)
 		{
 			this.metadata = module.Metadata;
@@ -50,6 +72,11 @@ namespace ICSharpCode.Decompiler.Metadata
 			this.declaringType = declaringType;
 		}
 
+		/// <summary>
+		/// Creates a context for type-level generic parameter lookup using an explicit metadata reader.
+		/// </summary>
+		/// <param name="declaringType">The declaring type that contributes type generic parameters.</param>
+		/// <param name="metadata">The metadata reader that owns <paramref name="declaringType"/>.</param>
 		public MetadataGenericContext(TypeDefinitionHandle declaringType, MetadataReader metadata)
 		{
 			this.metadata = metadata;
@@ -57,6 +84,13 @@ namespace ICSharpCode.Decompiler.Metadata
 			this.declaringType = declaringType;
 		}
 
+		/// <summary>
+		/// Gets the display name of the generic type parameter at the specified index.
+		/// </summary>
+		/// <param name="index">The zero-based generic parameter index.</param>
+		/// <returns>
+		/// The metadata-defined parameter name when available; otherwise the numeric <paramref name="index"/> converted to text.
+		/// </returns>
 		public string GetGenericTypeParameterName(int index)
 		{
 			GenericParameterHandle genericParameter = GetGenericTypeParameterHandleOrNull(index);
@@ -65,6 +99,13 @@ namespace ICSharpCode.Decompiler.Metadata
 			return metadata.GetString(metadata.GetGenericParameter(genericParameter).Name);
 		}
 
+		/// <summary>
+		/// Gets the display name of the generic method parameter at the specified index.
+		/// </summary>
+		/// <param name="index">The zero-based generic parameter index.</param>
+		/// <returns>
+		/// The metadata-defined parameter name when available; otherwise the numeric <paramref name="index"/> converted to text.
+		/// </returns>
 		public string GetGenericMethodTypeParameterName(int index)
 		{
 			GenericParameterHandle genericParameter = GetGenericMethodTypeParameterHandleOrNull(index);
@@ -73,6 +114,13 @@ namespace ICSharpCode.Decompiler.Metadata
 			return metadata.GetString(metadata.GetGenericParameter(genericParameter).Name);
 		}
 
+		/// <summary>
+		/// Gets the generic type parameter handle at the specified index.
+		/// </summary>
+		/// <param name="index">The zero-based generic parameter index.</param>
+		/// <returns>
+		/// A valid <see cref="GenericParameterHandle"/> when the index exists; otherwise the nil handle.
+		/// </returns>
 		public GenericParameterHandle GetGenericTypeParameterHandleOrNull(int index)
 		{
 			if (declaringType.IsNil || index < 0 || metadata == null)
@@ -83,6 +131,13 @@ namespace ICSharpCode.Decompiler.Metadata
 			return genericParameters[index];
 		}
 
+		/// <summary>
+		/// Gets the generic method parameter handle at the specified index.
+		/// </summary>
+		/// <param name="index">The zero-based generic parameter index.</param>
+		/// <returns>
+		/// A valid <see cref="GenericParameterHandle"/> when the index exists; otherwise the nil handle.
+		/// </returns>
 		public GenericParameterHandle GetGenericMethodTypeParameterHandleOrNull(int index)
 		{
 			if (method.IsNil || index < 0 || metadata == null)
