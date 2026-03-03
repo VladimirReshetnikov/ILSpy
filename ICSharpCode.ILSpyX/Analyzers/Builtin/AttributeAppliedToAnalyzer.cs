@@ -29,10 +29,23 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.ILSpyX.Analyzers.Builtin
 {
+	/// <summary>
+	/// Analyzer that finds symbols annotated with a specific attribute type.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// For well-known framework attributes, this analyzer uses targeted scans (for example, methods only for
+	/// <see cref="KnownAttribute.DllImport"/>) to avoid unnecessary metadata traversal.
+	/// </para>
+	/// <para>
+	/// For custom attributes, it scans custom-attribute rows and resolves parent entities, including parameter owners.
+	/// </para>
+	/// </remarks>
 	[ExportAnalyzer(Header = "Applied To", Order = 10)]
 	[Shared]
 	class AttributeAppliedToAnalyzer : IAnalyzer
 	{
+		/// <inheritdoc />
 		public IEnumerable<ISymbol> Analyze(ISymbol analyzedSymbol, AnalyzerContext context)
 		{
 			if (!(analyzedSymbol is ITypeDefinition attributeType))
@@ -184,12 +197,20 @@ namespace ICSharpCode.ILSpyX.Analyzers.Builtin
 			}
 		}
 
+		/// <summary>
+		/// Determines whether a metadata custom-attribute constructor resolves to the target attribute type.
+		/// </summary>
+		/// <param name="customAttributeCtor">Method handle for the custom-attribute constructor.</param>
+		/// <param name="metadata">Metadata reader used to resolve <paramref name="customAttributeCtor"/>.</param>
+		/// <param name="decoder">Decoder that tests whether the declaring type matches the analyzer target.</param>
+		/// <returns><see langword="true"/> if the constructor belongs to the target attribute type; otherwise <see langword="false"/>.</returns>
 		internal static bool IsCustomAttributeOfType(EntityHandle customAttributeCtor, MetadataReader metadata, FindTypeDecoder decoder)
 		{
 			var declaringAttributeType = customAttributeCtor.GetDeclaringType(metadata);
 			return decoder.GetTypeFromEntity(metadata, declaringAttributeType);
 		}
 
+		/// <inheritdoc />
 		public bool Show(ISymbol symbol)
 		{
 			return symbol is ITypeDefinition type && type.GetNonInterfaceBaseTypes()
