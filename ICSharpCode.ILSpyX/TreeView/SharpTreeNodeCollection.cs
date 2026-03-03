@@ -35,11 +35,18 @@ namespace ICSharpCode.ILSpyX.TreeView
 		List<SharpTreeNode> list = new List<SharpTreeNode>();
 		bool isRaisingEvent;
 
+		/// <summary>
+		/// Initializes a new collection for a specific parent node.
+		/// </summary>
+		/// <param name="parent">The owning parent node that receives child-change callbacks.</param>
 		public SharpTreeNodeCollection(SharpTreeNode parent)
 		{
 			this.parent = parent;
 		}
 
+		/// <summary>
+		/// Occurs after the collection mutates and the parent processed the change.
+		/// </summary>
 		public event NotifyCollectionChangedEventHandler CollectionChanged;
 
 		void OnCollectionChanged(NotifyCollectionChangedEventArgs e)
@@ -71,6 +78,14 @@ namespace ICSharpCode.ILSpyX.TreeView
 				throw new ArgumentException("The node already has a parent", "node");
 		}
 
+		/// <summary>
+		/// Gets or sets the child node at <paramref name="index"/>.
+		/// </summary>
+		/// <param name="index">Zero-based child index.</param>
+		/// <returns>The child node at the specified index.</returns>
+		/// <exception cref="ArgumentNullException">A <see langword="null"/> node is assigned.</exception>
+		/// <exception cref="ArgumentException">The assigned node already belongs to another parent.</exception>
+		/// <exception cref="InvalidOperationException">The collection is being modified reentrantly from a change callback.</exception>
 		public SharpTreeNode this[int index] {
 			get {
 				return list[index];
@@ -86,6 +101,9 @@ namespace ICSharpCode.ILSpyX.TreeView
 			}
 		}
 
+		/// <summary>
+		/// Gets the number of child nodes.
+		/// </summary>
 		public int Count {
 			get { return list.Count; }
 		}
@@ -94,6 +112,11 @@ namespace ICSharpCode.ILSpyX.TreeView
 			get { return false; }
 		}
 
+		/// <summary>
+		/// Returns the index of <paramref name="node"/> if it is a direct child of the owner.
+		/// </summary>
+		/// <param name="node">The node to locate.</param>
+		/// <returns>The zero-based index when found; otherwise <c>-1</c>.</returns>
 		public int IndexOf(SharpTreeNode node)
 		{
 			if (node == null || node.modelParent != parent)
@@ -102,6 +125,14 @@ namespace ICSharpCode.ILSpyX.TreeView
 				return list.IndexOf(node);
 		}
 
+		/// <summary>
+		/// Inserts a child node at <paramref name="index"/>.
+		/// </summary>
+		/// <param name="index">Insertion index.</param>
+		/// <param name="node">Node to insert.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="node"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentException"><paramref name="node"/> already has a parent.</exception>
+		/// <exception cref="InvalidOperationException">The collection is being modified reentrantly from a change callback.</exception>
 		public void Insert(int index, SharpTreeNode node)
 		{
 			ThrowOnReentrancy();
@@ -110,6 +141,14 @@ namespace ICSharpCode.ILSpyX.TreeView
 			OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, node, index));
 		}
 
+		/// <summary>
+		/// Inserts multiple child nodes starting at <paramref name="index"/>.
+		/// </summary>
+		/// <param name="index">Insertion index.</param>
+		/// <param name="nodes">Nodes to insert in order.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="nodes"/> is <see langword="null"/> or contains <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentException">Any inserted node already has a parent.</exception>
+		/// <exception cref="InvalidOperationException">The collection is being modified reentrantly from a change callback.</exception>
 		public void InsertRange(int index, IEnumerable<SharpTreeNode> nodes)
 		{
 			if (nodes == null)
@@ -126,6 +165,11 @@ namespace ICSharpCode.ILSpyX.TreeView
 			OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, newNodes, index));
 		}
 
+		/// <summary>
+		/// Removes the child node at <paramref name="index"/>.
+		/// </summary>
+		/// <param name="index">Zero-based child index.</param>
+		/// <exception cref="InvalidOperationException">The collection is being modified reentrantly from a change callback.</exception>
 		public void RemoveAt(int index)
 		{
 			ThrowOnReentrancy();
@@ -134,6 +178,12 @@ namespace ICSharpCode.ILSpyX.TreeView
 			OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, oldItem, index));
 		}
 
+		/// <summary>
+		/// Removes a contiguous range of child nodes.
+		/// </summary>
+		/// <param name="index">Index of the first node to remove.</param>
+		/// <param name="count">Number of nodes to remove.</param>
+		/// <exception cref="InvalidOperationException">The collection is being modified reentrantly from a change callback.</exception>
 		public void RemoveRange(int index, int count)
 		{
 			ThrowOnReentrancy();
@@ -144,6 +194,13 @@ namespace ICSharpCode.ILSpyX.TreeView
 			OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, oldItems, index));
 		}
 
+		/// <summary>
+		/// Appends a child node.
+		/// </summary>
+		/// <param name="node">Node to append.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="node"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentException"><paramref name="node"/> already has a parent.</exception>
+		/// <exception cref="InvalidOperationException">The collection is being modified reentrantly from a change callback.</exception>
 		public void Add(SharpTreeNode node)
 		{
 			ThrowOnReentrancy();
@@ -152,11 +209,19 @@ namespace ICSharpCode.ILSpyX.TreeView
 			OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, node, list.Count - 1));
 		}
 
+		/// <summary>
+		/// Appends multiple child nodes.
+		/// </summary>
+		/// <param name="nodes">Nodes to append in order.</param>
 		public void AddRange(IEnumerable<SharpTreeNode> nodes)
 		{
 			InsertRange(this.Count, nodes);
 		}
 
+		/// <summary>
+		/// Removes all children from the parent node.
+		/// </summary>
+		/// <exception cref="InvalidOperationException">The collection is being modified reentrantly from a change callback.</exception>
 		public void Clear()
 		{
 			ThrowOnReentrancy();
@@ -165,16 +230,31 @@ namespace ICSharpCode.ILSpyX.TreeView
 			OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, oldList, 0));
 		}
 
+		/// <summary>
+		/// Determines whether <paramref name="node"/> is a direct child of the owner.
+		/// </summary>
+		/// <param name="node">Node to locate.</param>
+		/// <returns><see langword="true"/> if present; otherwise <see langword="false"/>.</returns>
 		public bool Contains(SharpTreeNode node)
 		{
 			return IndexOf(node) >= 0;
 		}
 
+		/// <summary>
+		/// Copies child nodes to an array.
+		/// </summary>
+		/// <param name="array">Destination array.</param>
+		/// <param name="arrayIndex">Starting index in <paramref name="array"/>.</param>
 		public void CopyTo(SharpTreeNode[] array, int arrayIndex)
 		{
 			list.CopyTo(array, arrayIndex);
 		}
 
+		/// <summary>
+		/// Removes the first matching child node.
+		/// </summary>
+		/// <param name="item">Node to remove.</param>
+		/// <returns><see langword="true"/> if a node was removed; otherwise <see langword="false"/>.</returns>
 		public bool Remove(SharpTreeNode item)
 		{
 			int pos = IndexOf(item);
@@ -189,6 +269,10 @@ namespace ICSharpCode.ILSpyX.TreeView
 			}
 		}
 
+		/// <summary>
+		/// Returns an enumerator over the current child list.
+		/// </summary>
+		/// <returns>An enumerator of child nodes.</returns>
 		public IEnumerator<SharpTreeNode> GetEnumerator()
 		{
 			return list.GetEnumerator();
@@ -199,6 +283,12 @@ namespace ICSharpCode.ILSpyX.TreeView
 			return list.GetEnumerator();
 		}
 
+		/// <summary>
+		/// Removes all child nodes that match <paramref name="match"/>.
+		/// </summary>
+		/// <param name="match">Predicate that returns <see langword="true"/> for nodes to remove.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="match"/> is <see langword="null"/>.</exception>
+		/// <exception cref="InvalidOperationException">The collection is being modified reentrantly from a change callback.</exception>
 		public void RemoveAll(Predicate<SharpTreeNode> match)
 		{
 			if (match == null)
