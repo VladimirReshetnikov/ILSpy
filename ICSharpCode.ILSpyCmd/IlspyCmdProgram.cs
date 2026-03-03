@@ -27,6 +27,18 @@ using Microsoft.Extensions.Hosting;
 
 namespace ICSharpCode.ILSpyCmd
 {
+	/// <summary>
+	/// Implements the <c>ilspycmd</c> command-line surface and dispatches each invocation to the selected decompilation lane.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Mode dispatch is intentionally precedence-based rather than fully combinatorial. The execution order is:
+	/// project generation, Mermaid diagram generation, then per-file actions (list, IL, PDB, package dump, C# decompilation).
+	/// </para>
+	/// <para>
+	/// This makes automation behavior predictable when callers accidentally combine mutually overshadowing flags.
+	/// </para>
+	/// </remarks>
 	[Command(Name = "ilspycmd", Description = "dotnet tool for decompiling .NET assemblies and generating portable PDBs",
 		ExtendedHelpText = @"
 Remarks:

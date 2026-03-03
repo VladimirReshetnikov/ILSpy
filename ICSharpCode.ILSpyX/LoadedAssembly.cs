@@ -69,8 +69,26 @@ namespace ICSharpCode.ILSpyX
 		readonly bool applyWinRTProjections;
 		readonly bool useDebugSymbols;
 
+		/// <summary>
+		/// Gets the bundle container that owns this entry when the current file was loaded from a package.
+		/// </summary>
+		/// <remarks>
+		/// This is <see langword="null"/> for top-level files loaded directly from disk.
+		/// </remarks>
 		public LoadedAssembly? ParentBundle { get; }
 
+		/// <summary>
+		/// Initializes a load handle for a top-level file and starts background loading immediately.
+		/// </summary>
+		/// <param name="assemblyList">Assembly list that owns this instance and receives on-demand dependencies.</param>
+		/// <param name="fileName">Path or display name of the file to load.</param>
+		/// <param name="stream">Optional stream factory task; when omitted the file is opened from <paramref name="fileName"/>.</param>
+		/// <param name="fileLoaders">Optional custom loader registry that runs before the default PE loader.</param>
+		/// <param name="assemblyResolver">Optional resolver used as first-level fallback during reference resolution.</param>
+		/// <param name="pdbFileName">Optional explicit PDB path used by debug-symbol loading.</param>
+		/// <param name="applyWinRTProjections">Whether metadata readers should apply WinRT projections during loading and resolution.</param>
+		/// <param name="useDebugSymbols">Whether debug-symbol discovery should be attempted for loaded PE files.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="assemblyList"/> or <paramref name="fileName"/> is <see langword="null"/>.</exception>
 		public LoadedAssembly(AssemblyList assemblyList, string fileName,
 			Task<Stream?>? stream = null,
 			FileLoaderRegistry? fileLoaders = null,
@@ -90,6 +108,16 @@ namespace ICSharpCode.ILSpyX
 			this.shortName = Path.GetFileNameWithoutExtension(fileName);
 		}
 
+		/// <summary>
+		/// Initializes a load handle for a file that originates from an existing bundle-backed <see cref="LoadedAssembly"/>.
+		/// </summary>
+		/// <param name="bundle">Bundle container that owns the entry represented by this instance.</param>
+		/// <param name="fileName">Logical file name of the bundle entry.</param>
+		/// <param name="stream">Stream task producing the entry payload.</param>
+		/// <param name="fileLoaders">Optional custom loader registry that runs before the default PE loader.</param>
+		/// <param name="assemblyResolver">Optional resolver used as first-level fallback during reference resolution.</param>
+		/// <param name="applyWinRTProjections">Whether metadata readers should apply WinRT projections during loading and resolution.</param>
+		/// <param name="useDebugSymbols">Whether debug-symbol discovery should be attempted for loaded PE files.</param>
 		public LoadedAssembly(LoadedAssembly bundle, string fileName, Task<Stream?>? stream,
 			FileLoaderRegistry? fileLoaders = null,
 			IAssemblyResolver? assemblyResolver = null,
@@ -124,6 +152,15 @@ namespace ICSharpCode.ILSpyX
 
 		string? runtimePack;
 
+		/// <summary>
+		/// Gets the runtime-pack identifier inferred from metadata.
+		/// </summary>
+		/// <returns>
+		/// A runtime-pack identifier string when metadata provides one; otherwise <see cref="string.Empty"/>.
+		/// </returns>
+		/// <remarks>
+		/// The detected value is cached after the first successful evaluation.
+		/// </remarks>
 		public async Task<string> GetRuntimePackAsync()
 		{
 			var value = LazyInit.VolatileRead(ref runtimePack);
@@ -137,6 +174,9 @@ namespace ICSharpCode.ILSpyX
 			return value;
 		}
 
+		/// <summary>
+		/// Gets diagnostic messages recorded while resolving assembly and module references from this file.
+		/// </summary>
 		public ReferenceLoadInfo LoadedAssemblyReferencesInfo { get; } = new ReferenceLoadInfo();
 
 		IDebugInfoProvider? debugInfoProvider;
@@ -227,6 +267,16 @@ namespace ICSharpCode.ILSpyX
 		ICompilation? typeSystemWithOptions;
 		TypeSystemOptions? currentTypeSystemOptions;
 
+		/// <summary>
+		/// Gets a type system compiled with caller-provided options.
+		/// </summary>
+		/// <param name="options">Type-system feature flags applied when constructing the backing <see cref="MetadataFile"/> view.</param>
+		/// <returns>
+		/// A compilation rooted in this assembly, or <see langword="null"/> when the file failed to load or only contains metadata.
+		/// </returns>
+		/// <remarks>
+		/// The result is cached per last requested option set; requesting a different option set replaces the cached value.
+		/// </remarks>
 		public ICompilation? GetTypeSystemOrNull(TypeSystemOptions options)
 		{
 			lock (typeSystemWithOptionsLockObj)
@@ -243,12 +293,24 @@ namespace ICSharpCode.ILSpyX
 			}
 		}
 
+		/// <summary>
+		/// Gets the owning assembly list.
+		/// </summary>
 		public AssemblyList AssemblyList => assemblyList;
 
+		/// <summary>
+		/// Gets the original file path or logical file name used to create this instance.
+		/// </summary>
 		public string FileName => fileName;
 
+		/// <summary>
+		/// Gets a UI-friendly short name derived from <see cref="FileName"/> without extension.
+		/// </summary>
 		public string ShortName => shortName;
 
+		/// <summary>
+		/// Gets a descriptive display label that includes version/framework hints when metadata is available.
+		/// </summary>
 		public string Text {
 			get {
 				if (IsLoaded && !HasLoadError)
@@ -308,6 +370,9 @@ namespace ICSharpCode.ILSpyX
 		/// </summary>
 		public bool HasLoadError => loadingTask.IsFaulted;
 
+		/// <summary>
+		/// Gets or sets whether the file was added by automatic dependency loading rather than explicit user action.
+		/// </summary>
 		public bool IsAutoLoaded { get; set; }
 
 		/// <summary>
@@ -438,6 +503,13 @@ namespace ICSharpCode.ILSpyX
 			return null;
 		}
 
+		/// <summary>
+		/// Reloads debug symbols from an explicit PDB file and updates the cached debug-info provider.
+		/// </summary>
+		/// <param name="fileName">Path to a PDB file associated with the currently loaded PE file.</param>
+		/// <returns>
+		/// The loaded debug-info provider, or <see langword="null"/> when symbols could not be loaded.
+		/// </returns>
 		public async Task<IDebugInfoProvider?> LoadDebugInfo(string fileName)
 		{
 			this.PdbFileName = fileName;
@@ -458,6 +530,13 @@ namespace ICSharpCode.ILSpyX
 			readonly Task<string> tfmTask;
 			readonly ReferenceLoadInfo referenceLoadInfo;
 
+			/// <summary>
+			/// Creates a resolver bound to a snapshot of the assembly list.
+			/// </summary>
+			/// <param name="parent">Loaded assembly requesting dependency resolution.</param>
+			/// <param name="assemblyListSnapshot">Snapshot of assemblies considered already loaded for fallback matching.</param>
+			/// <param name="loadOnDemand">Whether disk-resolved dependencies should be auto-opened when not already present.</param>
+			/// <param name="applyWinRTProjections">Whether metadata readers should apply WinRT projections.</param>
 			public MyAssemblyResolver(LoadedAssembly parent, AssemblyListSnapshot assemblyListSnapshot,
 				bool loadOnDemand, bool applyWinRTProjections)
 			{
@@ -477,6 +556,11 @@ namespace ICSharpCode.ILSpyX
 				this.referenceLoadInfo = parent.LoadedAssemblyReferencesInfo;
 			}
 
+			/// <summary>
+			/// Resolves a referenced assembly in the current resolution context.
+			/// </summary>
+			/// <param name="reference">Assembly identity to resolve.</param>
+			/// <returns>The resolved metadata file, or <see langword="null"/> when resolution fails.</returns>
 			public MetadataFile? Resolve(IAssemblyReference reference)
 			{
 				return ResolveAsync(reference).GetAwaiter().GetResult();
@@ -553,11 +637,23 @@ namespace ICSharpCode.ILSpyX
 				}
 			}
 
+			/// <summary>
+			/// Resolves a module reference synchronously.
+			/// </summary>
+			/// <param name="mainModule">Module declaring the reference.</param>
+			/// <param name="moduleName">Module file name requested by metadata.</param>
+			/// <returns>The resolved metadata file, or <see langword="null"/> when not found.</returns>
 			public MetadataFile? ResolveModule(MetadataFile mainModule, string moduleName)
 			{
 				return ResolveModuleAsync(mainModule, moduleName).GetAwaiter().GetResult();
 			}
 
+			/// <summary>
+			/// Resolves a module reference asynchronously.
+			/// </summary>
+			/// <param name="mainModule">Module declaring the reference.</param>
+			/// <param name="moduleName">Module file name requested by metadata.</param>
+			/// <returns>A task that resolves to the metadata file, or <see langword="null"/> when not found.</returns>
 			public async Task<MetadataFile?> ResolveModuleAsync(MetadataFile mainModule, string moduleName)
 			{
 				if (providedAssemblyResolver != null)
@@ -609,6 +705,12 @@ namespace ICSharpCode.ILSpyX
 			}
 		}
 
+		/// <summary>
+		/// Creates an assembly resolver that combines package context, loaded-assembly cache, and disk probing.
+		/// </summary>
+		/// <param name="loadOnDemand">Whether missing dependencies discovered on disk may be loaded into the owning <see cref="AssemblyList"/>.</param>
+		/// <param name="applyWinRTProjections">Whether metadata readers created by this resolver should apply WinRT projections.</param>
+		/// <returns>A resolver suitable for constructing decompiler type systems.</returns>
 		public IAssemblyResolver GetAssemblyResolver(bool loadOnDemand = true, bool applyWinRTProjections = false)
 		{
 			return new MyAssemblyResolver(this, AssemblyList.GetSnapshot(), loadOnDemand, applyWinRTProjections);
@@ -637,6 +739,11 @@ namespace ICSharpCode.ILSpyX
 			})!;
 		}
 
+		/// <summary>
+		/// Gets an assembly-reference classifier that follows the same framework/runtime probing policy as this instance.
+		/// </summary>
+		/// <param name="applyWinRTProjections">Whether the underlying metadata reader should enable WinRT projections.</param>
+		/// <returns>A classifier used to categorize reference origins and resolution candidates.</returns>
 		public AssemblyReferenceClassifier GetAssemblyReferenceClassifier(bool applyWinRTProjections)
 		{
 			return GetUniversalResolver(applyWinRTProjections);
