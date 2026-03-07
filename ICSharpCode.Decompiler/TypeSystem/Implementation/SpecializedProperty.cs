@@ -21,10 +21,21 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
 	/// <summary>
-	/// Represents a specialized IProperty (property after type substitution).
+	/// Represents an <see cref="IProperty"/> wrapper that applies declaring-type substitutions to property shape and accessors.
 	/// </summary>
+	/// <remarks>
+	/// Accessor methods are specialized lazily and cached so property projections stay consistent with method projections.
+	/// </remarks>
 	public class SpecializedProperty : SpecializedParameterizedMember, IProperty
 	{
+		/// <summary>
+		/// Creates a specialized property when substitution affects the declaring generic context.
+		/// </summary>
+		/// <param name="propertyDefinition">The unspecialized property definition.</param>
+		/// <param name="substitution">Substitution to apply.</param>
+		/// <returns>
+		/// <paramref name="propertyDefinition"/> when no specialization is required; otherwise a specialized wrapper.
+		/// </returns>
 		internal static IProperty Create(IProperty propertyDefinition, TypeParameterSubstitution substitution)
 		{
 			if (TypeParameterSubstitution.Identity.Equals(substitution) || propertyDefinition.DeclaringType.TypeParameterCount == 0)
@@ -38,6 +49,11 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		readonly IProperty propertyDefinition;
 
+		/// <summary>
+		/// Initializes a specialized property wrapper.
+		/// </summary>
+		/// <param name="propertyDefinition">The wrapped property definition.</param>
+		/// <param name="substitution">Substitution to apply to property type and accessor signatures.</param>
 		public SpecializedProperty(IProperty propertyDefinition, TypeParameterSubstitution substitution)
 			: base(propertyDefinition)
 		{

@@ -28,8 +28,20 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
 	/// <summary>
-	/// Represents a SpecializedMember (a member on which type substitution has been performed).
+	/// Represents an <see cref="IMember"/> whose declaring type, signature, or both are viewed through a
+	/// <see cref="TypeParameterSubstitution"/>.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Specialized members are wrappers around definition members; metadata identity and declaration ownership still come
+	/// from the wrapped member, while type-facing surfaces such as <see cref="DeclaringType"/> and <see cref="ReturnType"/>
+	/// are projected through the stored substitution.
+	/// </para>
+	/// <para>
+	/// This type is used heavily by member enumeration helpers for parameterized types, ensuring callers observe correctly
+	/// substituted signatures without mutating definition objects.
+	/// </para>
+	/// </remarks>
 	public abstract class SpecializedMember : IMember
 	{
 		protected readonly IMember baseMember;
@@ -50,8 +62,12 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		}
 
 		/// <summary>
-		/// Performs a substitution. This method may only be called by constructors in derived classes.
+		/// Composes an additional substitution into this wrapper.
 		/// </summary>
+		/// <param name="newSubstitution">The substitution to compose in front of the current substitution chain.</param>
+		/// <remarks>
+		/// This method must be used only during construction, before any lazily cached member state has been observed.
+		/// </remarks>
 		protected void AddSubstitution(TypeParameterSubstitution newSubstitution)
 		{
 			Debug.Assert(declaringType == null);
@@ -77,7 +93,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		}
 
 		/// <summary>
-		/// Gets the substitution belonging to this specialized member.
+		/// Gets the substitution currently applied by this specialized member.
 		/// </summary>
 		public TypeParameterSubstitution Substitution {
 			get { return substitution; }

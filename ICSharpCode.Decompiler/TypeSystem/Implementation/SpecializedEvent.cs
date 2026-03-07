@@ -21,10 +21,21 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
 	/// <summary>
-	/// Represents a specialized IEvent (event after type substitution).
+	/// Represents an <see cref="IEvent"/> wrapper that applies substitutions to event type and accessor signatures.
 	/// </summary>
+	/// <remarks>
+	/// Accessor wrappers are created lazily to avoid unnecessary allocations when only event metadata flags are queried.
+	/// </remarks>
 	public class SpecializedEvent : SpecializedMember, IEvent
 	{
+		/// <summary>
+		/// Creates a specialized event wrapper when substitution affects the declaring generic context.
+		/// </summary>
+		/// <param name="ev">The unspecialized event definition.</param>
+		/// <param name="substitution">Substitution to apply.</param>
+		/// <returns>
+		/// <paramref name="ev"/> when no specialization is required; otherwise a specialized wrapper.
+		/// </returns>
 		public static IEvent Create(IEvent ev, TypeParameterSubstitution substitution)
 		{
 			if (TypeParameterSubstitution.Identity.Equals(substitution)
@@ -39,6 +50,11 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		readonly IEvent eventDefinition;
 
+		/// <summary>
+		/// Initializes a specialized event wrapper.
+		/// </summary>
+		/// <param name="eventDefinition">The wrapped event definition.</param>
+		/// <param name="substitution">Substitution to apply to event type and accessors.</param>
 		public SpecializedEvent(IEvent eventDefinition, TypeParameterSubstitution substitution)
 			: base(eventDefinition)
 		{

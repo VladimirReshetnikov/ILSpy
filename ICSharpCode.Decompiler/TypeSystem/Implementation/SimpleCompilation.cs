@@ -52,46 +52,46 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		INamespace rootNamespace;
 
 		/// <summary>
-		/// Initializes a new compilation from one main module reference and zero or more additional references.
+		/// Initializes a compilation from a main module reference and additional module references.
 		/// </summary>
-		/// <param name="mainAssembly">The primary module reference for the compilation.</param>
-		/// <param name="assemblyReferences">Additional module references to resolve and include.</param>
+		/// <param name="mainAssembly">Reference that resolves to the primary module being decompiled.</param>
+		/// <param name="assemblyReferences">References that should populate <see cref="ReferencedModules"/>.</param>
 		public SimpleCompilation(IModuleReference mainAssembly, params IModuleReference[] assemblyReferences)
 		{
 			Init(mainAssembly, assemblyReferences);
 		}
 
 		/// <summary>
-		/// Initializes a new compilation from one main module reference and an enumerable of additional references.
+		/// Initializes a compilation from a main module reference and an enumerable of references.
 		/// </summary>
-		/// <param name="mainAssembly">The primary module reference for the compilation.</param>
-		/// <param name="assemblyReferences">Additional module references to resolve and include.</param>
+		/// <param name="mainAssembly">Reference that resolves to the primary module being decompiled.</param>
+		/// <param name="assemblyReferences">References that should populate <see cref="ReferencedModules"/>.</param>
 		public SimpleCompilation(IModuleReference mainAssembly, IEnumerable<IModuleReference> assemblyReferences)
 		{
 			Init(mainAssembly, assemblyReferences);
 		}
 
 		/// <summary>
-		/// Initializes a new uninitialized compilation instance.
+		/// Initializes a new instance for derived types that need to defer initialization.
 		/// </summary>
 		/// <remarks>
-		/// This constructor is intended for derived types that need custom setup before calling <see cref="Init"/>.
+		/// Derived classes must call <see cref="Init(IModuleReference, IEnumerable{IModuleReference})"/> before exposing
+		/// this instance to callers.
 		/// </remarks>
 		protected SimpleCompilation()
 		{
 		}
 
 		/// <summary>
-		/// Resolves the supplied module references and completes instance initialization.
+		/// Resolves module references and initializes the immutable module lists used by this compilation.
 		/// </summary>
-		/// <param name="mainAssembly">The primary module reference.</param>
-		/// <param name="assemblyReferences">Additional references to resolve.</param>
+		/// <param name="mainAssembly">Reference for the primary module.</param>
+		/// <param name="assemblyReferences">References for additional modules.</param>
 		/// <exception cref="ArgumentNullException">
-		/// Thrown when <paramref name="mainAssembly"/> or <paramref name="assemblyReferences"/> is
-		/// <see langword="null"/>.
+		/// <paramref name="mainAssembly"/> or <paramref name="assemblyReferences"/> is <see langword="null"/>.
 		/// </exception>
 		/// <exception cref="InvalidOperationException">
-		/// Thrown when one of the references cannot be resolved due to an invalid loader state.
+		/// A supplied reference cannot be resolved into a usable module.
 		/// </exception>
 		protected void Init(IModuleReference mainAssembly, IEnumerable<IModuleReference> assemblyReferences)
 		{
@@ -171,14 +171,14 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		}
 
 		/// <summary>
-		/// Creates the merged global namespace projection over the resolved module set.
+		/// Creates the global namespace view used for <see cref="RootNamespace"/>.
 		/// </summary>
 		/// <returns>
-		/// A namespace that combines <see cref="MainModule"/> and <see cref="ReferencedModules"/> root namespaces.
+		/// A merged namespace containing the main module root and all referenced module roots.
 		/// </returns>
 		/// <remarks>
-		/// The base implementation does not model extern-alias partitions and therefore returns one global
-		/// <see cref="MergedNamespace"/>.
+		/// Derived classes can override this method to alter global namespace composition, for example to add extern-alias
+		/// partitioning.
 		/// </remarks>
 		protected virtual INamespace CreateRootNamespace()
 		{
