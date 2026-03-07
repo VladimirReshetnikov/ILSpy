@@ -6,8 +6,17 @@ using System.Linq;
 
 namespace ICSharpCode.Decompiler.Util
 {
+	/// <summary>
+	/// Provides allocation-conscious helper extensions used throughout the decompiler pipeline.
+	/// </summary>
 	static class CollectionExtensions
 	{
+		/// <summary>
+		/// Supports tuple deconstruction syntax for <see cref="KeyValuePair{TKey, TValue}"/> values.
+		/// </summary>
+		/// <param name="pair">Pair to deconstruct.</param>
+		/// <param name="key">Receives <see cref="KeyValuePair{TKey, TValue}.Key"/>.</param>
+		/// <param name="value">Receives <see cref="KeyValuePair{TKey, TValue}.Value"/>.</param>
 		public static void Deconstruct<K, V>(this KeyValuePair<K, V> pair, out K key, out V value)
 		{
 			key = pair.Key;
@@ -21,12 +30,24 @@ namespace ICSharpCode.Decompiler.Util
 		}
 #endif
 
+		/// <summary>
+		/// Zips two sequences and emits the zero-based tuple index alongside each pair.
+		/// </summary>
+		/// <param name="input1">First source sequence.</param>
+		/// <param name="input2">Second source sequence.</param>
+		/// <returns>A lazy sequence of <c>(index, first, second)</c> tuples.</returns>
 		public static IEnumerable<(int, A, B)> ZipWithIndex<A, B>(this IEnumerable<A> input1, IEnumerable<B> input2)
 		{
 			int index = 0;
 			return input1.Zip(input2, (a, b) => (index++, a, b));
 		}
 
+		/// <summary>
+		/// Zips two sequences until both are exhausted, filling missing items with <see langword="default"/>.
+		/// </summary>
+		/// <param name="input1">First source sequence.</param>
+		/// <param name="input2">Second source sequence.</param>
+		/// <returns>A lazy sequence whose length equals the longer input sequence.</returns>
 		public static IEnumerable<(A?, B?)> ZipLongest<A, B>(this IEnumerable<A> input1, IEnumerable<B> input2)
 		{
 			using (var it1 = input1.GetEnumerator())
@@ -97,6 +118,13 @@ namespace ICSharpCode.Decompiler.Util
 			return stack.Peek();
 		}
 
+		/// <summary>
+		/// Computes the maximum projected value, or a fallback for empty sequences.
+		/// </summary>
+		/// <param name="input">Source sequence.</param>
+		/// <param name="selector">Projection that maps each element to an <see cref="int"/> key.</param>
+		/// <param name="defaultValue">Value returned when <paramref name="input"/> is empty.</param>
+		/// <returns>The largest projected value or <paramref name="defaultValue"/>.</returns>
 		public static int MaxOrDefault<T>(this IEnumerable<T> input, Func<T, int> selector, int defaultValue = 0)
 		{
 			int max = defaultValue;
@@ -397,8 +425,23 @@ namespace ICSharpCode.Decompiler.Util
 			list.RemoveAt(list.Count - 1);
 		}
 
+		/// <summary>
+		/// Returns the only element in a sequence that matches <paramref name="predicate"/>, or <see langword="default"/>.
+		/// </summary>
+		/// <param name="source">Source sequence.</param>
+		/// <param name="predicate">Predicate used to select candidate elements.</param>
+		/// <returns>
+		/// The matching element when exactly one item satisfies the predicate; otherwise <see langword="default"/>.
+		/// </returns>
 		public static T? OnlyOrDefault<T>(this IEnumerable<T> source, Func<T, bool> predicate) => OnlyOrDefault(source.Where(predicate));
 
+		/// <summary>
+		/// Returns the only element in a sequence, or <see langword="default"/> when cardinality is not one.
+		/// </summary>
+		/// <param name="source">Source sequence.</param>
+		/// <returns>
+		/// The single sequence element when exactly one element exists; otherwise <see langword="default"/>.
+		/// </returns>
 		public static T? OnlyOrDefault<T>(this IEnumerable<T> source)
 		{
 			bool any = false;

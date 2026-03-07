@@ -23,22 +23,43 @@ using System.Linq;
 namespace ICSharpCode.Decompiler.Util
 {
 	/// <summary>
-	/// A dictionary that allows multiple pairs with the same key.
+	/// Represents a mutable key-to-multiple-values map.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Values are grouped per key and preserved in insertion order within each key's backing list.
+	/// </para>
+	/// <para>
+	/// The type also implements <see cref="ILookup{TKey, TElement}"/> so it can be consumed through standard
+	/// LINQ grouping APIs.
+	/// </para>
+	/// </remarks>
 	public class MultiDictionary<TKey, TValue> : ILookup<TKey, TValue> where TKey : notnull
 	{
 		readonly Dictionary<TKey, List<TValue>> dict;
 
+		/// <summary>
+		/// Initializes an empty dictionary that uses the default key comparer.
+		/// </summary>
 		public MultiDictionary()
 		{
 			dict = new Dictionary<TKey, List<TValue>>();
 		}
 
+		/// <summary>
+		/// Initializes an empty dictionary that uses a caller-specified key comparer.
+		/// </summary>
+		/// <param name="comparer">Comparer used to test key equality; <see langword="null"/> uses the default comparer.</param>
 		public MultiDictionary(IEqualityComparer<TKey>? comparer)
 		{
 			dict = new Dictionary<TKey, List<TValue>>(comparer);
 		}
 
+		/// <summary>
+		/// Adds a value to the group associated with <paramref name="key"/>.
+		/// </summary>
+		/// <param name="key">Key that identifies the value group.</param>
+		/// <param name="value">Value to append.</param>
 		public void Add(TKey key, TValue value)
 		{
 			if (!dict.TryGetValue(key, out List<TValue>? valueList))
@@ -49,6 +70,15 @@ namespace ICSharpCode.Decompiler.Util
 			valueList.Add(value);
 		}
 
+		/// <summary>
+		/// Removes a specific value from the group associated with <paramref name="key"/>.
+		/// </summary>
+		/// <param name="key">Key identifying the value group.</param>
+		/// <param name="value">Value to remove.</param>
+		/// <returns><see langword="true"/> when a matching value was removed; otherwise <see langword="false"/>.</returns>
+		/// <remarks>
+		/// If the removal leaves the group empty, the key is removed from the dictionary.
+		/// </remarks>
 		public bool Remove(TKey key, TValue value)
 		{
 			if (dict.TryGetValue(key, out List<TValue>? valueList))
@@ -72,11 +102,21 @@ namespace ICSharpCode.Decompiler.Util
 			return dict.Remove(key);
 		}
 
+		/// <summary>
+		/// Removes all entries from the dictionary.
+		/// </summary>
 		public void Clear()
 		{
 			dict.Clear();
 		}
 
+		/// <summary>
+		/// Gets all values associated with <paramref name="key"/>.
+		/// </summary>
+		/// <param name="key">Key whose values should be returned.</param>
+		/// <returns>
+		/// A read-only list of values for <paramref name="key"/>. Returns an empty list when the key is absent.
+		/// </returns>
 		public IReadOnlyList<TValue> this[TKey key] {
 			get {
 				if (dict.TryGetValue(key, out var list))
@@ -86,6 +126,14 @@ namespace ICSharpCode.Decompiler.Util
 			}
 		}
 
+		/// <summary>
+		/// Attempts to retrieve all values associated with <paramref name="key"/>.
+		/// </summary>
+		/// <param name="key">Key to resolve.</param>
+		/// <param name="values">
+		/// Receives the values associated with <paramref name="key"/>, or an empty list when the key is absent.
+		/// </param>
+		/// <returns><see langword="true"/> when the key exists; otherwise <see langword="false"/>.</returns>
 		public bool TryGetValues(TKey key, out IReadOnlyList<TValue> values)
 		{
 			values = EmptyList<TValue>.Instance;
@@ -104,10 +152,16 @@ namespace ICSharpCode.Decompiler.Util
 			get { return dict.Count; }
 		}
 
+		/// <summary>
+		/// Gets all keys currently present in the dictionary.
+		/// </summary>
 		public ICollection<TKey> Keys {
 			get { return dict.Keys; }
 		}
 
+		/// <summary>
+		/// Enumerates all values across all keys.
+		/// </summary>
 		public IEnumerable<TValue> Values {
 			get { return dict.Values.SelectMany(list => list); }
 		}
@@ -116,11 +170,22 @@ namespace ICSharpCode.Decompiler.Util
 			get { return this[key]; }
 		}
 
+		/// <summary>
+		/// Determines whether the dictionary contains at least one value for <paramref name="key"/>.
+		/// </summary>
+		/// <param name="key">Key to test.</param>
+		/// <returns><see langword="true"/> when a group exists for <paramref name="key"/>; otherwise <see langword="false"/>.</returns>
 		public bool Contains(TKey key)
 		{
 			return dict.ContainsKey(key);
 		}
 
+		/// <summary>
+		/// Returns an enumerator over key/value groups.
+		/// </summary>
+		/// <returns>
+		/// An enumerator that yields one <see cref="IGrouping{TKey, TElement}"/> per key currently stored.
+		/// </returns>
 		public IEnumerator<IGrouping<TKey, TValue>> GetEnumerator()
 		{
 			foreach (var pair in dict)
