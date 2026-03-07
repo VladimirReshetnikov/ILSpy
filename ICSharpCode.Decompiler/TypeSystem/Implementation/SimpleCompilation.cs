@@ -24,8 +24,23 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
 	/// <summary>
-	/// Simple compilation implementation.
+	/// Provides a baseline <see cref="ICompilation"/> implementation backed by a main module and a fixed reference set.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Semantics.</b> <see cref="SimpleCompilation"/> resolves each supplied <see cref="IModuleReference"/> once during
+	/// initialization and then serves immutable module lists for the lifetime of the instance.
+	/// </para>
+	/// <para>
+	/// <b>Extensibility.</b> Derived classes can customize alias behavior and root-namespace composition by overriding
+	/// <see cref="GetNamespaceForExternAlias"/> and <see cref="CreateRootNamespace"/>.
+	/// </para>
+	/// <para>
+	/// <b>Notes for maintainers.</b> Several APIs throw <see cref="InvalidOperationException"/> when called before
+	/// initialization so subclasses that use the protected constructor must invoke <see cref="Init"/> before exposing the
+	/// instance.
+	/// </para>
+	/// </remarks>
 	public class SimpleCompilation : ICompilation
 	{
 		readonly CacheManager cacheManager = new CacheManager();
@@ -36,20 +51,48 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		bool initialized;
 		INamespace rootNamespace;
 
+		/// <summary>
+		/// Initializes a new compilation from one main module reference and zero or more additional references.
+		/// </summary>
+		/// <param name="mainAssembly">The primary module reference for the compilation.</param>
+		/// <param name="assemblyReferences">Additional module references to resolve and include.</param>
 		public SimpleCompilation(IModuleReference mainAssembly, params IModuleReference[] assemblyReferences)
 		{
 			Init(mainAssembly, assemblyReferences);
 		}
 
+		/// <summary>
+		/// Initializes a new compilation from one main module reference and an enumerable of additional references.
+		/// </summary>
+		/// <param name="mainAssembly">The primary module reference for the compilation.</param>
+		/// <param name="assemblyReferences">Additional module references to resolve and include.</param>
 		public SimpleCompilation(IModuleReference mainAssembly, IEnumerable<IModuleReference> assemblyReferences)
 		{
 			Init(mainAssembly, assemblyReferences);
 		}
 
+		/// <summary>
+		/// Initializes a new uninitialized compilation instance.
+		/// </summary>
+		/// <remarks>
+		/// This constructor is intended for derived types that need custom setup before calling <see cref="Init"/>.
+		/// </remarks>
 		protected SimpleCompilation()
 		{
 		}
 
+		/// <summary>
+		/// Resolves the supplied module references and completes instance initialization.
+		/// </summary>
+		/// <param name="mainAssembly">The primary module reference.</param>
+		/// <param name="assemblyReferences">Additional references to resolve.</param>
+		/// <exception cref="ArgumentNullException">
+		/// Thrown when <paramref name="mainAssembly"/> or <paramref name="assemblyReferences"/> is
+		/// <see langword="null"/>.
+		/// </exception>
+		/// <exception cref="InvalidOperationException">
+		/// Thrown when one of the references cannot be resolved due to an invalid loader state.
+		/// </exception>
 		protected void Init(IModuleReference mainAssembly, IEnumerable<IModuleReference> assemblyReferences)
 		{
 			if (mainAssembly == null)
@@ -83,6 +126,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			this.initialized = true;
 		}
 
+		/// <inheritdoc/>
 		public IModule MainModule {
 			get {
 				if (!initialized)
@@ -91,6 +135,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
+		/// <inheritdoc/>
 		public IReadOnlyList<IModule> Modules {
 			get {
 				if (!initialized)
@@ -99,6 +144,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
+		/// <inheritdoc/>
 		public IReadOnlyList<IModule> ReferencedModules {
 			get {
 				if (!initialized)
@@ -107,6 +153,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
+		/// <inheritdoc/>
 		public INamespace RootNamespace {
 			get {
 				INamespace ns = LazyInit.VolatileRead(ref this.rootNamespace);
@@ -123,6 +170,16 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
+		/// <summary>
+		/// Creates the merged global namespace projection over the resolved module set.
+		/// </summary>
+		/// <returns>
+		/// A namespace that combines <see cref="MainModule"/> and <see cref="ReferencedModules"/> root namespaces.
+		/// </returns>
+		/// <remarks>
+		/// The base implementation does not model extern-alias partitions and therefore returns one global
+		/// <see cref="MergedNamespace"/>.
+		/// </remarks>
 		protected virtual INamespace CreateRootNamespace()
 		{
 			// SimpleCompilation does not support extern aliases; but derived classes might.
@@ -136,10 +193,12 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return new MergedNamespace(this, namespaces);
 		}
 
+		/// <inheritdoc/>
 		public CacheManager CacheManager {
 			get { return cacheManager; }
 		}
 
+		/// <inheritdoc/>
 		public virtual INamespace GetNamespaceForExternAlias(string alias)
 		{
 			if (string.IsNullOrEmpty(alias))
@@ -148,15 +207,18 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return null;
 		}
 
+		/// <inheritdoc/>
 		public IType FindType(KnownTypeCode typeCode)
 		{
 			return knownTypeCache.FindType(typeCode);
 		}
 
+		/// <inheritdoc/>
 		public StringComparer NameComparer {
 			get { return StringComparer.Ordinal; }
 		}
 
+		/// <inheritdoc/>
 		public virtual TypeSystemOptions TypeSystemOptions => TypeSystemOptions.Default;
 
 		public override string ToString()

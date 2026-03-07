@@ -159,13 +159,27 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	}
 
 	/// <summary>
-	/// Manages the NRefactory type system for the decompiler.
+	/// Builds the decompiler-specific <see cref="ICompilation"/> graph from metadata files and resolver policy.
 	/// </summary>
 	/// <remarks>
-	/// This class is thread-safe.
+	/// <para>
+	/// <b>Semantics.</b> The constructor and factory methods materialize a <see cref="MetadataModule"/> for the main
+	/// input, resolve transitive references (including type-forwarding edges), and apply
+	/// <see cref="TypeSystemOptions"/> so that metadata attributes are projected into high-level semantic constructs
+	/// such as tuple names, nullable annotations, and native integer types.
+	/// </para>
+	/// <para>
+	/// <b>Thread safety.</b> This type is thread-safe after initialization. The contained symbol model is designed for
+	/// concurrent reads.
+	/// </para>
 	/// </remarks>
 	public class DecompilerTypeSystem : SimpleCompilation, IDecompilerTypeSystem
 	{
+		/// <summary>
+		/// Maps decompiler UI/settings flags to the corresponding type-system projection flags.
+		/// </summary>
+		/// <param name="settings">Decompiler feature settings to translate.</param>
+		/// <returns>The set of <see cref="TypeSystemOptions"/> that implement the requested language projections.</returns>
 		public static TypeSystemOptions GetOptions(DecompilerSettings settings)
 		{
 			var typeSystemOptions = TypeSystemOptions.None;
@@ -204,16 +218,39 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			return typeSystemOptions;
 		}
 
+		/// <summary>
+		/// Asynchronously creates a type system using <see cref="TypeSystemOptions.Default"/>.
+		/// </summary>
+		/// <param name="mainModule">The primary PE module to model.</param>
+		/// <param name="assemblyResolver">Resolver used for assembly and module references.</param>
+		/// <returns>A task that completes with an initialized <see cref="DecompilerTypeSystem"/> instance.</returns>
 		public static Task<DecompilerTypeSystem> CreateAsync(PEFile mainModule, IAssemblyResolver assemblyResolver)
 		{
 			return CreateAsync(mainModule, assemblyResolver, TypeSystemOptions.Default);
 		}
 
+		/// <summary>
+		/// Asynchronously creates a type system using options derived from <paramref name="settings"/>.
+		/// </summary>
+		/// <param name="mainModule">The primary PE module to model.</param>
+		/// <param name="assemblyResolver">Resolver used for assembly and module references.</param>
+		/// <param name="settings">Decompiler settings used to compute type-system options.</param>
+		/// <returns>A task that completes with an initialized <see cref="DecompilerTypeSystem"/> instance.</returns>
 		public static Task<DecompilerTypeSystem> CreateAsync(PEFile mainModule, IAssemblyResolver assemblyResolver, DecompilerSettings settings)
 		{
 			return CreateAsync(mainModule, assemblyResolver, GetOptions(settings ?? throw new ArgumentNullException(nameof(settings))));
 		}
 
+		/// <summary>
+		/// Asynchronously creates a type system using explicit projection options.
+		/// </summary>
+		/// <param name="mainModule">The primary PE module to model.</param>
+		/// <param name="assemblyResolver">Resolver used for assembly and module references.</param>
+		/// <param name="typeSystemOptions">Metadata-projection and semantic-model options.</param>
+		/// <returns>A task that completes with an initialized <see cref="DecompilerTypeSystem"/> instance.</returns>
+		/// <exception cref="ArgumentNullException">
+		/// Thrown when <paramref name="mainModule"/> or <paramref name="assemblyResolver"/> is <see langword="null"/>.
+		/// </exception>
 		public static async Task<DecompilerTypeSystem> CreateAsync(PEFile mainModule, IAssemblyResolver assemblyResolver, TypeSystemOptions typeSystemOptions)
 		{
 			if (mainModule == null)
@@ -234,16 +271,42 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.typeSystemOptions = typeSystemOptions;
 		}
 
+		/// <summary>
+		/// Initializes a type system synchronously using <see cref="TypeSystemOptions.Default"/>.
+		/// </summary>
+		/// <param name="mainModule">The primary metadata module to model.</param>
+		/// <param name="assemblyResolver">Resolver used for assembly and module references.</param>
 		public DecompilerTypeSystem(MetadataFile mainModule, IAssemblyResolver assemblyResolver)
 			: this(mainModule, assemblyResolver, TypeSystemOptions.Default)
 		{
 		}
 
+		/// <summary>
+		/// Initializes a type system synchronously using options derived from <paramref name="settings"/>.
+		/// </summary>
+		/// <param name="mainModule">The primary metadata module to model.</param>
+		/// <param name="assemblyResolver">Resolver used for assembly and module references.</param>
+		/// <param name="settings">Decompiler settings used to compute type-system options.</param>
+		/// <exception cref="ArgumentNullException">Thrown when <paramref name="settings"/> is <see langword="null"/>.</exception>
 		public DecompilerTypeSystem(MetadataFile mainModule, IAssemblyResolver assemblyResolver, DecompilerSettings settings)
 			: this(mainModule, assemblyResolver, GetOptions(settings ?? throw new ArgumentNullException(nameof(settings))))
 		{
 		}
 
+		/// <summary>
+		/// Initializes a type system synchronously using explicit projection options.
+		/// </summary>
+		/// <param name="mainModule">The primary metadata module to model.</param>
+		/// <param name="assemblyResolver">Resolver used for assembly and module references.</param>
+		/// <param name="typeSystemOptions">Metadata-projection and semantic-model options.</param>
+		/// <exception cref="ArgumentNullException">
+		/// Thrown when <paramref name="mainModule"/> or <paramref name="assemblyResolver"/> is <see langword="null"/>.
+		/// </exception>
+		/// <remarks>
+		/// This constructor blocks the calling thread until reference resolution and graph initialization complete.
+		/// Use <see cref="CreateAsync(PEFile, IAssemblyResolver, TypeSystemOptions)"/> when asynchronous initialization is
+		/// preferred.
+		/// </remarks>
 		public DecompilerTypeSystem(MetadataFile mainModule, IAssemblyResolver assemblyResolver, TypeSystemOptions typeSystemOptions)
 			: this(typeSystemOptions)
 		{
