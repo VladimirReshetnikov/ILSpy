@@ -85,16 +85,26 @@ namespace ICSharpCode.Decompiler.Metadata
 		NET
 	}
 
+	/// <summary>
+	/// Identifies the runtime hosting the decompiler process itself.
+	/// </summary>
 	enum DecompilerRuntime
 	{
+		/// <summary>Desktop .NET Framework CLR.</summary>
 		NETFramework,
+		/// <summary>.NET Core / unified .NET runtime.</summary>
 		NETCoreApp,
+		/// <summary>Mono runtime.</summary>
 		Mono
 	}
 
 	/// <summary>
-	/// Used to resolve assemblies referenced by an assembly.
+	/// Resolves assembly and module references across .NET Framework, .NET (Core), Mono, Silverlight, and WinMD layouts.
 	/// </summary>
+	/// <remarks>
+	/// The resolver combines caller-provided search directories, runtime-pack probing via <see cref="DotNetCorePathFinder"/>,
+	/// classic framework fallback locations, and GAC lookup.
+	/// </remarks>
 	public class UniversalAssemblyResolver : AssemblyReferenceClassifier, IAssemblyResolver
 	{
 		static UniversalAssemblyResolver()
@@ -202,6 +212,16 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Parses a target framework moniker string into framework family and normalized version.
+		/// </summary>
+		/// <param name="targetFramework">Target framework text such as <c>.NETCoreApp,Version=v8.0</c>.</param>
+		/// <returns>
+		/// A tuple of framework identifier and non-null version (defaults to <c>0.0.0.0</c> when no version is available).
+		/// </returns>
+		/// <remarks>
+		/// <c>.NETCoreApp</c> values with major version 5 or higher are promoted to <see cref="TargetFrameworkIdentifier.NET"/>.
+		/// </remarks>
 		internal static (TargetFrameworkIdentifier, Version) ParseTargetFramework(string targetFramework)
 		{
 			if (string.IsNullOrEmpty(targetFramework))
@@ -452,8 +472,11 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 		/// <summary>
-		/// This only works on Windows
+		/// Resolves a Silverlight reference from installed Silverlight framework directories.
 		/// </summary>
+		/// <param name="name">Assembly identity to resolve.</param>
+		/// <param name="version">Requested Silverlight version.</param>
+		/// <returns>The resolved path, or <see langword="null"/> when no matching installation is available.</returns>
 		string? ResolveSilverlight(IAssemblyReference name, Version? version)
 		{
 			string[] targetFrameworkSearchPaths = {
@@ -598,6 +621,11 @@ namespace ICSharpCode.Decompiler.Metadata
 			return null;
 		}
 
+		/// <summary>
+		/// Checks whether a version is unspecified or encoded as metadata wildcard values.
+		/// </summary>
+		/// <param name="version">Version to inspect.</param>
+		/// <returns><see langword="true"/> for <see langword="null"/>, 0.0.0.0, or 65535.65535.65535.65535.</returns>
 		static bool IsZeroOrAllOnes(Version? version)
 		{
 			return version == null
@@ -605,6 +633,9 @@ namespace ICSharpCode.Decompiler.Metadata
 				|| (version.Major == 65535 && version.Minor == 65535 && version.Build == 65535 && version.Revision == 65535);
 		}
 
+		/// <summary>
+		/// Canonical zero version used when metadata omits assembly version information.
+		/// </summary>
 		internal static Version ZeroVersion = new Version(0, 0, 0, 0);
 
 		string? GetCorlib(IAssemblyReference reference)

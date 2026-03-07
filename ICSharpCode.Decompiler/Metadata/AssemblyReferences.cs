@@ -30,16 +30,49 @@ using System.Threading.Tasks;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Exception thrown when an assembly or module reference cannot be resolved to a metadata file.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <see cref="UniversalAssemblyResolver"/> and host-level resolvers use this exception when
+	/// <c>throwOnError</c> is enabled. The exception preserves both the requested identity and the
+	/// best candidate path (if one was found) to make troubleshooting resolution policy issues easier.
+	/// </para>
+	/// <para>
+	/// For module resolution failures, <see cref="Reference"/> is <see langword="null"/> and the
+	/// module-specific properties are populated instead.
+	/// </para>
+	/// </remarks>
 	public sealed class ResolutionException : Exception
 	{
+		/// <summary>
+		/// Gets the unresolved assembly identity for assembly-resolution failures.
+		/// </summary>
 		public IAssemblyReference? Reference { get; }
 
+		/// <summary>
+		/// Gets the unresolved module file name for module-resolution failures.
+		/// </summary>
 		public string? ModuleName { get; }
 
+		/// <summary>
+		/// Gets the fully qualified path of the main module that declared <see cref="ModuleName"/>.
+		/// </summary>
 		public string? MainModuleFullPath { get; }
 
+		/// <summary>
+		/// Gets the candidate full path produced by probing, or <see langword="null"/> when no candidate was found.
+		/// </summary>
 		public string? ResolvedFullPath { get; }
 
+		/// <summary>
+		/// Initializes a new instance of <see cref="ResolutionException"/> for a failed assembly reference.
+		/// </summary>
+		/// <param name="reference">Assembly identity that could not be resolved.</param>
+		/// <param name="resolvedPath">Candidate path that was probed, or <see langword="null"/> if probing produced no path.</param>
+		/// <param name="innerException">Underlying IO or image-format exception, if one was observed.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="reference"/> is <see langword="null"/>.</exception>
 		public ResolutionException(IAssemblyReference reference, string? resolvedPath, Exception? innerException)
 			: base($"Failed to resolve assembly: '{reference}'{Environment.NewLine}" +
 				  $"Resolve result: {resolvedPath ?? "<not found>"}", innerException)
@@ -48,6 +81,16 @@ namespace ICSharpCode.Decompiler.Metadata
 			this.ResolvedFullPath = resolvedPath;
 		}
 
+		/// <summary>
+		/// Initializes a new instance of <see cref="ResolutionException"/> for a failed module reference.
+		/// </summary>
+		/// <param name="mainModule">Path of the module that declared the unresolved module reference.</param>
+		/// <param name="moduleName">Requested module file name from metadata.</param>
+		/// <param name="resolvedPath">Candidate path that was probed, or <see langword="null"/> if probing produced no path.</param>
+		/// <param name="innerException">Underlying IO or image-format exception, if one was observed.</param>
+		/// <exception cref="ArgumentNullException">
+		/// <paramref name="mainModule"/> or <paramref name="moduleName"/> is <see langword="null"/>.
+		/// </exception>
 		public ResolutionException(string mainModule, string moduleName, string? resolvedPath, Exception? innerException)
 			: base($"Failed to resolve module: '{moduleName} of {mainModule}'{Environment.NewLine}" +
 				  $"Resolve result: {resolvedPath ?? "<not found>"}", innerException)
@@ -58,22 +101,72 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 	}
 
+	/// <summary>
+	/// Resolves assembly and module references to <see cref="MetadataFile"/> instances.
+	/// </summary>
+	/// <remarks>
+	/// Implementations are allowed to use multiple strategies (already-loaded modules, search directories,
+	/// runtime packs, GAC, or custom host callbacks). Callers should treat returned metadata as read-only.
+	/// </remarks>
 	public interface IAssemblyResolver
 	{
 #if !VSADDIN
+		/// <summary>
+		/// Resolves an assembly reference synchronously.
+		/// </summary>
+		/// <param name="reference">Assembly identity to resolve.</param>
+		/// <returns>The resolved metadata file, or <see langword="null"/> when resolution fails.</returns>
 		MetadataFile? Resolve(IAssemblyReference reference);
+
+		/// <summary>
+		/// Resolves a module reference synchronously.
+		/// </summary>
+		/// <param name="mainModule">Main module that declares the module reference.</param>
+		/// <param name="moduleName">Referenced module file name.</param>
+		/// <returns>The resolved metadata file, or <see langword="null"/> when resolution fails.</returns>
 		MetadataFile? ResolveModule(MetadataFile mainModule, string moduleName);
+
+		/// <summary>
+		/// Resolves an assembly reference asynchronously.
+		/// </summary>
+		/// <param name="reference">Assembly identity to resolve.</param>
+		/// <returns>A task that completes with the resolved metadata file, or <see langword="null"/> when resolution fails.</returns>
 		Task<MetadataFile?> ResolveAsync(IAssemblyReference reference);
+
+		/// <summary>
+		/// Resolves a module reference asynchronously.
+		/// </summary>
+		/// <param name="mainModule">Main module that declares the module reference.</param>
+		/// <param name="moduleName">Referenced module file name.</param>
+		/// <returns>A task that completes with the resolved metadata file, or <see langword="null"/> when resolution fails.</returns>
 		Task<MetadataFile?> ResolveModuleAsync(MetadataFile mainModule, string moduleName);
 #endif
 	}
 
+	/// <summary>
+	/// Classifies assembly references for project-decompilation output decisions.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <see cref="WholeProjectDecompiler"/> uses classifiers to decide whether a resolved reference should be emitted
+	/// as an explicit <c>&lt;Reference&gt;</c> item, omitted as a framework-provided assembly, or emitted without a
+	/// <c>HintPath</c>.
+	/// </para>
+	/// <para>
+	/// <see cref="UniversalAssemblyResolver"/> extends this base type to provide runtime-aware classification.
+	/// </para>
+	/// </remarks>
 	public class AssemblyReferenceClassifier
 	{
 		/// <summary>
 		/// For GAC assembly references, the WholeProjectDecompiler will omit the HintPath in the
 		/// generated .csproj file.
 		/// </summary>
+		/// <param name="reference">Reference to classify.</param>
+		/// <returns>
+		/// <see langword="true"/> when the reference resolves through the machine-wide GAC and can be emitted without
+		/// an explicit path; otherwise <see langword="false"/>.
+		/// </returns>
 		public virtual bool IsGacAssembly(IAssemblyReference reference)
 		{
 			return UniversalAssemblyResolver.GetAssemblyInGac(reference) != null;
@@ -83,6 +176,12 @@ namespace ICSharpCode.Decompiler.Metadata
 		/// For .NET Core framework references, the WholeProjectDecompiler will omit the
 		/// assembly reference if the runtimePack is already included as an SDK.
 		/// </summary>
+		/// <param name="reference">Reference to classify.</param>
+		/// <param name="runtimePack">When the method returns <see langword="true"/>, receives the owning runtime-pack identifier.</param>
+		/// <returns>
+		/// <see langword="true"/> when the reference is supplied by a known shared runtime pack and may be omitted from explicit
+		/// project references; otherwise <see langword="false"/>.
+		/// </returns>
 		public virtual bool IsSharedAssembly(IAssemblyReference reference, [NotNullWhen(true)] out string? runtimePack)
 		{
 			runtimePack = null;
@@ -90,24 +189,43 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 	}
 
+	/// <summary>
+	/// Minimal contract representing an assembly identity used by decompiler resolvers.
+	/// </summary>
 	public interface IAssemblyReference
 	{
+		/// <summary>Gets the simple assembly name.</summary>
 		string Name { get; }
+		/// <summary>Gets the display name (full identity string).</summary>
 		string FullName { get; }
+		/// <summary>Gets the assembly version, if available.</summary>
 		Version? Version { get; }
+		/// <summary>Gets the culture name, or <see langword="null"/> when not specified.</summary>
 		string? Culture { get; }
+		/// <summary>Gets the public key token bytes, or <see langword="null"/> when the reference is not strongly named.</summary>
 		byte[]? PublicKeyToken { get; }
 
+		/// <summary>Gets whether the reference points to Windows Runtime metadata.</summary>
 		bool IsWindowsRuntime { get; }
+		/// <summary>Gets whether the reference carries the retargetable flag.</summary>
 		bool IsRetargetable { get; }
 	}
 
+	/// <summary>
+	/// Mutable implementation of <see cref="IAssemblyReference"/> based on assembly display-name text.
+	/// </summary>
 	public class AssemblyNameReference : IAssemblyReference
 	{
 		string? fullName;
 
+		/// <summary>
+		/// Gets the simple assembly name.
+		/// </summary>
 		public string Name { get; private set; } = string.Empty;
 
+		/// <summary>
+		/// Gets a normalized full display name built from the parsed identity components.
+		/// </summary>
 		public string FullName {
 			get {
 				if (fullName != null)
@@ -147,16 +265,28 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>Gets the parsed assembly version.</summary>
 		public Version? Version { get; private set; }
 
+		/// <summary>Gets the parsed culture (empty string represents neutral culture).</summary>
 		public string? Culture { get; private set; }
 
+		/// <summary>Gets the parsed public key token bytes.</summary>
 		public byte[]? PublicKeyToken { get; private set; }
 
+		/// <summary>Gets whether this reference represents Windows Runtime metadata.</summary>
 		public bool IsWindowsRuntime { get; private set; }
 
+		/// <summary>Gets whether this reference is marked retargetable.</summary>
 		public bool IsRetargetable { get; private set; }
 
+		/// <summary>
+		/// Parses an assembly display name into an <see cref="AssemblyNameReference"/>.
+		/// </summary>
+		/// <param name="fullName">Display name such as <c>System.Runtime, Version=8.0.0.0, Culture=neutral, PublicKeyToken=...</c>.</param>
+		/// <returns>The parsed reference object.</returns>
+		/// <exception cref="ArgumentNullException"><paramref name="fullName"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentException"><paramref name="fullName"/> is empty or malformed.</exception>
 		public static AssemblyNameReference Parse(string fullName)
 		{
 			if (fullName == null)
@@ -204,6 +334,10 @@ namespace ICSharpCode.Decompiler.Metadata
 			return name;
 		}
 
+		/// <summary>
+		/// Returns <see cref="FullName"/>.
+		/// </summary>
+		/// <returns>The normalized full assembly identity string.</returns>
 		public override string ToString()
 		{
 			return FullName;
@@ -211,21 +345,39 @@ namespace ICSharpCode.Decompiler.Metadata
 	}
 
 #if !VSADDIN
+	/// <summary>
+	/// <see cref="IAssemblyReference"/> implementation backed by a <see cref="MetadataReader"/> assembly-reference row.
+	/// </summary>
 	public class AssemblyReference : IAssemblyReference
 	{
 		static readonly SHA1 sha1 = SHA1.Create();
 
 		readonly System.Reflection.Metadata.AssemblyReference entry;
 
+		/// <summary>
+		/// Gets the metadata reader that owns <see cref="Handle"/>.
+		/// </summary>
 		public MetadataReader Metadata { get; }
+		/// <summary>
+		/// Gets the metadata handle for the referenced assembly row.
+		/// </summary>
 		public AssemblyReferenceHandle Handle { get; }
 
+		/// <summary>
+		/// Gets whether the referenced assembly is marked as Windows Runtime metadata.
+		/// </summary>
 		public bool IsWindowsRuntime => (entry.Flags & AssemblyFlags.WindowsRuntime) != 0;
+		/// <summary>
+		/// Gets whether the reference is marked retargetable.
+		/// </summary>
 		public bool IsRetargetable => (entry.Flags & AssemblyFlags.Retargetable) != 0;
 
 		string? name;
 		string? fullName;
 
+		/// <summary>
+		/// Gets the simple assembly name with malformed-metadata fallback text.
+		/// </summary>
 		public string Name {
 			get {
 				if (name == null)
@@ -243,6 +395,9 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Gets the full assembly display name with malformed-metadata fallback text.
+		/// </summary>
 		public string FullName {
 			get {
 				if (fullName == null)
@@ -260,10 +415,23 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>Gets the referenced assembly version.</summary>
 		public Version? Version => entry.Version;
+		/// <summary>Gets the referenced culture name.</summary>
 		public string Culture => Metadata.GetString(entry.Culture);
+		/// <summary>Gets the public key token (explicit token or token derived from the full public key).</summary>
 		byte[]? IAssemblyReference.PublicKeyToken => GetPublicKeyToken();
 
+		/// <summary>
+		/// Gets the public key token for this reference.
+		/// </summary>
+		/// <returns>
+		/// The token bytes, or <see langword="null"/> when the reference has no public-key or token blob.
+		/// </returns>
+		/// <remarks>
+		/// If metadata stores a full public key (<see cref="AssemblyFlags.PublicKey"/>), the token is computed by
+		/// taking the SHA-1 hash and returning the final 8 bytes, which matches CLR strong-name token derivation.
+		/// </remarks>
 		public byte[]? GetPublicKeyToken()
 		{
 			if (entry.PublicKeyOrToken.IsNil)
@@ -277,6 +445,10 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 		ImmutableArray<TypeReferenceMetadata> typeReferences;
+		/// <summary>
+		/// Gets type references that are scoped to this assembly reference.
+		/// </summary>
+		/// <remarks>The sequence is cached and sorted by namespace then name for deterministic traversal.</remarks>
 		public ImmutableArray<TypeReferenceMetadata> TypeReferences {
 			get {
 				var value = typeReferences;
@@ -295,6 +467,10 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 		ImmutableArray<ExportedTypeMetadata> exportedTypes;
+		/// <summary>
+		/// Gets exported types forwarded to this assembly reference.
+		/// </summary>
+		/// <remarks>The sequence is cached and sorted by namespace then name for deterministic traversal.</remarks>
 		public ImmutableArray<ExportedTypeMetadata> ExportedTypes {
 			get {
 				var value = exportedTypes;
@@ -312,6 +488,12 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Initializes an <see cref="AssemblyReference"/> from raw metadata components.
+		/// </summary>
+		/// <param name="metadata">Metadata reader that contains the reference row.</param>
+		/// <param name="handle">Handle of the assembly-reference row.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="metadata"/> is <see langword="null"/> or <paramref name="handle"/> is nil.</exception>
 		public AssemblyReference(MetadataReader metadata, AssemblyReferenceHandle handle)
 		{
 			if (metadata == null)
@@ -323,6 +505,12 @@ namespace ICSharpCode.Decompiler.Metadata
 			entry = metadata.GetAssemblyReference(handle);
 		}
 
+		/// <summary>
+		/// Initializes an <see cref="AssemblyReference"/> from a metadata file.
+		/// </summary>
+		/// <param name="module">Metadata file that contains the reference row.</param>
+		/// <param name="handle">Handle of the assembly-reference row.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="module"/> is <see langword="null"/> or <paramref name="handle"/> is nil.</exception>
 		public AssemblyReference(MetadataFile module, AssemblyReferenceHandle handle)
 		{
 			if (module == null)
@@ -334,6 +522,10 @@ namespace ICSharpCode.Decompiler.Metadata
 			entry = Metadata.GetAssemblyReference(handle);
 		}
 
+		/// <summary>
+		/// Returns <see cref="FullName"/>.
+		/// </summary>
+		/// <returns>The full assembly display name.</returns>
 		public override string ToString()
 		{
 			return FullName;
