@@ -27,8 +27,16 @@ using ICSharpCode.Decompiler.Metadata;
 namespace ICSharpCode.Decompiler.Documentation
 {
 	/// <summary>
-	/// Helps finding and loading .xml documentation.
+	/// Locates and caches XML documentation providers for metadata modules.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Lookup prefers side-by-side XML files (including localized subdirectories) and falls back to known .NET Framework reference/runtime directories.
+	/// </para>
+	/// <para>
+	/// Results are cached per <see cref="MetadataFile"/> instance, including negative lookups, so repeated documentation queries avoid repeated filesystem probing.
+	/// </para>
+	/// </remarks>
 	public static class XmlDocLoader
 	{
 		static readonly Lazy<XmlDocumentationProvider> mscorlibDocumentation = new Lazy<XmlDocumentationProvider>(LoadMscorlibDocumentation);
@@ -44,10 +52,19 @@ namespace ICSharpCode.Decompiler.Documentation
 				return null;
 		}
 
+		/// <summary>
+		/// Gets lazily loaded documentation for <c>mscorlib.dll</c> from the best available framework profile.
+		/// </summary>
 		public static XmlDocumentationProvider MscorlibDocumentation {
 			get { return mscorlibDocumentation.Value; }
 		}
 
+		/// <summary>
+		/// Loads (or retrieves from cache) the XML documentation provider associated with a metadata module.
+		/// </summary>
+		/// <param name="module">Module whose assembly path and runtime are used to locate XML documentation.</param>
+		/// <returns>A documentation provider for <paramref name="module"/>, or <see langword="null"/> when no suitable XML file is found.</returns>
+		/// <exception cref="ArgumentNullException"><paramref name="module"/> is <see langword="null"/>.</exception>
 		public static XmlDocumentationProvider LoadDocumentation(MetadataFile module)
 		{
 			if (module == null)
@@ -117,9 +134,13 @@ namespace ICSharpCode.Decompiler.Documentation
 		}
 
 		/// <summary>
-		/// Given the assembly file name, looks up the XML documentation file name.
-		/// Returns null if no XML documentation file is found.
+		/// Resolves the best XML documentation file path for an assembly path, honoring UI-culture-specific folders.
 		/// </summary>
+		/// <param name="fileName">Assembly file path whose extension is replaced with <c>.xml</c> during probing.</param>
+		/// <returns>
+		/// First existing candidate from culture-specific, language fallback, neutral, and English fallback locations;
+		/// otherwise <see langword="null"/>.
+		/// </returns>
 		internal static string LookupLocalizedXmlDoc(string fileName)
 		{
 			if (string.IsNullOrEmpty(fileName))

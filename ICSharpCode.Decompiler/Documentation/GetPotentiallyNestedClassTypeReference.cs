@@ -38,12 +38,34 @@ namespace ICSharpCode.Decompiler.Documentation
 		readonly string typeName;
 		readonly int typeParameterCount;
 
+		/// <summary>
+		/// Initializes a type reference that resolves a documentation-style type name where the top-level type boundary is ambiguous.
+		/// </summary>
+		/// <param name="typeName">
+		/// Full type name from an XML documentation ID (for example <c>Namespace.Outer.Inner</c>) where dots can represent either
+		/// namespace separators or nesting separators.
+		/// </param>
+		/// <param name="typeParameterCount">
+		/// Generic arity of the innermost type in <paramref name="typeName"/>. Outer types are assumed to be non-generic.
+		/// </param>
 		public GetPotentiallyNestedClassTypeReference(string typeName, int typeParameterCount)
 		{
 			this.typeName = typeName;
 			this.typeParameterCount = typeParameterCount;
 		}
 
+		/// <summary>
+		/// Resolves this type reference by trying every valid split between namespace and nested-type segments.
+		/// </summary>
+		/// <param name="context">Type-system context that supplies the current module and compilation modules used for lookup.</param>
+		/// <returns>
+		/// The first matching type definition across the current module and compilation modules; otherwise an <see cref="UnknownType"/>
+		/// built from the best-effort namespace/name split.
+		/// </returns>
+		/// <remarks>
+		/// XML documentation IDs flatten nested types into dotted names. Because metadata stores nested-type boundaries separately,
+		/// this resolver scans candidate boundaries from right to left and tests nested chains in each module.
+		/// </remarks>
 		public IType Resolve(ITypeResolveContext context)
 		{
 			string[] parts = typeName.Split('.');

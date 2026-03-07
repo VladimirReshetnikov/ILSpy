@@ -31,9 +31,11 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.Documentation
 {
 	/// <summary>
-	/// Represents an element in the XML documentation.
-	/// Any occurrences of "&lt;inheritdoc/>" are replaced with the inherited documentation.
+	/// Represents a node in processed XML documentation, with optional expansion of <c>&lt;inheritdoc/&gt;</c>.
 	/// </summary>
+	/// <remarks>
+	/// Instances may represent either element nodes (with attributes and children) or synthetic text nodes used to preserve mixed content.
+	/// </remarks>
 	public class XmlDocumentationElement
 	{
 		readonly XElement? element;
@@ -47,8 +49,12 @@ namespace ICSharpCode.Decompiler.Documentation
 		int nestingLevel;
 
 		/// <summary>
-		/// Creates a new documentation element.
+		/// Creates an element-backed documentation node.
 		/// </summary>
+		/// <param name="element">XML element represented by this node.</param>
+		/// <param name="declaringEntity">Entity that owns the documentation block, used as the implicit source for <c>inheritdoc</c>.</param>
+		/// <param name="crefResolver">Resolver used to map <c>cref</c> attribute values to entities.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="element"/> is <see langword="null"/>.</exception>
 		public XmlDocumentationElement(XElement element, IEntity? declaringEntity, Func<string, IEntity?>? crefResolver)
 		{
 			if (element == null)
@@ -59,8 +65,11 @@ namespace ICSharpCode.Decompiler.Documentation
 		}
 
 		/// <summary>
-		/// Creates a new documentation element.
+		/// Creates a text-node documentation element.
 		/// </summary>
+		/// <param name="text">Literal text content represented by this node.</param>
+		/// <param name="declaringEntity">Entity that owns the surrounding documentation block.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="text"/> is <see langword="null"/>.</exception>
 		public XmlDocumentationElement(string text, IEntity? declaringEntity)
 		{
 			if (text == null)
@@ -70,9 +79,11 @@ namespace ICSharpCode.Decompiler.Documentation
 		}
 
 		/// <summary>
-		/// Gets the entity on which this documentation was originally declared.
-		/// May return null.
+		/// Gets the entity on which this documentation node originated.
 		/// </summary>
+		/// <value>
+		/// The declaration owner for this node, or <see langword="null"/> when the node was created without entity context.
+		/// </value>
 		public IEntity? DeclaringEntity {
 			get { return declaringEntity; }
 		}
@@ -81,9 +92,12 @@ namespace ICSharpCode.Decompiler.Documentation
 		volatile bool referencedEntityInitialized;
 
 		/// <summary>
-		/// Gets the entity referenced by the 'cref' attribute.
-		/// May return null.
+		/// Gets the entity referenced by this node's <c>cref</c> attribute.
 		/// </summary>
+		/// <value>
+		/// Resolved entity when <c>cref</c> exists and can be resolved; otherwise <see langword="null"/>.
+		/// Resolution failures are intentionally swallowed.
+		/// </value>
 		public IEntity? ReferencedEntity {
 			get {
 				if (!referencedEntityInitialized)
@@ -105,8 +119,9 @@ namespace ICSharpCode.Decompiler.Documentation
 		}
 
 		/// <summary>
-		/// Gets the element name.
+		/// Gets the local XML element name.
 		/// </summary>
+		/// <value>Element local name for element nodes; empty string for text nodes.</value>
 		public string Name {
 			get {
 				return element != null ? element.Name.LocalName : string.Empty;
@@ -114,23 +129,28 @@ namespace ICSharpCode.Decompiler.Documentation
 		}
 
 		/// <summary>
-		/// Gets the attribute value.
+		/// Gets an attribute value from the underlying XML element.
 		/// </summary>
+		/// <param name="name">Attribute name to retrieve.</param>
+		/// <returns>Attribute value when present; otherwise <see langword="null"/>.</returns>
 		public string? GetAttribute(string? name)
 		{
 			return name == null ? null : element?.Attribute(name)?.Value;
 		}
 
 		/// <summary>
-		/// Gets whether this is a pure text node.
+		/// Gets whether this instance represents plain text rather than an XML element.
 		/// </summary>
 		public bool IsTextNode {
 			get { return element == null; }
 		}
 
 		/// <summary>
-		/// Gets the text content.
+		/// Gets the concatenated textual content of this node.
 		/// </summary>
+		/// <value>
+		/// For text nodes, the stored text value. For element nodes, concatenation of descendant <see cref="Children"/> text content.
+		/// </value>
 		public string TextContent {
 			get {
 				if (textContent == null)
@@ -147,8 +167,9 @@ namespace ICSharpCode.Decompiler.Documentation
 		IList<XmlDocumentationElement>? children;
 
 		/// <summary>
-		/// Gets the child elements.
+		/// Gets child documentation nodes after applying inheritance expansion and boundary whitespace normalization.
 		/// </summary>
+		/// <value>An immutable-like list of child nodes. The list is empty for text nodes.</value>
 		public IList<XmlDocumentationElement> Children {
 			get {
 				if (element == null)

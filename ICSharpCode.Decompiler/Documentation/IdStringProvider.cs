@@ -116,6 +116,15 @@ namespace ICSharpCode.Decompiler.Documentation
 			return b.ToString();
 		}
 
+		/// <summary>
+		/// Appends a type in XML documentation ID syntax.
+		/// </summary>
+		/// <param name="b">Destination builder receiving encoded type tokens.</param>
+		/// <param name="type">Type to encode.</param>
+		/// <param name="explicitInterfaceImpl">
+		/// <see langword="true"/> to emit explicit-interface-implementation escaping (for example <c>#</c> for dot separators);
+		/// otherwise standard documentation-ID encoding.
+		/// </param>
 		static void AppendTypeName(StringBuilder b, IType type, bool explicitInterfaceImpl)
 		{
 			switch (type.Kind)
@@ -182,6 +191,13 @@ namespace ICSharpCode.Decompiler.Documentation
 			}
 		}
 
+		/// <summary>
+		/// Appends generic arity or concrete type arguments for the innermost segment of <paramref name="type"/>.
+		/// </summary>
+		/// <param name="b">Destination builder receiving the generic suffix.</param>
+		/// <param name="type">Type whose generic suffix is emitted.</param>
+		/// <param name="outerTypeParameterCount">Count of type parameters owned by outer declaring types and therefore excluded.</param>
+		/// <param name="explicitInterfaceImpl">Controls separator escaping used by explicit interface member IDs.</param>
 		static void AppendTypeParameters(StringBuilder b, IType type, int outerTypeParameterCount, bool explicitInterfaceImpl)
 		{
 			int tpc = type.TypeParameterCount - outerTypeParameterCount;
@@ -282,6 +298,11 @@ namespace ICSharpCode.Decompiler.Documentation
 			return r;
 		}
 
+		/// <summary>
+		/// Determines whether a character terminates or modifies the plain-name portion in XML documentation type-name grammar.
+		/// </summary>
+		/// <param name="c">Character to classify.</param>
+		/// <returns><see langword="true"/> when the character is a grammar token; otherwise <see langword="false"/>.</returns>
 		static bool IsIDStringSpecialCharacter(char c)
 		{
 			switch (c)
@@ -303,6 +324,13 @@ namespace ICSharpCode.Decompiler.Documentation
 			}
 		}
 
+		/// <summary>
+		/// Parses a type reference from documentation-ID type-name grammar starting at <paramref name="pos"/>.
+		/// </summary>
+		/// <param name="typeName">Source documentation type-name string.</param>
+		/// <param name="pos">Current parse position. Updated to the first unconsumed character.</param>
+		/// <returns>The parsed type reference.</returns>
+		/// <exception cref="ReflectionNameParseException">The input is syntactically invalid.</exception>
 		static ITypeReference ParseTypeName(string typeName, ref int pos)
 		{
 			string reflectionTypeName = typeName;
@@ -376,6 +404,16 @@ namespace ICSharpCode.Decompiler.Documentation
 			return result;
 		}
 
+		/// <summary>
+		/// Reads a simple (possibly generic) type-name segment from documentation-ID type-name grammar.
+		/// </summary>
+		/// <param name="typeName">Source string being parsed.</param>
+		/// <param name="pos">Current parse position. Updated to the first character after this segment.</param>
+		/// <param name="allowDottedName"><see langword="true"/> to allow dots within the segment; <see langword="false"/> to stop at dot boundaries.</param>
+		/// <param name="typeParameterCount">Receives generic arity for this segment.</param>
+		/// <param name="typeArguments">Collects parsed bound generic arguments when present.</param>
+		/// <returns>The parsed segment name without generic suffix syntax.</returns>
+		/// <exception cref="ReflectionNameParseException">The segment has invalid generic syntax.</exception>
 		static string ReadTypeName(string typeName, ref int pos, bool allowDottedName, out int typeParameterCount, List<ITypeReference> typeArguments)
 		{
 			int startPos = pos;
