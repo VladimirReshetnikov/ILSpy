@@ -24,16 +24,20 @@ using System.Threading;
 namespace ICSharpCode.Decompiler.Util
 {
 	/// <summary>
-	/// Invokes an action when it is disposed.
+	/// Invokes a callback exactly once when disposed.
 	/// </summary>
 	/// <remarks>
-	/// This class ensures the callback is invoked at most once,
-	/// even when Dispose is called on multiple threads.
+	/// This helper is used to model lightweight scope-exit actions without allocating a full custom disposable type for each call site.
 	/// </remarks>
 	public sealed class CallbackOnDispose : IDisposable
 	{
 		Action? action;
 
+		/// <summary>
+		/// Initializes a new instance that executes <paramref name="action"/> on disposal.
+		/// </summary>
+		/// <param name="action">Callback to execute when disposal first occurs.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="action"/> is <see langword="null"/>.</exception>
 		public CallbackOnDispose(Action action)
 		{
 			if (action == null)
@@ -41,6 +45,13 @@ namespace ICSharpCode.Decompiler.Util
 			this.action = action;
 		}
 
+		/// <summary>
+		/// Executes the callback if it has not already run.
+		/// </summary>
+		/// <remarks>
+		/// Thread-safe: concurrent calls race through <see cref="Interlocked.Exchange{T}(ref T, T)"/> and at most one caller receives
+		/// the original delegate.
+		/// </remarks>
 		public void Dispose()
 		{
 			Action? a = Interlocked.Exchange(ref action, null);

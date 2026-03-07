@@ -24,16 +24,29 @@ using System.Collections.Concurrent;
 namespace ICSharpCode.Decompiler.Util
 {
 	/// <summary>
-	/// Allows caching values for a specific compilation.
-	/// A CacheManager consists of a for shared instances (shared among all threads working with that resolve context).
+	/// Provides process-local shared caches keyed by object identity.
 	/// </summary>
-	/// <remarks>This class is thread-safe</remarks>
+	/// <remarks>
+	/// <para>
+	/// The underlying dictionary uses <see cref="ReferenceComparer"/>, so keys are compared by reference identity rather than value equality.
+	/// This allows individual compilation components to use private sentinel objects as collision-free cache keys.
+	/// </para>
+	/// <para>
+	/// This type is thread-safe. A prior thread-local cache layer was intentionally removed to avoid long-lived thread-local retention.
+	/// </para>
+	/// </remarks>
 	public sealed class CacheManager
 	{
 		readonly ConcurrentDictionary<object, object> sharedDict = new ConcurrentDictionary<object, object>(ReferenceComparer.Instance);
 		// There used to be a thread-local dictionary here, but I removed it as it was causing memory
 		// leaks in some use cases.
 
+		/// <summary>
+		/// Gets the cached value associated with <paramref name="key"/>.
+		/// </summary>
+		/// <param name="key">Identity key used for lookup.</param>
+		/// <returns>The cached value, or <see langword="null"/> when no entry exists for <paramref name="key"/>.</returns>
+		/// <exception cref="ArgumentNullException"><paramref name="key"/> is <see langword="null"/>.</exception>
 		public object? GetShared(object key)
 		{
 			object? value;
@@ -41,16 +54,40 @@ namespace ICSharpCode.Decompiler.Util
 			return value;
 		}
 
+		/// <summary>
+		/// Gets the value associated with <paramref name="key"/>, or atomically computes and stores one.
+		/// </summary>
+		/// <param name="key">Identity key used for lookup.</param>
+		/// <param name="valueFactory">Factory invoked when the key is not yet present.</param>
+		/// <returns>The existing or newly created value associated with <paramref name="key"/>.</returns>
+		/// <exception cref="ArgumentNullException"><paramref name="key"/> or <paramref name="valueFactory"/> is <see langword="null"/>.</exception>
+		/// <remarks>
+		/// <see cref="ConcurrentDictionary{TKey, TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/> may invoke <paramref name="valueFactory"/> more than once
+		/// under contention; only one produced value is published.
+		/// </remarks>
 		public object GetOrAddShared(object key, Func<object, object> valueFactory)
 		{
 			return sharedDict.GetOrAdd(key, valueFactory);
 		}
 
+		/// <summary>
+		/// Gets the value associated with <paramref name="key"/>, or stores <paramref name="value"/> when the key is not present.
+		/// </summary>
+		/// <param name="key">Identity key used for lookup.</param>
+		/// <param name="value">Value to publish if no entry exists yet.</param>
+		/// <returns>The existing or newly stored value associated with <paramref name="key"/>.</returns>
+		/// <exception cref="ArgumentNullException"><paramref name="key"/> or <paramref name="value"/> is <see langword="null"/>.</exception>
 		public object GetOrAddShared(object key, object value)
 		{
 			return sharedDict.GetOrAdd(key, value);
 		}
 
+		/// <summary>
+		/// Sets the value associated with <paramref name="key"/>, replacing any previous value.
+		/// </summary>
+		/// <param name="key">Identity key used for lookup.</param>
+		/// <param name="value">Value to store.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="key"/> or <paramref name="value"/> is <see langword="null"/>.</exception>
 		public void SetShared(object key, object value)
 		{
 			sharedDict[key] = value;

@@ -22,15 +22,36 @@ using System.Runtime.CompilerServices;
 
 namespace ICSharpCode.Decompiler.Util
 {
+	/// <summary>
+	/// Compares objects using reference identity semantics.
+	/// </summary>
+	/// <remarks>
+	/// Hash codes are produced with <see cref="RuntimeHelpers.GetHashCode(object)"/>, which remains stable for the object's lifetime and ignores
+	/// custom <see cref="object.GetHashCode"/> implementations.
+	/// </remarks>
 	public sealed class ReferenceComparer : IEqualityComparer<object?>
 	{
+		/// <summary>
+		/// Shared singleton instance.
+		/// </summary>
 		public readonly static ReferenceComparer Instance = new ReferenceComparer();
 
+		/// <summary>
+		/// Determines whether two references point to the same object instance.
+		/// </summary>
+		/// <param name="x">First object reference.</param>
+		/// <param name="y">Second object reference.</param>
+		/// <returns><see langword="true"/> when <paramref name="x"/> and <paramref name="y"/> are the same reference; otherwise <see langword="false"/>.</returns>
 		public new bool Equals(object? x, object? y)
 		{
 			return x == y;
 		}
 
+		/// <summary>
+		/// Returns an identity-based hash code for <paramref name="obj"/>.
+		/// </summary>
+		/// <param name="obj">Reference whose identity hash code should be returned.</param>
+		/// <returns>The identity hash code used by hash-based collections configured with this comparer.</returns>
 		public int GetHashCode(object? obj)
 		{
 			return RuntimeHelpers.GetHashCode(obj);

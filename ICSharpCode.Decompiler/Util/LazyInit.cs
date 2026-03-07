@@ -22,18 +22,43 @@ using System.Threading;
 
 namespace ICSharpCode.Decompiler.Util
 {
+	/// <summary>
+	/// Provides allocation-free helpers for lock-free lazy initialization of reference fields.
+	/// </summary>
+	/// <remarks>
+	/// These helpers are used throughout metadata and resolver code paths where repeated reads are common and per-access locking would be too expensive.
+	/// </remarks>
 	public static class LazyInit
 	{
+		/// <summary>
+		/// Performs a volatile read of a reference field.
+		/// </summary>
+		/// <typeparam name="T">Reference type stored in <paramref name="location"/>.</typeparam>
+		/// <param name="location">Field to read using acquire semantics.</param>
+		/// <returns>The current value stored in <paramref name="location"/>.</returns>
 		public static T VolatileRead<T>(ref T location) where T : class?
 		{
 			return Volatile.Read(ref location);
 		}
 
 		/// <summary>
-		/// Atomically performs the following operation:
-		/// - If target is null: stores newValue in target and returns newValue.
-		/// - If target is not null: returns target.
+		/// Atomically sets <paramref name="target"/> to <paramref name="newValue"/> when it is currently <see langword="null"/>.
 		/// </summary>
+		/// <typeparam name="T">Reference type of the lazily initialized field.</typeparam>
+		/// <param name="target">Field to initialize.</param>
+		/// <param name="newValue">Candidate value to publish if <paramref name="target"/> is currently <see langword="null"/>.</param>
+		/// <returns>
+		/// The existing value in <paramref name="target"/> when one was already published; otherwise <paramref name="newValue"/>.
+		/// </returns>
+		/// <remarks>
+		/// <para>
+		/// This method does not compute values. Callers usually construct <paramref name="newValue"/> first and then race to publish it,
+		/// accepting that discarded candidates might be allocated.
+		/// </para>
+		/// <para>
+		/// Publication uses <see cref="Interlocked.CompareExchange(ref T, T, T)"/> so subsequent volatile reads observe a fully initialized object.
+		/// </para>
+		/// </remarks>
 		[return: NotNullIfNotNull("newValue")]
 		public static T? GetOrSet<T>(ref T? target, T? newValue) where T : class
 		{
