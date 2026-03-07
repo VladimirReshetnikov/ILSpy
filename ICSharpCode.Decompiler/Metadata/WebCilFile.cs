@@ -32,6 +32,20 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Represents managed metadata extracted from a WebCIL payload stored inside a WebAssembly module.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// WebCIL wraps CLI metadata and section information in a container optimized for WebAssembly delivery.
+	/// <see cref="WebCilFile"/> projects that payload through the same <see cref="MetadataFile"/> abstractions used for PE files,
+	/// allowing downstream decompiler passes to resolve methods and section mappings without special-case logic.
+	/// </para>
+	/// <para>
+	/// The implementation memory-maps the source file and keeps that mapping alive for the lifetime of the instance.
+	/// Callers must dispose the object after use.
+	/// </para>
+	/// </remarks>
 	public class WebCilFile : MetadataFile, IDisposable, IModuleReference
 	{
 		readonly MemoryMappedViewAccessor view;
@@ -47,6 +61,19 @@ namespace ICSharpCode.Decompiler.Metadata
 			this.WasmSections = wasmSections;
 		}
 
+		/// <summary>
+		/// Attempts to open a file as a WebAssembly module containing a WebCIL segment.
+		/// </summary>
+		/// <param name="fileName">Path of the candidate file.</param>
+		/// <param name="metadataOptions">Options used when creating the metadata reader for the extracted metadata stream.</param>
+		/// <returns>
+		/// A <see cref="WebCilFile"/> when the file is readable and contains a decodable WebCIL payload;
+		/// otherwise <see langword="null"/>.
+		/// </returns>
+		/// <remarks>
+		/// This method is intentionally conservative: unknown formats, unreadable files, and structurally invalid
+		/// WebCIL layouts all return <see langword="null"/> so the outer loader pipeline can continue probing other formats.
+		/// </remarks>
 		public static WebCilFile? FromFile(string fileName, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default)
 		{
 			using var memoryMappedFile = TryCreateFromFile(fileName);
@@ -182,7 +209,14 @@ namespace ICSharpCode.Decompiler.Metadata
 			return reader.BaseStream.Seek(metadataOffset, SeekOrigin.Begin) == metadataOffset;
 		}
 
+		/// <summary>
+		/// Gets the file offset where the extracted managed metadata root begins.
+		/// </summary>
 		public override int MetadataOffset { get; }
+
+		/// <summary>
+		/// Gets <see langword="false"/> because WebCIL payloads include section and method-body data.
+		/// </summary>
 		public override bool IsMetadataOnly => false;
 
 		private static int GetContainingSectionIndex(IEnumerable<SectionHeader> sections, int rva)
@@ -211,17 +245,34 @@ namespace ICSharpCode.Decompiler.Metadata
 			throw new BadImageFormatException("RVA not found in any section");
 		}
 
+		/// <summary>
+		/// Reads and decodes the method body at the specified RVA from the WebCIL section table.
+		/// </summary>
+		/// <param name="rva">Relative virtual address of the target method body.</param>
+		/// <returns>The decoded method body block.</returns>
+		/// <exception cref="BadImageFormatException">No section contains the supplied <paramref name="rva"/>.</exception>
 		public override MethodBodyBlock GetMethodBody(int rva)
 		{
 			var reader = GetSectionData(rva).GetReader();
 			return MethodBodyBlock.Create(reader);
 		}
 
+		/// <summary>
+		/// Returns the zero-based section index for the section containing the specified RVA.
+		/// </summary>
+		/// <param name="rva">Relative virtual address to locate.</param>
+		/// <returns>The containing section index, or <c>-1</c> when no section contains <paramref name="rva"/>.</returns>
 		public override int GetContainingSectionIndex(int rva)
 		{
 			return GetContainingSectionIndex(SectionHeaders, rva);
 		}
 
+		/// <summary>
+		/// Returns raw section bytes for the section containing the specified RVA.
+		/// </summary>
+		/// <param name="rva">Relative virtual address to locate.</param>
+		/// <returns>A section-data view over the containing section.</returns>
+		/// <exception cref="BadImageFormatException">No section contains the supplied <paramref name="rva"/>.</exception>
 		public override unsafe SectionData GetSectionData(int rva)
 		{
 			foreach (var section in SectionHeaders)
@@ -236,8 +287,14 @@ namespace ICSharpCode.Decompiler.Metadata
 			throw new BadImageFormatException("RVA not found in any section");
 		}
 
+		/// <summary>
+		/// Gets the decoded WebCIL section headers used for RVA-to-file mapping.
+		/// </summary>
 		public override ImmutableArray<SectionHeader> SectionHeaders { get; }
 
+		/// <summary>
+		/// Gets the top-level WebAssembly sections discovered while scanning the input module.
+		/// </summary>
 		public ImmutableArray<WasmSection> WasmSections { get; }
 
 		IModule? IModuleReference.Resolve(ITypeResolveContext context)
@@ -245,33 +302,59 @@ namespace ICSharpCode.Decompiler.Metadata
 			return new MetadataModule(context.Compilation, this, TypeSystemOptions.Default);
 		}
 
+		/// <summary>
+		/// Releases the memory-mapped view used by this instance.
+		/// </summary>
 		public void Dispose()
 		{
 			view.Dispose();
 		}
 
+		/// <summary>
+		/// Describes the fixed header at the start of the WebCIL segment.
+		/// </summary>
 		public struct WebcilHeader
 		{
+			/// <summary>Major version of the WebCIL container format.</summary>
 			public ushort VersionMajor;
+			/// <summary>Minor version of the WebCIL container format.</summary>
 			public ushort VersionMinor;
+			/// <summary>Number of section entries in the WebCIL section table.</summary>
 			public ushort CoffSections;
+			/// <summary>RVA of the CLI header within the WebCIL section-address space.</summary>
 			public uint PECliHeaderRVA;
+			/// <summary>Size of the CLI header payload in bytes.</summary>
 			public uint PECliHeaderSize;
+			/// <summary>RVA of debug directory information.</summary>
 			public uint PEDebugRVA;
+			/// <summary>Size of debug directory information in bytes.</summary>
 			public uint PEDebugSize;
 		}
 
 		const uint WASM_MAGIC = 0x6d736100u; // "\0asm"
 		const uint WEBCIL_MAGIC = 0x4c496257u; // "WbIL"
 
+		/// <summary>
+		/// Represents one top-level section entry from the host WebAssembly module.
+		/// </summary>
 		[DebuggerDisplay("WasmSection {Id}: {Offset} {Size}")]
 		public class WasmSection
 		{
+			/// <summary>Gets or sets the section identifier as defined by the WebAssembly binary format.</summary>
 			public WasmSectionId Id;
+			/// <summary>Gets or sets the file offset where the section payload begins.</summary>
 			public long Offset;
+			/// <summary>Gets or sets the payload size in bytes.</summary>
 			public uint Size;
 			private MemoryMappedViewAccessor view;
 
+			/// <summary>
+			/// Initializes a WebAssembly section descriptor.
+			/// </summary>
+			/// <param name="id">Section identifier.</param>
+			/// <param name="offset">File offset of the section payload.</param>
+			/// <param name="size">Section payload size in bytes.</param>
+			/// <param name="view">Memory-mapped view that keeps the backing file alive.</param>
 			public WasmSection(WasmSectionId id, long offset, uint size, MemoryMappedViewAccessor view)
 			{
 				this.Id = id;
@@ -281,6 +364,9 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// WebAssembly section identifiers as encoded in binary modules.
+		/// </summary>
 		public enum WasmSectionId : byte
 		{
 			// order matters: enum values must match the WebAssembly spec
