@@ -25,6 +25,13 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.IL
 {
+	/// <summary>
+	/// Describes which value a compound-assignment instruction exposes as its expression result.
+	/// </summary>
+	/// <remarks>
+	/// Prefix-style operations evaluate to the updated value, while postfix-style operations evaluate to the original value.
+	/// The distinction is consumed by <see cref="ICSharpCode.Decompiler.CSharp.ExpressionBuilder"/> when selecting C# syntax.
+	/// </remarks>
 	public enum CompoundEvalMode : byte
 	{
 		/// <summary>
@@ -39,6 +46,9 @@ namespace ICSharpCode.Decompiler.IL
 		EvaluatesToNewValue
 	}
 
+	/// <summary>
+	/// Identifies how <see cref="CompoundAssignmentInstruction.Target"/> is represented in the IL tree.
+	/// </summary>
 	public enum CompoundTargetKind : byte
 	{
 		/// <summary>
@@ -57,8 +67,18 @@ namespace ICSharpCode.Decompiler.IL
 		Dynamic
 	}
 
+	/// <summary>
+	/// Base class for IL instructions that model compound assignments and increment/decrement updates.
+	/// </summary>
+	/// <remarks>
+	/// Instances are produced by assignment transforms after proving that the load/compute/store sequence can be collapsed
+	/// without changing side effects, conversion behavior, or target evaluation ordering.
+	/// </remarks>
 	public abstract partial class CompoundAssignmentInstruction : ILInstruction
 	{
+		/// <summary>
+		/// Specifies whether the expression result is the old value or the updated value.
+		/// </summary>
 		public readonly CompoundEvalMode EvalMode;
 
 		/// <summary>
@@ -69,6 +89,14 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		public readonly CompoundTargetKind TargetKind;
 
+		/// <summary>
+		/// Initializes a compound-assignment instruction.
+		/// </summary>
+		/// <param name="opCode">The concrete instruction opcode.</param>
+		/// <param name="evalMode">Whether the expression result is old-value or new-value based.</param>
+		/// <param name="target">The instruction that locates the assignment target.</param>
+		/// <param name="targetKind">How <paramref name="target"/> should be interpreted.</param>
+		/// <param name="value">The right-hand operand participating in the update.</param>
 		public CompoundAssignmentInstruction(OpCode opCode, CompoundEvalMode evalMode, ILInstruction target, CompoundTargetKind targetKind, ILInstruction value)
 			: base(opCode)
 		{
@@ -127,6 +155,9 @@ namespace ICSharpCode.Decompiler.IL
 		}
 	}
 
+	/// <summary>
+	/// Represents a compound assignment implemented by a built-in numeric operator.
+	/// </summary>
 	public partial class NumericCompoundAssign : CompoundAssignmentInstruction, ILiftableInstruction
 	{
 		/// <summary>
@@ -143,6 +174,9 @@ namespace ICSharpCode.Decompiler.IL
 
 		public readonly StackType LeftInputType;
 		public readonly StackType RightInputType;
+		/// <summary>
+		/// Gets the non-lifted stack type produced by the underlying numeric operation.
+		/// </summary>
 		public StackType UnderlyingResultType { get; }
 
 		/// <summary>
@@ -152,6 +186,15 @@ namespace ICSharpCode.Decompiler.IL
 
 		public bool IsLifted { get; }
 
+		/// <summary>
+		/// Initializes a numeric compound assignment from a previously matched binary operation.
+		/// </summary>
+		/// <param name="binary">The binary operation being folded into compound form.</param>
+		/// <param name="target">The assignment target instruction.</param>
+		/// <param name="targetKind">How <paramref name="target"/> should be interpreted.</param>
+		/// <param name="value">The right-hand operand used by the operation.</param>
+		/// <param name="type">The semantic type of the assignment target.</param>
+		/// <param name="evalMode">Whether the expression result is old-value or new-value based.</param>
 		public NumericCompoundAssign(BinaryNumericInstruction binary, ILInstruction target,
 			CompoundTargetKind targetKind, ILInstruction value, IType type, CompoundEvalMode evalMode)
 			: base(OpCode.NumericCompoundAssign, evalMode, target, targetKind, value)
@@ -173,6 +216,13 @@ namespace ICSharpCode.Decompiler.IL
 		/// <summary>
 		/// Gets whether the specific binary instruction is compatible with a compound operation on the specified type.
 		/// </summary>
+		/// <param name="binary">The binary instruction candidate.</param>
+		/// <param name="type">The assignment target type that would receive the result.</param>
+		/// <param name="settings">Decompiler settings that influence language-level legality checks.</param>
+		/// <returns>
+		/// <see langword="true"/> if the operation can be represented as a C# compound assignment without semantic changes;
+		/// otherwise <see langword="false"/>.
+		/// </returns>
 		internal static bool IsBinaryCompatibleWithType(BinaryNumericInstruction binary, IType type, DecompilerSettings? settings)
 		{
 			if (binary.IsLifted)
@@ -304,11 +354,25 @@ namespace ICSharpCode.Decompiler.IL
 		}
 	}
 
+	/// <summary>
+	/// Represents a compound assignment implemented by a user-defined operator method.
+	/// </summary>
 	public partial class UserDefinedCompoundAssign : CompoundAssignmentInstruction
 	{
+		/// <summary>
+		/// Gets the method that provides the operator semantics.
+		/// </summary>
 		public readonly IMethod Method;
 		public bool IsLifted => false; // TODO: implement lifted user-defined compound assignments
 
+		/// <summary>
+		/// Initializes a user-defined compound assignment instruction.
+		/// </summary>
+		/// <param name="method">The operator method or supported string-concatenation helper.</param>
+		/// <param name="evalMode">Whether the expression result is old-value or new-value based.</param>
+		/// <param name="target">The assignment target instruction.</param>
+		/// <param name="targetKind">How <paramref name="target"/> should be interpreted.</param>
+		/// <param name="value">The right-hand operand or unary step value.</param>
 		public UserDefinedCompoundAssign(IMethod method, CompoundEvalMode evalMode,
 			ILInstruction target, CompoundTargetKind targetKind, ILInstruction value)
 			: base(OpCode.UserDefinedCompoundAssign, evalMode, target, targetKind, value)
@@ -318,6 +382,15 @@ namespace ICSharpCode.Decompiler.IL
 			Debug.Assert(evalMode == CompoundEvalMode.EvaluatesToNewValue || IsIncrementOrDecrement(method));
 		}
 
+		/// <summary>
+		/// Determines whether a method matches increment/decrement operator names accepted by the decompiler.
+		/// </summary>
+		/// <param name="method">The candidate operator method.</param>
+		/// <param name="settings">Optional settings used to decide whether checked variants are enabled.</param>
+		/// <returns>
+		/// <see langword="true"/> when <paramref name="method"/> can represent increment/decrement;
+		/// otherwise <see langword="false"/>.
+		/// </returns>
 		public static bool IsIncrementOrDecrement(IMethod method, DecompilerSettings? settings = null)
 		{
 			if (!(method.IsOperator && method.IsStatic))
@@ -329,6 +402,14 @@ namespace ICSharpCode.Decompiler.IL
 			return false;
 		}
 
+		/// <summary>
+		/// Determines whether a method is recognized as <see cref="string"/> concatenation in compound-assignment lowering.
+		/// </summary>
+		/// <param name="method">The candidate method.</param>
+		/// <returns>
+		/// <see langword="true"/> if <paramref name="method"/> is a static <c>System.String.Concat</c> overload;
+		/// otherwise <see langword="false"/>.
+		/// </returns>
 		public static bool IsStringConcat(IMethod method)
 		{
 			return method.Name == "Concat" && method.IsStatic && method.DeclaringType.IsKnownType(KnownTypeCode.String);
@@ -351,13 +432,41 @@ namespace ICSharpCode.Decompiler.IL
 		}
 	}
 
+	/// <summary>
+	/// Represents a compound assignment whose semantics are deferred to the C# dynamic binder.
+	/// </summary>
 	public partial class DynamicCompoundAssign : CompoundAssignmentInstruction
 	{
+		/// <summary>
+		/// Gets the expression-tree operation describing the dynamic assignment form.
+		/// </summary>
 		public ExpressionType Operation { get; }
+		/// <summary>
+		/// Gets binder metadata for the target operand.
+		/// </summary>
 		public CSharpArgumentInfo TargetArgumentInfo { get; }
+		/// <summary>
+		/// Gets binder metadata for the value operand.
+		/// </summary>
 		public CSharpArgumentInfo ValueArgumentInfo { get; }
+		/// <summary>
+		/// Gets binder flags that influence runtime binding behavior.
+		/// </summary>
 		public CSharpBinderFlags BinderFlags { get; }
 
+		/// <summary>
+		/// Initializes a dynamic compound-assignment instruction.
+		/// </summary>
+		/// <param name="op">The supported dynamic assignment operation.</param>
+		/// <param name="binderFlags">Binder flags carried from call-site creation.</param>
+		/// <param name="target">The instruction that resolves the dynamic target.</param>
+		/// <param name="targetArgumentInfo">Binder metadata for <paramref name="target"/>.</param>
+		/// <param name="value">The right-hand dynamic operand.</param>
+		/// <param name="valueArgumentInfo">Binder metadata for <paramref name="value"/>.</param>
+		/// <param name="targetKind">How <paramref name="target"/> should be interpreted.</param>
+		/// <exception cref="ArgumentOutOfRangeException">
+		/// <paramref name="op"/> is not a supported assignment operation.
+		/// </exception>
 		public DynamicCompoundAssign(ExpressionType op, CSharpBinderFlags binderFlags,
 			ILInstruction target, CSharpArgumentInfo targetArgumentInfo,
 			ILInstruction value, CSharpArgumentInfo valueArgumentInfo,
@@ -383,6 +492,14 @@ namespace ICSharpCode.Decompiler.IL
 			DynamicInstruction.WriteArgumentList(output, options, (Target, TargetArgumentInfo), (Value, ValueArgumentInfo));
 		}
 
+		/// <summary>
+		/// Determines whether an expression-tree operation can be represented by <see cref="DynamicCompoundAssign"/>.
+		/// </summary>
+		/// <param name="type">The operation kind to test.</param>
+		/// <returns>
+		/// <see langword="true"/> for supported dynamic assignment and increment/decrement operations;
+		/// otherwise <see langword="false"/>.
+		/// </returns>
 		internal static bool IsExpressionTypeSupported(ExpressionType type)
 		{
 			return type == ExpressionType.AddAssign
@@ -417,4 +534,3 @@ namespace ICSharpCode.Decompiler.IL
 		}
 	}
 }
-
