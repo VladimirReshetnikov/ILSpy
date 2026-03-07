@@ -10,79 +10,126 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.IL.Transforms
 {
 	/// <summary>
-	/// Per-block IL transform.
+	/// Defines a transform that operates on a single control-flow <see cref="Block"/>.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The block pipeline visits blocks in dominator-tree order. Implementations can rely on the guarantee that
+	/// changes remain local to the current dominance region.
+	/// </para>
+	/// <para>
+	/// Implementations must preserve <see cref="ILPhase.Normal"/> invariants for the modified subtree.
+	/// </para>
+	/// </remarks>
 	public interface IBlockTransform
 	{
 		/// <summary>
-		/// Runs the transform on the specified block.
-		/// 
-		/// Note: the transform may only modify the specified block and its descendants,
-		/// as well as any sibling blocks that are dominated by the specified block.
+		/// Executes the transform on <paramref name="block"/>.
 		/// </summary>
+		/// <param name="block">The block currently being transformed.</param>
+		/// <param name="context">Shared services and dominance metadata for this invocation.</param>
+		/// <remarks>
+		/// The transform may only modify <paramref name="block"/>, its descendants, and sibling blocks dominated by
+		/// <paramref name="block"/>.
+		/// </remarks>
 		void Run(Block block, BlockTransformContext context);
 	}
 
 	/// <summary>
-	/// Parameter class holding various arguments for <see cref="IBlockTransform.Run"/>.
+	/// Supplies per-block state for <see cref="IBlockTransform"/> executions.
 	/// </summary>
+	/// <remarks>
+	/// The context extends <see cref="ILTransformContext"/> with control-flow graph state captured before block
+	/// transforms start. The graph is intentionally not rebuilt after each mutation.
+	/// </remarks>
 	public class BlockTransformContext : ILTransformContext
 	{
 		/// <summary>
-		/// The block to process.
+		/// Gets or sets the block currently being processed.
 		/// </summary>
-		/// <remarks>
-		/// Should be identical to the <c>block</c> parameter to <c>IBlockTransform.Run</c>.
-		/// </remarks>
+		/// <value>
+		/// The value should match the block argument passed to
+		/// <see cref="IBlockTransform.Run(Block, BlockTransformContext)"/>.
+		/// </value>
 		public Block Block { get; set; }
 
 		/// <summary>
-		/// The control flow node corresponding to the block being processed.
+		/// Gets or sets the control-flow graph node associated with <see cref="Block"/>.
 		/// </summary>
+		/// <value>
+		/// Equivalent to calling <c>ControlFlowGraph.GetNode(Block)</c> on the snapshot graph.
+		/// </value>
 		/// <remarks>
-		/// Identical to <c>ControlFlowGraph.GetNode(Block)</c>.
-		/// Note: the control flow graph is not up-to-date, but was created at the start of the
-		/// block transforms (before loop detection).
+		/// The graph is created once at the beginning of block transforms (before loop detection), so it is a snapshot
+		/// and may not reflect later structural edits.
 		/// </remarks>
 		public ControlFlowNode ControlFlowNode { get; set; }
 
 		/// <summary>
-		/// Gets the control flow graph.
-		/// 
-		/// Note: the control flow graph is not up-to-date, but was created at the start of the
-		/// block transforms (before loop detection).
+		/// Gets or sets the control-flow graph snapshot for the current container.
 		/// </summary>
+		/// <value>
+		/// A graph built before block-level mutations for the current <see cref="BlockContainer"/>.
+		/// </value>
 		public ControlFlowGraph ControlFlowGraph { get; set; }
 
 		/// <summary>
-		/// Initially equal to Block.Instructions.Count indicating that nothing has been transformed yet.
-		/// Set by <see cref="ConditionDetection"/> when another already transformed block is merged into
-		/// the current block. Subsequent <see cref="IBlockTransform"/>s must update this value, for example,
-		/// by resetting it to Block.Instructions.Count. <see cref="StatementTransform"/> will use this value to
-		/// skip already transformed instructions.
+		/// Gets or sets the first instruction index that has already been processed by statement transforms.
 		/// </summary>
+		/// <value>
+		/// Initially <c>Block.Instructions.Count</c> for each visited block. When transforms merge in already-processed
+		/// instructions (for example <see cref="ConditionDetection"/>), they update this value so
+		/// <see cref="StatementTransform"/> can skip the preserved prefix.
+		/// </value>
 		public int IndexOfFirstAlreadyTransformedInstruction { get; set; }
 
+		/// <summary>
+		/// Initializes a block-transform context that shares state with an existing IL-transform context.
+		/// </summary>
+		/// <param name="context">Parent context providing settings, type-system state, and step recorder.</param>
 		public BlockTransformContext(ILTransformContext context) : base(context)
 		{
 		}
 	}
 
 	/// <summary>
-	/// IL transform that runs a list of per-block transforms.
+	/// Runs configured <see cref="IBlockTransform"/> passes over every block in a function.
 	/// </summary>
+	/// <remarks>
+	/// The transform walks each <see cref="BlockContainer"/> along its dominator tree, executing
+	/// <see cref="PreOrderTransforms"/> before children and <see cref="PostOrderTransforms"/> after children.
+	/// </remarks>
 	public class BlockILTransform : IILTransform
 	{
+		/// <summary>
+		/// Gets transforms that run during dominator-tree pre-order traversal.
+		/// </summary>
 		public IList<IBlockTransform> PreOrderTransforms { get; } = new List<IBlockTransform>();
+
+		/// <summary>
+		/// Gets transforms that run during dominator-tree post-order traversal.
+		/// </summary>
 		public IList<IBlockTransform> PostOrderTransforms { get; } = new List<IBlockTransform>();
 
 		bool running;
 
+		/// <summary>
+		/// Returns a debugger-oriented description containing the configured child transform type names.
+		/// </summary>
+		/// <returns>A string that identifies this block transform and its current pass list.</returns>
 		public override string ToString()
 		{
 			return $"{nameof(BlockILTransform)} ({string.Join(", ", PreOrderTransforms.Concat(PostOrderTransforms).Select(t => t.GetType().Name))})";
 		}
 
+		/// <summary>
+		/// Executes all configured block transforms for each block container in <paramref name="function"/>.
+		/// </summary>
+		/// <param name="function">Function whose block containers will be visited.</param>
+		/// <param name="context">Run context shared across transform stages.</param>
+		/// <exception cref="InvalidOperationException">
+		/// A previous invocation is still active. <see cref="BlockILTransform"/> is not reentrant.
+		/// </exception>
 		public void Run(ILFunction function, ILTransformContext context)
 		{
 			if (running)
@@ -106,8 +153,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		}
 
 		/// <summary>
-		/// Walks the dominator tree rooted at entryNode, calling the transforms on each block.
+		/// Walks the dominator subtree rooted at <paramref name="entryNode"/> and applies configured passes.
 		/// </summary>
+		/// <param name="entryNode">Entry node of the dominator subtree for one block container.</param>
+		/// <param name="context">Shared block-transform context for the current container.</param>
 		void VisitBlock(ControlFlowNode entryNode, BlockTransformContext context)
 		{
 			IEnumerable<ControlFlowNode> Preorder(ControlFlowNode cfgNode)

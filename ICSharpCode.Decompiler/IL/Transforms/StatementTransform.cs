@@ -60,26 +60,37 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 	/// </summary>
 	public class StatementTransformContext : ILTransformContext
 	{
+		/// <summary>
+		/// Gets the parent block-transform context that owns this statement-transform pass.
+		/// </summary>
 		public BlockTransformContext BlockContext { get; }
 
+		/// <summary>
+		/// Initializes statement-transform context state for one block pass.
+		/// </summary>
+		/// <param name="blockContext">The parent block context for this pass.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="blockContext"/> is <see langword="null"/>.</exception>
 		public StatementTransformContext(BlockTransformContext blockContext) : base(blockContext)
 		{
 			this.BlockContext = blockContext ?? throw new ArgumentNullException(nameof(blockContext));
 		}
 
 		/// <summary>
-		/// Gets the block on which the transform is running.
+		/// Gets the block currently being processed by statement transforms.
 		/// </summary>
+		/// <value>The same block referenced by <see cref="BlockContext"/>.</value>
 		public Block Block => BlockContext.Block;
 
 		internal bool rerunCurrentPosition;
 		internal int? rerunPosition;
 
 		/// <summary>
-		/// After the current statement transform has completed,
-		/// do not continue with the next statement transform at the same position.
-		/// Instead, re-run all statement transforms (including the current transform) starting at the specified position.
+		/// Requests a restart of the statement-transform loop at a specific instruction index.
 		/// </summary>
+		/// <param name="pos">
+		/// Instruction index at which the pipeline should restart. If multiple transforms request a rerun, the
+		/// largest index wins to avoid rewinding past already revalidated instructions.
+		/// </param>
 		public void RequestRerun(int pos)
 		{
 			if (rerunPosition == null || pos > rerunPosition)
@@ -89,8 +100,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		}
 
 		/// <summary>
-		/// After the current statement transform has completed,
-		/// repeat all statement transforms on the current position.
+		/// Requests that all statement transforms run again at the current position.
 		/// </summary>
 		public void RequestRerun()
 		{
@@ -105,11 +115,20 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 	{
 		readonly IStatementTransform[] children;
 
+		/// <summary>
+		/// Initializes a statement-transform runner.
+		/// </summary>
+		/// <param name="children">Statement transforms to run in the supplied order at each instruction position.</param>
 		public StatementTransform(params IStatementTransform[] children)
 		{
 			this.children = children;
 		}
 
+		/// <summary>
+		/// Runs all configured statement transforms for <paramref name="block"/>.
+		/// </summary>
+		/// <param name="block">The block to process.</param>
+		/// <param name="context">Block-level context that controls starting position and cancellation.</param>
 		public void Run(Block block, BlockTransformContext context)
 		{
 			var ctx = new StatementTransformContext(context);

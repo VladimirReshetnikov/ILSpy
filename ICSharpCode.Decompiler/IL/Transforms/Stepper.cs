@@ -28,15 +28,20 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.IL.Transforms
 {
 	/// <summary>
-	/// Exception thrown when an IL transform runs into the <see cref="Stepper.StepLimit"/>.
+	/// The exception raised when a step-recording session reaches <see cref="Stepper.StepLimit"/>.
 	/// </summary>
 	public class StepLimitReachedException : Exception
 	{
 	}
 
 	/// <summary>
-	/// Helper class that manages recording transform steps.
+	/// Records a hierarchical trace of IL-transform steps for debugging and diagnostics.
 	/// </summary>
+	/// <remarks>
+	/// The step tree is populated only when transform code calls the step APIs. Most built-in transform calls are
+	/// conditionally compiled behind the <c>STEP</c> symbol, so release builds typically produce no entries unless
+	/// a caller invokes <see cref="Step(string, ILInstruction)"/> directly.
+	/// </remarks>
 	public class Stepper
 	{
 		/// <summary>
@@ -53,26 +58,63 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			}
 		}
 
+		/// <summary>
+		/// Gets the top-level step nodes captured for the current run.
+		/// </summary>
+		/// <value>
+		/// A mutable list that contains either atomic steps or group roots in encounter order.
+		/// </value>
 		public IList<Node> Steps => steps;
 
+		/// <summary>
+		/// Gets or sets the maximum number of steps that can be recorded before stepping stops.
+		/// </summary>
+		/// <value>
+		/// Defaults to <see cref="int.MaxValue"/>.
+		/// </value>
 		public int StepLimit { get; set; } = int.MaxValue;
+
+		/// <summary>
+		/// Gets or sets whether reaching <see cref="StepLimit"/> should break into a debugger.
+		/// </summary>
+		/// <value>
+		/// When <see langword="true"/>, limit exhaustion triggers <see cref="Debugger.Break()"/>; otherwise
+		/// <see cref="StepLimitReachedException"/> is thrown.
+		/// </value>
 		public bool IsDebug { get; set; }
 
+		/// <summary>
+		/// Represents one recorded step or grouped step range.
+		/// </summary>
 		public class Node
 		{
+			/// <summary>
+			/// Gets the display label for this step.
+			/// </summary>
 			public string Description { get; }
+
+			/// <summary>
+			/// Gets or sets an instruction near which this step occurred.
+			/// </summary>
 			public ILInstruction? Position { get; set; }
 			/// <summary>
-			/// BeginStep is inclusive.
+			/// Gets or sets the inclusive step index where this node starts.
 			/// </summary>
 			public int BeginStep { get; set; }
 			/// <summary>
-			/// EndStep is exclusive.
+			/// Gets or sets the exclusive step index where this node ends.
 			/// </summary>
 			public int EndStep { get; set; }
 
+			/// <summary>
+			/// Gets child nodes recorded while this node was the active group.
+			/// </summary>
 			public IList<Node> Children { get; } = new List<Node>();
 
+			/// <summary>
+			/// Initializes a step node.
+			/// </summary>
+			/// <param name="description">Human-readable label for the node.</param>
 			public Node(string description)
 			{
 				Description = description;
@@ -83,6 +125,9 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		readonly IList<Node> steps;
 		int step = 0;
 
+		/// <summary>
+		/// Initializes a new step recorder with no recorded nodes.
+		/// </summary>
 		public Stepper()
 		{
 			steps = new List<Node>();
@@ -90,11 +135,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		}
 
 		/// <summary>
-		/// Call this method immediately before performing a transform step.
-		/// Used for debugging the IL transforms. Has no effect in release mode.
-		/// 
-		/// May throw <see cref="StepLimitReachedException"/> in debug mode.
+		/// Records an individual transform step.
 		/// </summary>
+		/// <param name="description">Human-readable label for the step.</param>
+		/// <param name="near">Instruction near which the step occurred, or <see langword="null"/>.</param>
+		/// <exception cref="StepLimitReachedException">
+		/// The step limit was reached and <see cref="IsDebug"/> is <see langword="false"/>.
+		/// </exception>
 		[DebuggerStepThrough]
 		public void Step(string description, ILInstruction? near = null)
 		{
@@ -125,12 +172,24 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			return stepNode;
 		}
 
+		/// <summary>
+		/// Starts a grouped step and pushes it onto the current group stack.
+		/// </summary>
+		/// <param name="description">Group label.</param>
+		/// <param name="near">Instruction near which the group starts, or <see langword="null"/>.</param>
 		[DebuggerStepThrough]
 		public void StartGroup(string description, ILInstruction? near = null)
 		{
 			groups.Push(StepInternal(description, near));
 		}
 
+		/// <summary>
+		/// Ends the most recently started group.
+		/// </summary>
+		/// <param name="keepIfEmpty">
+		/// <see langword="true"/> to keep groups without child steps; otherwise empty groups are removed.
+		/// </param>
+		/// <exception cref="InvalidOperationException">No open group exists.</exception>
 		public void EndGroup(bool keepIfEmpty = false)
 		{
 			var node = groups.Pop();
