@@ -292,11 +292,25 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	[Serializable]
 	public sealed class FullTypeNameComparer : IEqualityComparer<FullTypeName>
 	{
+		/// <summary>
+		/// Case-sensitive comparer using ordinal string comparison for all name segments.
+		/// </summary>
 		public static readonly FullTypeNameComparer Ordinal = new FullTypeNameComparer(StringComparer.Ordinal);
+
+		/// <summary>
+		/// Case-insensitive comparer using ordinal-ignore-case semantics for all name segments.
+		/// </summary>
 		public static readonly FullTypeNameComparer OrdinalIgnoreCase = new FullTypeNameComparer(StringComparer.OrdinalIgnoreCase);
 
+		/// <summary>
+		/// Gets the comparer used for namespace/type segment equality and hash code generation.
+		/// </summary>
 		public readonly StringComparer NameComparer;
 
+		/// <summary>
+		/// Initializes a comparer with the supplied segment comparison policy.
+		/// </summary>
+		/// <param name="nameComparer">Comparer applied to namespace, top-level name, and nested type names.</param>
 		public FullTypeNameComparer(StringComparer nameComparer)
 		{
 			this.NameComparer = nameComparer;

@@ -276,29 +276,56 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.baseType = baseType;
 		}
 
+		/// <summary>
+		/// Gets the enum code that identifies this well-known type entry.
+		/// </summary>
 		public KnownTypeCode KnownTypeCode {
 			get { return knownTypeCode; }
 		}
 
+		/// <summary>
+		/// Gets the namespace part of the metadata name.
+		/// </summary>
 		public string Namespace {
 			get { return namespaceName; }
 		}
 
+		/// <summary>
+		/// Gets the unqualified metadata type name.
+		/// </summary>
 		public string Name {
 			get { return name; }
 		}
 
+		/// <summary>
+		/// Gets the declared generic arity for the type.
+		/// </summary>
 		public int TypeParameterCount {
 			get { return typeParameterCount; }
 		}
 
+		/// <summary>
+		/// Gets a <see cref="TopLevelTypeName"/> view of this known type entry.
+		/// </summary>
 		public TopLevelTypeName TypeName => new TopLevelTypeName(namespaceName, name, typeParameterCount);
 
+		/// <summary>
+		/// Resolves this known type against the specified compilation context.
+		/// </summary>
+		/// <param name="context">Type resolve context that provides the current compilation.</param>
+		/// <returns>The resolved known type from <paramref name="context"/>.</returns>
 		public IType Resolve(ITypeResolveContext context)
 		{
 			return context.Compilation.FindType(knownTypeCode);
 		}
 
+		/// <summary>
+		/// Returns a display name for the known type.
+		/// </summary>
+		/// <returns>
+		/// C# keyword alias for primitive/runtime aliases (for example <c>int</c>, <c>string</c>);
+		/// otherwise a namespace-qualified metadata name.
+		/// </returns>
 		public override string ToString()
 		{
 			return GetCSharpNameByTypeCode(knownTypeCode) ?? (this.Namespace + "." + this.Name);

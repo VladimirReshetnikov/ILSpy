@@ -33,6 +33,13 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		readonly string name;
 		readonly int typeParameterCount;
 
+		/// <summary>
+		/// Initializes a top-level type name from explicit namespace, type name, and arity components.
+		/// </summary>
+		/// <param name="namespaceName">Namespace containing the type. Use an empty string for the global namespace.</param>
+		/// <param name="name">Metadata type name without namespace and without backtick-arity suffix.</param>
+		/// <param name="typeParameterCount">Generic arity encoded in metadata for the type definition.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="namespaceName"/> or <paramref name="name"/> is <see langword="null"/>.</exception>
 		public TopLevelTypeName(string namespaceName, string name, int typeParameterCount = 0)
 		{
 			if (namespaceName == null)
@@ -44,6 +51,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.typeParameterCount = typeParameterCount;
 		}
 
+		/// <summary>
+		/// Initializes a top-level type name by parsing a reflection-style metadata name.
+		/// </summary>
+		/// <param name="reflectionName">Type name in the format <c>Namespace.TypeName</c> with optional <c>`arity</c> suffix.</param>
 		public TopLevelTypeName(string reflectionName)
 		{
 			int pos = reflectionName.LastIndexOf('.');
@@ -60,18 +71,30 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			name = ReflectionHelper.SplitTypeParameterCountFromReflectionName(name, out typeParameterCount);
 		}
 
+		/// <summary>
+		/// Gets the containing namespace.
+		/// </summary>
 		public string Namespace {
 			get { return namespaceName; }
 		}
 
+		/// <summary>
+		/// Gets the metadata type name without namespace qualification.
+		/// </summary>
 		public string Name {
 			get { return name; }
 		}
 
+		/// <summary>
+		/// Gets the declared generic arity for the top-level type.
+		/// </summary>
 		public int TypeParameterCount {
 			get { return typeParameterCount; }
 		}
 
+		/// <summary>
+		/// Gets the reflection-style metadata name including namespace and generic arity suffix.
+		/// </summary>
 		public string ReflectionName {
 			get {
 				StringBuilder b = new StringBuilder();
@@ -124,11 +147,25 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	[Serializable]
 	public sealed class TopLevelTypeNameComparer : IEqualityComparer<TopLevelTypeName>
 	{
+		/// <summary>
+		/// Case-sensitive comparer that uses ordinal string semantics for namespace and type name segments.
+		/// </summary>
 		public static readonly TopLevelTypeNameComparer Ordinal = new TopLevelTypeNameComparer(StringComparer.Ordinal);
+
+		/// <summary>
+		/// Case-insensitive comparer that uses ordinal-ignore-case semantics for namespace and type name segments.
+		/// </summary>
 		public static readonly TopLevelTypeNameComparer OrdinalIgnoreCase = new TopLevelTypeNameComparer(StringComparer.OrdinalIgnoreCase);
 
+		/// <summary>
+		/// Gets the string comparer used for namespace/name comparisons and hash code generation.
+		/// </summary>
 		public readonly StringComparer NameComparer;
 
+		/// <summary>
+		/// Initializes a comparer with the provided string comparison policy.
+		/// </summary>
+		/// <param name="nameComparer">String comparer applied to both namespace and type name.</param>
 		public TopLevelTypeNameComparer(StringComparer nameComparer)
 		{
 			this.NameComparer = nameComparer;

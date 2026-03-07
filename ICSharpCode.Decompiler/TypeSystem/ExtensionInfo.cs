@@ -28,11 +28,30 @@ using ICSharpCode.Decompiler.TypeSystem.Implementation;
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
+	/// <summary>
+	/// Discovers and exposes compiler-generated metadata that represents C# extension blocks.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The C# compiler emits extension declarations as synthetic nested types and methods.
+	/// <see cref="ExtensionInfo"/> reverse-engineers those encodings and builds a bidirectional map between
+	/// metadata-only extension signatures and the static implementation methods that contain executable bodies.
+	/// </para>
+	/// <para>
+	/// Consumers such as <see cref="CSharp.CSharpDecompiler"/> use this map to hide implementation artifacts and
+	/// reconstruct source-shaped extension declarations.
+	/// </para>
+	/// </remarks>
 	public class ExtensionInfo
 	{
 		readonly Dictionary<IMember, ExtensionMemberInfo> extensionMemberMap;
 		readonly Dictionary<IMember, ExtensionMemberInfo> implementationMemberMap;
 
+		/// <summary>
+		/// Creates extension metadata mappings for a single extension container type.
+		/// </summary>
+		/// <param name="module">Owning metadata module used to query raw type/method definitions.</param>
+		/// <param name="extensionContainer">Static class that contains compiler-emitted extension artifacts.</param>
 		public ExtensionInfo(MetadataModule module, ITypeDefinition extensionContainer)
 		{
 			this.extensionMemberMap = new();
@@ -242,27 +261,57 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Gets decompiler metadata for a method that is declared inside an extension grouping type.
+		/// </summary>
+		/// <param name="method">Method that may represent an extension member declaration artifact.</param>
+		/// <returns>
+		/// Extension mapping information when <paramref name="method"/> is known as an extension member;
+		/// otherwise <see langword="null"/>.
+		/// </returns>
 		public ExtensionMemberInfo? InfoOfExtensionMember(IMethod method)
 		{
 			return this.extensionMemberMap.TryGetValue(method, out var value) ? value : null;
 		}
 
+		/// <summary>
+		/// Gets decompiler metadata for a static implementation method emitted in the extension container.
+		/// </summary>
+		/// <param name="method">Method that may be an implementation target for an extension declaration.</param>
+		/// <returns>
+		/// Extension mapping information when <paramref name="method"/> is recognized as an implementation method;
+		/// otherwise <see langword="null"/>.
+		/// </returns>
 		public ExtensionMemberInfo? InfoOfImplementationMember(IMethod method)
 		{
 			return this.implementationMemberMap.TryGetValue(method, out var value) ? value : null;
 		}
 
+		/// <summary>
+		/// Groups discovered extension members by marker method and resolved extension type parameters.
+		/// </summary>
+		/// <returns>
+		/// Sequence of extension groups, each containing all members declared inside one extension block.
+		/// </returns>
 		public IEnumerable<IGrouping<(IMethod Marker, ITypeParameter[] TypeParameters), ExtensionMemberInfo>> GetGroups()
 		{
 			return this.extensionMemberMap.Values.GroupBy(x => (x.ExtensionMarkerMethod, x.ExtensionGroupingTypeParameters));
 		}
 
+		/// <summary>
+		/// Determines whether <paramref name="type"/> is one of the compiler-generated extension grouping types.
+		/// </summary>
+		/// <param name="type">Type definition to test.</param>
+		/// <returns><see langword="true"/> when the type participates in this extension map; otherwise <see langword="false"/>.</returns>
 		public bool IsExtensionGroupingType(ITypeDefinition type)
 		{
 			return this.extensionMemberMap.Values.Any(x => x.ExtensionGroupingType.Equals(type));
 		}
 	}
 
+	/// <summary>
+	/// Describes the relationship between an extension declaration artifact and its executable implementation method.
+	/// </summary>
 	public readonly struct ExtensionMemberInfo(IMethod marker, IMethod extension, IMethod implementation, ITypeParameter[] extensionGroupingTypeParameters)
 	{
 		/// <summary>
@@ -283,23 +332,22 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		public readonly IMethod ImplementationMethod = implementation;
 
 		/// <summary>
-		/// This is the enclosing static class.
+		/// Gets the enclosing static class that contains <see cref="ImplementationMethod"/>.
 		/// </summary>
 		public ITypeDefinition ExtensionContainer => ImplementationMethod.DeclaringTypeDefinition!;
 
 		/// <summary>
-		/// This is the compiler-generated class containing the extension members. Has type parameters
-		/// from the extension declaration with minimal constraints.
+		/// Gets the compiler-generated nested type that contains metadata-only extension member signatures.
 		/// </summary>
 		public ITypeDefinition ExtensionGroupingType => ExtensionMember.DeclaringTypeDefinition!;
 
 		/// <summary>
-		/// This is the array of type parameters for the extension declaration.
+		/// Gets extension-block type parameters reconstructed for source-level presentation.
 		/// </summary>
 		public ITypeParameter[] ExtensionGroupingTypeParameters => extensionGroupingTypeParameters;
 
 		/// <summary>
-		/// This class holds the type parameters for the extension declaration with full fidelity of C# constraints.
+		/// Gets the marker type that preserves the full original constraint set for extension type parameters.
 		/// </summary>
 		public ITypeDefinition ExtensionMarkerType => ExtensionMarkerMethod.DeclaringTypeDefinition!;
 	}

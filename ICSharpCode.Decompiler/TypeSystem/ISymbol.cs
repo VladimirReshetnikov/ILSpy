@@ -20,8 +20,14 @@
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
+	/// <summary>
+	/// Classifies the concrete symbol abstraction represented by an <see cref="ISymbol"/> instance.
+	/// </summary>
 	public enum SymbolKind : byte
 	{
+		/// <summary>
+		/// No concrete symbol kind is available.
+		/// </summary>
 		None,
 		/// <seealso cref="IModule"/>
 		Module,
@@ -82,14 +88,20 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	}
 
 	/// <summary>
-	/// Interface for type system symbols.
+	/// Common contract for all symbols in ILSpy's semantic type system.
 	/// </summary>
+	/// <remarks>
+	/// Use <see cref="SymbolKind"/> to branch to specific symbol interfaces such as
+	/// <see cref="ITypeDefinition"/>, <see cref="IMethod"/>, or <see cref="IParameter"/>.
+	/// </remarks>
 	public interface ISymbol
 	{
 		/// <summary>
-		/// This property returns an enum specifying which kind of symbol this is
-		/// (which derived interfaces of ISymbol are implemented)
+		/// Gets the semantic symbol category.
 		/// </summary>
+		/// <value>
+		/// The value indicates which specialized symbol interface is implemented and how callers should cast this instance.
+		/// </value>
 		SymbolKind SymbolKind { get; }
 
 		/// <summary>
