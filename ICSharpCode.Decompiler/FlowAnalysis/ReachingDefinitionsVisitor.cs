@@ -111,16 +111,31 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 				this.bits = bits;
 			}
 
+			/// <summary>
+			/// Determines whether this state is less than or equal to <paramref name="otherState"/> in the analysis lattice.
+			/// </summary>
+			/// <param name="otherState">The state to compare against.</param>
+			/// <returns>
+			/// <see langword="true"/> when every reaching-definition bit set in this state is also set in <paramref name="otherState"/>.
+			/// </returns>
 			public bool LessThanOrEqual(State otherState)
 			{
 				return bits.IsSubsetOf(otherState.bits);
 			}
 
+			/// <summary>
+			/// Creates a deep copy of this state.
+			/// </summary>
+			/// <returns>A state with an independent copy of the underlying bitset.</returns>
 			public State Clone()
 			{
 				return new State(bits.Clone());
 			}
 
+			/// <summary>
+			/// Replaces this state's bits with a copy of <paramref name="newContent"/>.
+			/// </summary>
+			/// <param name="newContent">The state to copy from.</param>
 			public void ReplaceWith(State newContent)
 			{
 				bits.ReplaceWith(newContent.bits);
@@ -133,6 +148,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 				bits.UnionWith(incomingState.bits);
 			}
 
+			/// <summary>
+			/// Applies the try/finally transfer function for a branch that leaves the protected region.
+			/// </summary>
+			/// <param name="finallyState">The state observed at the end of the corresponding finally block.</param>
 			public void TriggerFinally(State finallyState)
 			{
 				// Some cases to consider:
@@ -155,10 +174,17 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 				}
 			}
 
+			/// <summary>
+			/// Gets whether this state is the lattice bottom element.
+			/// </summary>
+			/// <value><see langword="true"/> when the reachable bit is clear.</value>
 			public bool IsBottom {
 				get { return !bits[ReachableBit]; }
 			}
 
+			/// <summary>
+			/// Replaces this state with the lattice bottom element.
+			/// </summary>
 			public void ReplaceWithBottom()
 			{
 				// We need to clear all bits, not just ReachableBit, so that
@@ -166,6 +192,12 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 				bits.ClearAll();
 			}
 
+			/// <summary>
+			/// Gets whether this state has been marked as reachable.
+			/// </summary>
+			/// <value>
+			/// <see langword="true"/> when at least one control-flow path from the function entry reaches this point.
+			/// </value>
 			public bool IsReachable {
 				get { return bits[ReachableBit]; }
 			}
@@ -180,16 +212,33 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 				bits.Clear(startStoreIndex, endStoreIndex);
 			}
 
+			/// <summary>
+			/// Gets whether the store at <paramref name="storeIndex"/> is currently a reaching definition.
+			/// </summary>
+			/// <param name="storeIndex">A store index in the global <c>allStores</c> array.</param>
+			/// <returns><see langword="true"/> if the store reaches the current program point.</returns>
 			public bool IsReachingStore(int storeIndex)
 			{
 				return bits[storeIndex];
 			}
 
+			/// <summary>
+			/// Finds the next reaching store bit between <paramref name="startIndex"/> (inclusive) and <paramref name="endIndex"/> (exclusive).
+			/// </summary>
+			/// <param name="startIndex">Inclusive lower bound for the search.</param>
+			/// <param name="endIndex">Exclusive upper bound for the search.</param>
+			/// <returns>
+			/// The index of the next set bit, or <c>-1</c> if no set bit exists in the requested range.
+			/// </returns>
 			public int NextReachingStore(int startIndex, int endIndex)
 			{
 				return bits.NextSetBit(startIndex, endIndex);
 			}
 
+			/// <summary>
+			/// Marks the store at <paramref name="storeIndex"/> as reaching.
+			/// </summary>
+			/// <param name="storeIndex">A non-reserved store index.</param>
 			public void SetStore(int storeIndex)
 			{
 				Debug.Assert(storeIndex >= FirstStoreIndex);
@@ -251,11 +300,12 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 
 		#region Constructor
 		/// <summary>
-		/// Prepare reaching definitions analysis for the specified variable scope.
-		/// 
-		/// The analysis will track all variables in the scope for which the predicate returns true
-		/// ("analyzed variables").
+		/// Creates a reaching-definitions analyzer over <paramref name="scope"/> using a predicate to select variables.
 		/// </summary>
+		/// <param name="scope">The function to analyze.</param>
+		/// <param name="pred">Predicate that selects which variables participate in the analysis.</param>
+		/// <param name="cancellationToken">A token observed during setup and traversal.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="scope"/> is <see langword="null"/>.</exception>
 		public ReachingDefinitionsVisitor(ILFunction scope, Predicate<ILVariable> pred, CancellationToken cancellationToken)
 			: this(scope, GetActiveVariableBitSet(scope, pred), cancellationToken)
 		{
@@ -275,10 +325,14 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 		}
 
 		/// <summary>
-		/// Prepare reaching definitions analysis for the specified variable scope.
-		/// 
-		/// The analysis will track all variables in the scope for which <c>analyzedVariables[v.IndexInScope]</c> is true.
+		/// Creates a reaching-definitions analyzer over <paramref name="scope"/> using an explicit variable-selection bitset.
 		/// </summary>
+		/// <param name="scope">The function to analyze.</param>
+		/// <param name="analyzedVariables">
+		/// A bitset aligned with <c>scope.Variables</c> where set bits indicate variables tracked by this analysis.
+		/// </param>
+		/// <param name="cancellationToken">A token observed while preparing analysis metadata.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="scope"/> or <paramref name="analyzedVariables"/> is <see langword="null"/>.</exception>
 		public ReachingDefinitionsVisitor(ILFunction scope, BitSet analyzedVariables, CancellationToken cancellationToken)
 		{
 			if (scope == null)
@@ -389,23 +443,39 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			}
 		}
 
+		/// <summary>
+		/// Visits a local-variable store and updates the reaching-definition set for the target variable.
+		/// </summary>
+		/// <param name="inst">The store instruction.</param>
 		protected internal override void VisitStLoc(StLoc inst)
 		{
 			inst.Value.AcceptVisitor(this);
 			HandleStore(inst, inst.Variable);
 		}
 
+		/// <summary>
+		/// Handles the implicit variable store produced by a successful pattern match.
+		/// </summary>
+		/// <param name="inst">The match instruction introducing the store.</param>
 		protected override void HandleMatchStore(MatchInstruction inst)
 		{
 			HandleStore(inst, inst.Variable);
 		}
 
+		/// <summary>
+		/// Marks a catch-variable assignment as a reaching definition when entering a handler.
+		/// </summary>
+		/// <param name="inst">The handler being entered.</param>
 		protected override void BeginTryCatchHandler(TryCatchHandler inst)
 		{
 			base.BeginTryCatchHandler(inst);
 			HandleStore(inst, inst.Variable);
 		}
 
+		/// <summary>
+		/// Visits a pinned region and treats the pin variable initialization as a store.
+		/// </summary>
+		/// <param name="inst">The pinned-region instruction.</param>
 		protected internal override void VisitPinnedRegion(PinnedRegion inst)
 		{
 			inst.Init.AcceptVisitor(this);
@@ -413,6 +483,13 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			inst.Body.AcceptVisitor(this);
 		}
 
+		/// <summary>
+		/// Gets whether the variable is included in this analysis instance.
+		/// </summary>
+		/// <param name="v">The variable to query.</param>
+		/// <returns>
+		/// <see langword="true"/> when <paramref name="v"/> belongs to the analyzed scope and its bit is set in <c>analyzedVariables</c>.
+		/// </returns>
 		public bool IsAnalyzedVariable(ILVariable v)
 		{
 			return v.Function == scope && analyzedVariables[v.IndexInFunction];

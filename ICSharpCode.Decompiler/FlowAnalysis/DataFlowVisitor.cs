@@ -258,6 +258,14 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 		}
 #endif
 
+		/// <summary>
+		/// Records a debug snapshot of the current input state for <paramref name="inst"/>.
+		/// </summary>
+		/// <remarks>
+		/// The method is compiled only in debug builds. In release builds it is omitted entirely,
+		/// so callers can invoke it unconditionally without affecting runtime behavior.
+		/// </remarks>
+		/// <param name="inst">The instruction that is about to be analyzed.</param>
 		[Conditional("DEBUG")]
 		protected void DebugStartPoint(ILInstruction inst)
 		{
@@ -266,6 +274,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 #endif
 		}
 
+		/// <summary>
+		/// Records a debug snapshot of the current output state for <paramref name="inst"/>.
+		/// </summary>
+		/// <param name="inst">The instruction that has just been analyzed.</param>
 		[Conditional("DEBUG")]
 		protected void DebugEndPoint(ILInstruction inst)
 		{
@@ -279,6 +291,20 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 		/// </summary>
 		protected InstructionFlags flagsRequiringManualImpl = InstructionFlags.ControlFlow | InstructionFlags.MayBranch | InstructionFlags.MayUnwrapNull | InstructionFlags.EndPointUnreachable;
 
+		/// <summary>
+		/// Visits an instruction that is handled by the generic fallback implementation.
+		/// </summary>
+		/// <param name="inst">The instruction to analyze.</param>
+		/// <remarks>
+		/// This method enforces that subclasses explicitly handle instructions with control-flow,
+		/// branching, null-unwrapping, or unreachable-endpoint semantics.
+		/// For the remaining instructions it performs a left-to-right child traversal and relies on
+		/// the default "normal flow" semantics.
+		/// </remarks>
+		/// <exception cref="NotImplementedException">
+		/// Thrown when <paramref name="inst"/> requires a custom override according to
+		/// <see cref="flagsRequiringManualImpl"/>.
+		/// </exception>
 		protected sealed override void Default(ILInstruction inst)
 		{
 			DebugStartPoint(inst);
@@ -368,6 +394,15 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 		/// </summary>
 		readonly Dictionary<BlockContainer, SortedSet<int>> workLists = new Dictionary<BlockContainer, SortedSet<int>>();
 
+		/// <summary>
+		/// Analyzes a block container by repeatedly processing blocks until no block-input state changes.
+		/// </summary>
+		/// <param name="container">The control-flow container to process.</param>
+		/// <remarks>
+		/// The algorithm uses a per-container worklist keyed by <see cref="Block.ChildIndex"/>.
+		/// Re-visiting blocks is required for loops, because back-edges can refine block-input states
+		/// after a block has already been visited once.
+		/// </remarks>
 		protected internal override void VisitBlockContainer(BlockContainer container)
 		{
 			DebugStartPoint(container);
@@ -412,6 +447,15 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 
 		readonly List<(IBranchOrLeaveInstruction, State)> branchesTriggeringFinally = new List<(IBranchOrLeaveInstruction, State)>();
 
+		/// <summary>
+		/// Handles an unconditional branch instruction.
+		/// </summary>
+		/// <param name="inst">The branch instruction to process.</param>
+		/// <remarks>
+		/// For normal branches, this merges <see cref="state"/> into the target block input state.
+		/// For branches that cross a <c>finally</c> boundary, state propagation is deferred until
+		/// the corresponding <see cref="TryFinally"/> is processed.
+		/// </remarks>
 		protected internal override void VisitBranch(Branch inst)
 		{
 			if (inst.TriggersFinallyBlock)
@@ -446,6 +490,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			}
 		}
 
+		/// <summary>
+		/// Handles a <see cref="Leave"/> instruction and records its outgoing state.
+		/// </summary>
+		/// <param name="inst">The leave instruction being analyzed.</param>
 		protected internal override void VisitLeave(Leave inst)
 		{
 			inst.Value.AcceptVisitor(this);
@@ -476,17 +524,35 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			// we are currently somewhere within the VisitBlockContainer() call.
 		}
 
+		/// <summary>
+		/// Handles a throw instruction by analyzing the argument and marking normal flow as unreachable.
+		/// </summary>
+		/// <param name="inst">The throw instruction.</param>
 		protected internal override void VisitThrow(Throw inst)
 		{
 			inst.Argument.AcceptVisitor(this);
 			MarkUnreachable();
 		}
 
+		/// <summary>
+		/// Handles a rethrow instruction.
+		/// </summary>
+		/// <param name="inst">The rethrow instruction.</param>
+		/// <remarks>
+		/// A rethrow does not produce a normal successor state.
+		/// </remarks>
 		protected internal override void VisitRethrow(Rethrow inst)
 		{
 			MarkUnreachable();
 		}
 
+		/// <summary>
+		/// Handles an invalid branch marker.
+		/// </summary>
+		/// <param name="inst">The invalid branch instruction.</param>
+		/// <remarks>
+		/// Invalid branches are treated as terminal for normal control flow.
+		/// </remarks>
 		protected internal override void VisitInvalidBranch(InvalidBranch inst)
 		{
 			MarkUnreachable();
@@ -530,6 +596,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			return newStateOnException.Clone();
 		}
 
+		/// <summary>
+		/// Visits a <see cref="TryCatch"/> instruction and joins all handler exit states with the normal try exit state.
+		/// </summary>
+		/// <param name="inst">The instruction to analyze.</param>
 		protected internal override void VisitTryCatch(TryCatch inst)
 		{
 			DebugStartPoint(inst);
@@ -553,6 +623,14 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			DebugEndPoint(inst);
 		}
 
+		/// <summary>
+		/// Called immediately before a catch handler body is analyzed.
+		/// </summary>
+		/// <param name="inst">The handler that is about to be visited.</param>
+		/// <remarks>
+		/// Derived classes can override this hook to model handler-entry side effects
+		/// (for example, writing the exception variable).
+		/// </remarks>
 		protected virtual void BeginTryCatchHandler(TryCatchHandler inst)
 		{
 		}
@@ -565,6 +643,15 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			throw new NotSupportedException();
 		}
 
+		/// <summary>
+		/// Visits a <see cref="TryFinally"/> instruction.
+		/// </summary>
+		/// <param name="inst">The try/finally instruction.</param>
+		/// <remarks>
+		/// The implementation approximates the runtime semantics by first analyzing the try body,
+		/// then the finally body, and finally applying <c>TriggerFinally</c>
+		/// to states that leave the protected region.
+		/// </remarks>
 		protected internal override void VisitTryFinally(TryFinally inst)
 		{
 			DebugStartPoint(inst);
@@ -622,6 +709,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			branchesTriggeringFinally.RemoveRange(outPos, branchesTriggeringFinally.Count - outPos);
 		}
 
+		/// <summary>
+		/// Visits a <see cref="TryFault"/> instruction.
+		/// </summary>
+		/// <param name="inst">The try/fault instruction.</param>
 		protected internal override void VisitTryFault(TryFault inst)
 		{
 			DebugStartPoint(inst);
@@ -639,6 +730,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			DebugEndPoint(inst);
 		}
 
+		/// <summary>
+		/// Visits an <see cref="IfInstruction"/> by splitting state on the condition and joining both branches.
+		/// </summary>
+		/// <param name="inst">The conditional instruction to analyze.</param>
 		protected internal override void VisitIfInstruction(IfInstruction inst)
 		{
 			DebugStartPoint(inst);
@@ -708,6 +803,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			}
 		}
 
+		/// <summary>
+		/// Visits a <see cref="MatchInstruction"/> and joins match-success and match-failure states.
+		/// </summary>
+		/// <param name="inst">The pattern-match instruction.</param>
 		protected internal override void VisitMatchInstruction(MatchInstruction inst)
 		{
 			var (onTrue, onFalse) = EvaluateMatch(inst);
@@ -747,18 +846,38 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			return (state, onFalse);
 		}
 
+		/// <summary>
+		/// Updates the analysis state for the synthetic store performed by a successful pattern match.
+		/// </summary>
+		/// <param name="inst">The match instruction that introduces the store.</param>
+		/// <remarks>
+		/// Implementations are responsible for modeling writes to <see cref="MatchInstruction.Variable"/>,
+		/// if the concrete analysis tracks variable definitions or initialization state.
+		/// </remarks>
 		protected abstract void HandleMatchStore(MatchInstruction inst);
 
+		/// <summary>
+		/// Visits a null-coalescing instruction with optional evaluation of the fallback operand.
+		/// </summary>
+		/// <param name="inst">The instruction to analyze.</param>
 		protected internal override void VisitNullCoalescingInstruction(NullCoalescingInstruction inst)
 		{
 			HandleBinaryWithOptionalEvaluation(inst, inst.ValueInst, inst.FallbackInst);
 		}
 
+		/// <summary>
+		/// Visits a dynamic logical operator that may skip evaluation of the right operand.
+		/// </summary>
+		/// <param name="inst">The instruction to analyze.</param>
 		protected internal override void VisitDynamicLogicOperatorInstruction(DynamicLogicOperatorInstruction inst)
 		{
 			HandleBinaryWithOptionalEvaluation(inst, inst.Left, inst.Right);
 		}
 
+		/// <summary>
+		/// Visits a user-defined logical operator that may short-circuit.
+		/// </summary>
+		/// <param name="inst">The instruction to analyze.</param>
 		protected internal override void VisitUserDefinedLogicOperator(UserDefinedLogicOperator inst)
 		{
 			HandleBinaryWithOptionalEvaluation(inst, inst.Left, inst.Right);
@@ -776,6 +895,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 
 		State stateOnNullableRewrap;
 
+		/// <summary>
+		/// Visits a <see cref="NullableRewrap"/> region and merges incoming flows from nested unwrap sites.
+		/// </summary>
+		/// <param name="inst">The nullable rewrap instruction.</param>
 		protected internal override void VisitNullableRewrap(NullableRewrap inst)
 		{
 			DebugStartPoint(inst);
@@ -790,6 +913,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			DebugEndPoint(inst);
 		}
 
+		/// <summary>
+		/// Visits a <see cref="NullableUnwrap"/> and contributes conditional flow to the surrounding rewrap.
+		/// </summary>
+		/// <param name="inst">The nullable unwrap instruction.</param>
 		protected internal override void VisitNullableUnwrap(NullableUnwrap inst)
 		{
 			DebugStartPoint(inst);
@@ -799,6 +926,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			DebugEndPoint(inst);
 		}
 
+		/// <summary>
+		/// Visits a switch by analyzing each section from the same pre-section state and joining their exits.
+		/// </summary>
+		/// <param name="inst">The switch instruction.</param>
 		protected internal override void VisitSwitchInstruction(SwitchInstruction inst)
 		{
 			DebugStartPoint(inst);
@@ -816,6 +947,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			DebugEndPoint(inst);
 		}
 
+		/// <summary>
+		/// Visits a <see cref="YieldReturn"/> instruction.
+		/// </summary>
+		/// <param name="inst">The instruction to analyze.</param>
 		protected internal override void VisitYieldReturn(YieldReturn inst)
 		{
 			DebugStartPoint(inst);
@@ -823,6 +958,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			DebugEndPoint(inst);
 		}
 
+		/// <summary>
+		/// Visits a using construct by evaluating its resource expression and body in sequence.
+		/// </summary>
+		/// <param name="inst">The using instruction.</param>
 		protected internal override void VisitUsingInstruction(UsingInstruction inst)
 		{
 			DebugStartPoint(inst);
@@ -831,6 +970,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			DebugEndPoint(inst);
 		}
 
+		/// <summary>
+		/// Visits a lock construct by evaluating the lock expression and then the protected body.
+		/// </summary>
+		/// <param name="inst">The lock instruction.</param>
 		protected internal override void VisitLockInstruction(LockInstruction inst)
 		{
 			DebugStartPoint(inst);
@@ -839,6 +982,15 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			DebugEndPoint(inst);
 		}
 
+		/// <summary>
+		/// Visits an <see cref="ILFunction"/> node.
+		/// </summary>
+		/// <param name="function">The nested function being visited.</param>
+		/// <remarks>
+		/// The base implementation does not define semantics for local functions and lambdas.
+		/// Concrete analyses override this member when they need to model nested-function behavior.
+		/// </remarks>
+		/// <exception cref="NotImplementedException">Always thrown by the base implementation.</exception>
 		protected internal override void VisitILFunction(ILFunction function)
 		{
 			throw new NotImplementedException();
