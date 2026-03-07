@@ -30,11 +30,29 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	/// <summary>
 	/// Used when calling a vararg method. Stores the actual parameter types being passed.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Metadata signatures for <c>vararg</c> calls split arguments into a required parameter prefix and an
+	/// optional tail that is encoded at the call site. This wrapper preserves that call-site tail so downstream
+	/// decompilation stages can emit <c>__arglist(...)</c> accurately.
+	/// </para>
+	/// <para>
+	/// Equality and hashing are delegated to <see cref="BaseMethod"/> only, matching existing behavior in
+	/// method lookup paths that treat all call-site vararg expansions of the same target method as equivalent.
+	/// </para>
+	/// </remarks>
 	public class VarArgInstanceMethod : IMethod
 	{
 		readonly IMethod baseMethod;
 		readonly IParameter[] parameters;
 
+		/// <summary>
+		/// Initializes a method wrapper that appends call-site vararg argument types to a vararg base signature.
+		/// </summary>
+		/// <param name="baseMethod">
+		/// Method signature whose final parameter is the vararg sentinel (<see cref="TypeKind.ArgList"/>).
+		/// </param>
+		/// <param name="varArgTypes">Types of optional arguments that appear after the vararg sentinel at the call site.</param>
 		public VarArgInstanceMethod(IMethod baseMethod, IEnumerable<IType> varArgTypes)
 		{
 			this.baseMethod = baseMethod;
@@ -48,12 +66,25 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.parameters = paramList.ToArray();
 		}
 
+		/// <summary>
+		/// Gets the underlying metadata method definition/reference before call-site vararg expansion.
+		/// </summary>
 		public IMethod BaseMethod => baseMethod;
 
+		/// <summary>
+		/// Gets the number of required (non-vararg-tail) parameters.
+		/// </summary>
+		/// <remarks>
+		/// This value equals <see cref="BaseMethod"/> parameter count minus the trailing
+		/// <see cref="TypeKind.ArgList"/> sentinel.
+		/// </remarks>
 		public int RegularParameterCount {
 			get { return baseMethod.Parameters.Count - 1; }
 		}
 
+		/// <summary>
+		/// Gets the effective call signature parameters, including call-site vararg tail arguments.
+		/// </summary>
 		public IReadOnlyList<IParameter> Parameters {
 			get { return parameters; }
 		}
@@ -75,6 +106,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			return other != null && baseMethod.Equals(other.baseMethod, typeNormalization);
 		}
 
+		/// <summary>
+		/// Returns a textual debug representation that includes regular parameters and the vararg tail separator.
+		/// </summary>
+		/// <returns>A reflection-style method signature with <c>...,</c> marking the vararg boundary.</returns>
 		public override string ToString()
 		{
 			StringBuilder b = new StringBuilder("[");
@@ -110,6 +145,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 
 		#region IMethod implementation
+		/// <summary>
+		/// Applies type-parameter substitution to both the base method and the call-site vararg tail.
+		/// </summary>
+		/// <param name="substitution">Type substitution to apply.</param>
+		/// <returns>A new <see cref="VarArgInstanceMethod"/> with substituted parameter and vararg types.</returns>
 		public IMethod Specialize(TypeParameterSubstitution substitution)
 		{
 			return new VarArgInstanceMethod(

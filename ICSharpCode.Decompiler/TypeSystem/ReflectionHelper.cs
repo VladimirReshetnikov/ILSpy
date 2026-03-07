@@ -28,6 +28,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	/// <summary>
 	/// Static helper methods for reflection names.
 	/// </summary>
+	/// <remarks>
+	/// These helpers bridge between runtime reflection encodings (assembly-qualified names, arity suffixes,
+	/// and open generic placeholders such as <c>`0</c> / <c>``0</c>) and ILSpy's semantic type model.
+	/// </remarks>
 	public static class ReflectionHelper
 	{
 		#region ICompilation.FindType
@@ -171,6 +175,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// it will look in all other assemblies of the compilation.
 		/// </remarks>
 		/// <seealso cref="FullTypeName(string)"/>
+		/// <example>
+		/// <code>
+		/// // Resolves a closed, assembly-qualified runtime type name.
+		/// IType t = ReflectionHelper.ParseReflectionName(
+		///     "System.Collections.Generic.List`1[[System.String, System.Private.CoreLib]], System.Private.CoreLib",
+		///     new SimpleTypeResolveContext(compilation));
+		/// </code>
+		/// </example>
 		public static IType ParseReflectionName(string reflectionTypeName, ITypeResolveContext resolveContext)
 		{
 			if (reflectionTypeName == null)

@@ -24,36 +24,70 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	/// <summary>
 	/// Represents an error while parsing a reflection name.
 	/// </summary>
+	/// <remarks>
+	/// The <see cref="Position"/> property points at the parser offset where invalid syntax was detected,
+	/// which allows callers to produce diagnostics that highlight the failing token in the original text.
+	/// </remarks>
 	[Serializable]
 	public class ReflectionNameParseException : Exception
 	{
 		int position;
 
+		/// <summary>
+		/// Gets the zero-based character position at which parsing failed.
+		/// </summary>
 		public int Position {
 			get { return position; }
 		}
 
+		/// <summary>
+		/// Initializes a new instance with the specified failure position.
+		/// </summary>
+		/// <param name="position">Zero-based index into the parsed reflection name.</param>
 		public ReflectionNameParseException(int position)
 		{
 			this.position = position;
 		}
 
+		/// <summary>
+		/// Initializes a new instance with the specified failure position and error message.
+		/// </summary>
+		/// <param name="position">Zero-based index into the parsed reflection name.</param>
+		/// <param name="message">Human-readable parse error details.</param>
 		public ReflectionNameParseException(int position, string message) : base(message)
 		{
 			this.position = position;
 		}
 
+		/// <summary>
+		/// Initializes a new instance with the specified failure position, error message, and inner exception.
+		/// </summary>
+		/// <param name="position">Zero-based index into the parsed reflection name.</param>
+		/// <param name="message">Human-readable parse error details.</param>
+		/// <param name="innerException">Underlying exception that triggered the parse failure.</param>
 		public ReflectionNameParseException(int position, string message, Exception innerException) : base(message, innerException)
 		{
 			this.position = position;
 		}
 
 		// This constructor is needed for serialization.
+		/// <summary>
+		/// Recreates a serialized <see cref="ReflectionNameParseException"/> instance.
+		/// </summary>
+		/// <param name="info">Serialization payload.</param>
+		/// <param name="context">Serialization context.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="info"/> is <see langword="null"/>.</exception>
 		protected ReflectionNameParseException(SerializationInfo info, StreamingContext context) : base(info, context)
 		{
 			position = info.GetInt32("position");
 		}
 
+		/// <summary>
+		/// Serializes the current exception, including <see cref="Position"/>.
+		/// </summary>
+		/// <param name="info">Destination serialization payload.</param>
+		/// <param name="context">Serialization context.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="info"/> is <see langword="null"/>.</exception>
 		public override void GetObjectData(SerializationInfo info, StreamingContext context)
 		{
 			base.GetObjectData(info, context);

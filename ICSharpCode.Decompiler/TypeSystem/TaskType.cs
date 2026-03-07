@@ -23,6 +23,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	/// <summary>
 	/// Helper class for dealing with System.Threading.Tasks.Task.
 	/// </summary>
+	/// <remarks>
+	/// This helper centralizes task-shape classification used by async decompilation transforms, especially when
+	/// deciding whether a return type follows the standard task pattern or a custom task-like pattern based on
+	/// <c>AsyncMethodBuilderAttribute</c>.
+	/// </remarks>
 	public static class TaskType
 	{
 		/// <summary>
@@ -70,6 +75,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <param name="type">Type to test for an <c>AsyncMethodBuilderAttribute</c>-based task pattern.</param>
 		/// <param name="builderType">Receives the builder type declared by <c>AsyncMethodBuilderAttribute</c> when the method returns <see langword="true"/>.</param>
 		/// <returns><see langword="true"/> if <paramref name="type"/> is recognized as a custom task-like type.</returns>
+		/// <remarks>
+		/// The current implementation accepts only task-like types with at most one type parameter, matching
+		/// decompiler support for non-generic and single-result async method builders.
+		/// </remarks>
 		public static bool IsCustomTask(IType type, out IType builderType)
 		{
 			builderType = null;
