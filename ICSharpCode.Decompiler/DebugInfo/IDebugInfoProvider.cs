@@ -35,6 +35,16 @@ namespace ICSharpCode.Decompiler.DebugInfo
 	/// <summary>
 	/// Additional type-shaping metadata for locals encoded in Portable PDB custom debug information.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The decompiler uses this metadata to reconstruct source-level types that are not directly represented
+	/// in ECMA-335 signatures, such as tuple element names and <c>dynamic</c> positions.
+	/// </para>
+	/// <para>
+	/// Both fields are optional. Providers populate only the payloads they can decode from the symbol format,
+	/// and consumers must treat <see langword="null"/> as "information not available".
+	/// </para>
+	/// </remarks>
 	public struct PdbExtraTypeInfo
 	{
 		/// <summary>
@@ -51,25 +61,45 @@ namespace ICSharpCode.Decompiler.DebugInfo
 	/// <summary>
 	/// Provides debug-symbol data used by the decompiler for names, sequence points, and language-specific type metadata.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Implementations are expected to be resilient to malformed or partially missing debug metadata.
+	/// Callers throughout the decompiler pipeline treat failures as absence of symbol data and continue with
+	/// generated names or synthesized sequence-point information.
+	/// </para>
+	/// <para>
+	/// Methods on this interface generally return empty collections or <see langword="false"/> when no data is available,
+	/// rather than throwing, so that decompilation remains best-effort even when PDB loading fails.
+	/// </para>
+	/// </remarks>
 	public interface IDebugInfoProvider
 	{
 		/// <summary>
 		/// Gets a human-readable status string describing where debug information was loaded from.
 		/// </summary>
+		/// <value>
+		/// A UI-ready description (for example, embedded-symbol status or external PDB file path).
+		/// </value>
 		string Description { get; }
 
 		/// <summary>
 		/// Gets sequence points for a method.
 		/// </summary>
 		/// <param name="method">Metadata handle for the method whose sequence points are requested.</param>
-		/// <returns>A list of sequence points. Returns an empty list when no sequence points are available.</returns>
+		/// <returns>
+		/// A list of sequence points ordered as stored by the underlying symbol provider.
+		/// Returns an empty list when no sequence points are available.
+		/// </returns>
 		IList<SequencePoint> GetSequencePoints(MethodDefinitionHandle method);
 
 		/// <summary>
 		/// Gets local variable records for a method.
 		/// </summary>
 		/// <param name="method">Metadata handle for the method whose locals are requested.</param>
-		/// <returns>A list of local variable descriptors from debug symbols.</returns>
+		/// <returns>
+		/// A list of local variable descriptors from debug symbols.
+		/// Returns an empty list when symbols do not provide local names.
+		/// </returns>
 		IList<Variable> GetVariables(MethodDefinitionHandle method);
 
 		/// <summary>
@@ -93,6 +123,10 @@ namespace ICSharpCode.Decompiler.DebugInfo
 		/// <summary>
 		/// Gets the file name that should be used as the source identity for this debug provider.
 		/// </summary>
+		/// <value>
+		/// The backing symbol file path when symbols come from an external file, or the module file path
+		/// when symbols are embedded.
+		/// </value>
 		string SourceFileName { get; }
 	}
 }
