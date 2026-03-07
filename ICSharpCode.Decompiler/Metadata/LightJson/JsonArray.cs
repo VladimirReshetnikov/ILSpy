@@ -9,8 +9,12 @@ namespace LightJson
 	using System.Diagnostics.CodeAnalysis;
 
 	/// <summary>
-	/// Represents an ordered collection of JsonValues.
+	/// Represents a JSON array as an ordered list of <see cref="JsonValue"/> items.
 	/// </summary>
+	/// <remarks>
+	/// Indexer reads are tolerant: out-of-range lookups return <see cref="JsonValue.Null"/> rather than throwing.
+	/// Mutating operations still follow <see cref="List{T}"/> semantics and may throw for invalid indices.
+	/// </remarks>
 	[DebuggerDisplay("Count = {Count}")]
 	[DebuggerTypeProxy(typeof(JsonArrayDebugView))]
 	internal sealed class JsonArray : IEnumerable<JsonValue>
@@ -54,12 +58,12 @@ namespace LightJson
 		}
 
 		/// <summary>
-		/// Gets or sets the value at the given index.
+		/// Gets or sets the item at the specified index.
 		/// </summary>
-		/// <param name="index">The zero-based index of the value to get or set.</param>
-		/// <remarks>
-		/// The getter will return JsonValue.Null if the given index is out of range.
-		/// </remarks>
+		/// <param name="index">The zero-based position to read or update.</param>
+		/// <value>
+		/// The value at <paramref name="index"/>. Getter returns <see cref="JsonValue.Null"/> when the index is outside the current bounds.
+		/// </value>
 		public JsonValue this[int index] {
 			get {
 				if (index >= 0 && index < this.items.Count)

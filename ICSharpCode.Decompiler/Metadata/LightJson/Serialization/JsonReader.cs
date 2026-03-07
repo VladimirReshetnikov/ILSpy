@@ -11,8 +11,21 @@ namespace LightJson.Serialization
 	using ErrorType = JsonParseException.ErrorType;
 
 	/// <summary>
-	/// Represents a reader that can read JsonValues.
+	/// Parses JSON text into the internal <see cref="JsonValue"/> object model used by the resolver pipeline.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This parser intentionally accepts a superset of strict JSON by allowing both JavaScript-style comments and trailing
+	/// commas in objects and arrays. The behavior matches the inputs consumed by
+	/// <see cref="ICSharpCode.Decompiler.Metadata.DotNetCorePathFinder"/>, where hand-edited or tool-generated
+	/// <c>.deps.json</c> files may include those extensions.
+	/// </para>
+	/// <para>
+	/// The implementation is eager and materializes the full JSON tree. Syntax errors are surfaced as
+	/// <see cref="JsonParseException"/> with a <see cref="JsonParseException.Position"/> captured from
+	/// <see cref="TextScanner"/>.
+	/// </para>
+	/// </remarks>
 	internal sealed class JsonReader
 	{
 		private TextScanner scanner;
@@ -23,10 +36,16 @@ namespace LightJson.Serialization
 		}
 
 		/// <summary>
-		/// Creates a JsonValue by using the given TextReader.
+		/// Parses a single JSON value from a character stream.
 		/// </summary>
-		/// <param name="reader">The TextReader used to read a JSON message.</param>
-		/// <returns>The parsed <see cref="JsonValue"/>.</returns>
+		/// <param name="reader">The source reader positioned at the beginning of a JSON payload.</param>
+		/// <returns>The parsed <see cref="JsonValue"/> tree.</returns>
+		/// <exception cref="ArgumentNullException">
+		/// Thrown when <paramref name="reader"/> is <see langword="null"/>.
+		/// </exception>
+		/// <exception cref="JsonParseException">
+		/// Thrown when the stream does not contain a syntactically valid JSON value according to this parser's rules.
+		/// </exception>
 		public static JsonValue Parse(TextReader reader)
 		{
 			if (reader == null)
@@ -38,10 +57,16 @@ namespace LightJson.Serialization
 		}
 
 		/// <summary>
-		/// Creates a JsonValue by reader the JSON message in the given string.
+		/// Parses a single JSON value from an in-memory string.
 		/// </summary>
-		/// <param name="source">The string containing the JSON message.</param>
-		/// <returns>The parsed <see cref="JsonValue"/>.</returns>
+		/// <param name="source">The JSON payload to parse.</param>
+		/// <returns>The parsed <see cref="JsonValue"/> tree.</returns>
+		/// <exception cref="ArgumentNullException">
+		/// Thrown when <paramref name="source"/> is <see langword="null"/>.
+		/// </exception>
+		/// <exception cref="JsonParseException">
+		/// Thrown when <paramref name="source"/> is not valid JSON according to this parser's rules.
+		/// </exception>
 		public static JsonValue Parse(string source)
 		{
 			if (source == null)

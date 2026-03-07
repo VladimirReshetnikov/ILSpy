@@ -6,10 +6,17 @@ namespace LightJson.Serialization
 	using System;
 
 	/// <summary>
-	/// The exception that is thrown when a JSON message cannot be parsed.
+	/// Represents a syntax error produced while parsing JSON text.
 	/// </summary>
 	/// <remarks>
-	/// This exception is only intended to be thrown by LightJson.
+	/// <para>
+	/// The parser reports both a coarse-grained <see cref="Type"/> classification and a 0-based
+	/// <see cref="Position"/> to make diagnostics deterministic for tooling.
+	/// </para>
+	/// <para>
+	/// This exception type is thrown by the internal LightJson parser used by metadata loading paths,
+	/// including <c>.deps.json</c> processing in the .NET runtime resolver.
+	/// </para>
 	/// </remarks>
 	internal sealed class JsonParseException : Exception
 	{
@@ -45,7 +52,7 @@ namespace LightJson.Serialization
 		}
 
 		/// <summary>
-		/// Enumerates the types of errors that can occur when parsing a JSON message.
+		/// Categorizes parse failures raised by <see cref="JsonReader"/>.
 		/// </summary>
 		public enum ErrorType : int
 		{
@@ -71,15 +78,15 @@ namespace LightJson.Serialization
 		}
 
 		/// <summary>
-		/// Gets the text position where the error occurred.
+		/// Gets the 0-based line and column where parsing detected the failure.
 		/// </summary>
-		/// <value>The text position where the error occurred.</value>
+		/// <value>The scanner position captured at the point the error was reported.</value>
 		public TextPosition Position { get; private set; }
 
 		/// <summary>
-		/// Gets the type of error that caused the exception to be thrown.
+		/// Gets the parser-specific error category.
 		/// </summary>
-		/// <value>The type of error that caused the exception to be thrown.</value>
+		/// <value>The classification used to drive fallback behavior or diagnostics.</value>
 		public ErrorType Type { get; private set; }
 
 		private static string GetDefaultMessage(ErrorType type)

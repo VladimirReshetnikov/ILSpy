@@ -12,8 +12,21 @@ namespace LightJson
 	using LightJson.Serialization;
 
 	/// <summary>
-	/// A wrapper object that contains a valid JSON value.
+	/// Represents a single JSON value with conversion helpers used by metadata resolution code.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <see cref="JsonValue"/> is a discriminated container over the six JSON kinds tracked by
+	/// <see cref="JsonValueType"/>. Scalar numeric and boolean values are stored in a compact <see cref="double"/> field,
+	/// while strings and compound values use a reference slot.
+	/// </para>
+	/// <para>
+	/// Conversion members are intentionally permissive: many invalid conversions return a default-like value
+	/// (<c>0</c>, <see langword="false"/>, <see langword="null"/>, <see cref="double.NaN"/>, or
+	/// <see cref="DateTime.MinValue"/>) instead of throwing. Callers that require strict type checking should
+	/// inspect <see cref="Type"/> and <c>Is*</c> properties before converting.
+	/// </para>
+	/// </remarks>
 	[DebuggerDisplay("{ToString(),nq}", Type = "JsonValue({Type})")]
 	[DebuggerTypeProxy(typeof(JsonValueDebugView))]
 	internal struct JsonValue
@@ -293,9 +306,12 @@ namespace LightJson
 		}
 
 		/// <summary>
-		/// Gets this value as a Number type.
+		/// Gets the value converted to a numeric representation.
 		/// </summary>
-		/// <value>This value as a Number type.</value>
+		/// <value>
+		/// Numeric and boolean values are converted directly, strings are parsed with invariant-culture
+		/// floating-point rules, and all other kinds map to <c>0</c>.
+		/// </value>
 		public double AsNumber {
 			get {
 				switch (this.Type)
@@ -375,9 +391,12 @@ namespace LightJson
 		}
 
 		/// <summary>
-		/// Gets this value as a system.DateTime.
+		/// Gets the value interpreted as <see cref="DateTime"/>.
 		/// </summary>
-		/// <value>This value as a system.DateTime.</value>
+		/// <value>
+		/// A parsed <see cref="DateTime"/> when this value is a string accepted by
+		/// <see cref="DateTime.TryParse(string, out DateTime)"/>; otherwise <see langword="null"/>.
+		/// </value>
 		public DateTime? AsDateTime {
 			get {
 				DateTime value;
@@ -542,9 +561,12 @@ namespace LightJson
 		}
 
 		/// <summary>
-		/// Converts the given JsonValue into an Int.
+		/// Converts a <see cref="JsonValue"/> to a 32-bit signed integer.
 		/// </summary>
-		/// <param name="jsonValue">The JsonValue to be converted.</param>
+		/// <param name="jsonValue">The value to convert.</param>
+		/// <returns>
+		/// The integer value when <paramref name="jsonValue"/> represents an integral number; otherwise <c>0</c>.
+		/// </returns>
 		public static explicit operator int(JsonValue jsonValue)
 		{
 			if (jsonValue.IsInteger)
@@ -578,9 +600,10 @@ namespace LightJson
 		}
 
 		/// <summary>
-		/// Converts the given JsonValue into a Bool.
+		/// Converts a <see cref="JsonValue"/> to <see cref="bool"/>.
 		/// </summary>
-		/// <param name="jsonValue">The JsonValue to be converted.</param>
+		/// <param name="jsonValue">The value to convert.</param>
+		/// <returns><see langword="true"/> only when the value kind is boolean and stored value is <see langword="true"/>; otherwise <see langword="false"/>.</returns>
 		public static explicit operator bool(JsonValue jsonValue)
 		{
 			if (jsonValue.IsBoolean)
@@ -614,9 +637,10 @@ namespace LightJson
 		}
 
 		/// <summary>
-		/// Converts the given JsonValue into a Double.
+		/// Converts a <see cref="JsonValue"/> to <see cref="double"/>.
 		/// </summary>
-		/// <param name="jsonValue">The JsonValue to be converted.</param>
+		/// <param name="jsonValue">The value to convert.</param>
+		/// <returns>The stored numeric value when the kind is number; otherwise <see cref="double.NaN"/>.</returns>
 		public static explicit operator double(JsonValue jsonValue)
 		{
 			if (jsonValue.IsNumber)
@@ -754,10 +778,12 @@ namespace LightJson
 		}
 
 		/// <summary>
-		/// Returns a JsonValue by parsing the given string.
+		/// Parses JSON text into a <see cref="JsonValue"/>.
 		/// </summary>
-		/// <param name="text">The JSON-formatted string to be parsed.</param>
-		/// <returns>The <see cref="JsonValue"/> representing the parsed text.</returns>
+		/// <param name="text">The JSON payload to parse.</param>
+		/// <returns>The parsed value tree.</returns>
+		/// <exception cref="ArgumentNullException">Thrown when <paramref name="text"/> is <see langword="null"/>.</exception>
+		/// <exception cref="JsonParseException">Thrown when <paramref name="text"/> is syntactically invalid.</exception>
 		public static JsonValue Parse(string text)
 		{
 			return JsonReader.Parse(text);

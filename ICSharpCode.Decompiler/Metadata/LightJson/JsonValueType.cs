@@ -4,7 +4,7 @@
 namespace LightJson
 {
 	/// <summary>
-	/// Enumerates the types of Json values.
+	/// Identifies the logical JSON token kind represented by a <see cref="JsonValue"/>.
 	/// </summary>
 	internal enum JsonValueType : byte
 	{

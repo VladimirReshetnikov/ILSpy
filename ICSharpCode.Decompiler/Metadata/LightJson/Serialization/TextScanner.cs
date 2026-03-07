@@ -8,8 +8,12 @@ namespace LightJson.Serialization
 	using ErrorType = JsonParseException.ErrorType;
 
 	/// <summary>
-	/// Represents a text scanner that reads one character at a time.
+	/// Provides low-level character scanning with position tracking for the JSON parser.
 	/// </summary>
+	/// <remarks>
+	/// Besides whitespace skipping, the scanner also accepts <c>//</c> and <c>/* */</c> comments,
+	/// which allows the higher-level parser to consume relaxed JSON inputs used by tooling.
+	/// </remarks>
 	internal sealed class TextScanner
 	{
 		private TextReader reader;
@@ -35,19 +39,23 @@ namespace LightJson.Serialization
 		}
 
 		/// <summary>
-		/// Reads the next character in the stream without changing the current position.
+		/// Peeks the next character without advancing the scanner.
 		/// </summary>
-		/// <returns>The next character in the stream.</returns>
+		/// <returns>The next available character.</returns>
+		/// <exception cref="JsonParseException">
+		/// Thrown when the stream is already at end-of-file.
+		/// </exception>
 		public char Peek()
 			=> (char)this.Peek(throwAtEndOfFile: true);
 
 		/// <summary>
-		/// Reads the next character in the stream without changing the current position.
+		/// Peeks the next character without advancing the scanner, with optional end-of-file tolerance.
 		/// </summary>
-		/// <param name="throwAtEndOfFile"><see langword="true"/> to throw an exception if the end of the file is
-		/// reached; otherwise, <see langword="false"/>.</param>
-		/// <returns>The next character in the stream, or -1 if the end of the file is reached with
-		/// <paramref name="throwAtEndOfFile"/> set to <see langword="false"/>.</returns>
+		/// <param name="throwAtEndOfFile"><see langword="true"/> to throw when no character is available; otherwise returns <c>-1</c>.</param>
+		/// <returns>The next character code point, or <c>-1</c> when EOF is reached and <paramref name="throwAtEndOfFile"/> is <see langword="false"/>.</returns>
+		/// <exception cref="JsonParseException">
+		/// Thrown when EOF is reached and <paramref name="throwAtEndOfFile"/> is <see langword="true"/>.
+		/// </exception>
 		public int Peek(bool throwAtEndOfFile)
 		{
 			var next = this.reader.Peek();
@@ -65,9 +73,10 @@ namespace LightJson.Serialization
 		}
 
 		/// <summary>
-		/// Reads the next character in the stream, advancing the text position.
+		/// Reads and consumes the next character, updating <see cref="Position"/>.
 		/// </summary>
-		/// <returns>The next character in the stream.</returns>
+		/// <returns>The consumed character.</returns>
+		/// <exception cref="JsonParseException">Thrown when the stream is at EOF.</exception>
 		public char Read()
 		{
 			var next = this.reader.Read();
@@ -95,7 +104,7 @@ namespace LightJson.Serialization
 		}
 
 		/// <summary>
-		/// Advances the scanner to next non-whitespace character.
+		/// Advances the scanner past whitespace and supported comment forms.
 		/// </summary>
 		public void SkipWhitespace()
 		{
