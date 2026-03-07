@@ -22,6 +22,13 @@ using System.Text;
 
 namespace ICSharpCode.Decompiler
 {
+	/// <summary>
+	/// Adapts an <see cref="ITextOutput"/> instance to the <see cref="TextWriter"/> API.
+	/// </summary>
+	/// <remarks>
+	/// This wrapper is used by components that expect a <see cref="TextWriter"/> while the decompiler pipeline uses
+	/// <see cref="ITextOutput"/> for richer semantics. The adapter forwards only plain text operations.
+	/// </remarks>
 	public class TextOutputWriter : TextWriter
 	{
 		readonly ITextOutput output;
@@ -33,6 +40,10 @@ namespace ICSharpCode.Decompiler
 			this.output = output;
 		}
 
+		/// <summary>
+		/// Gets the encoding reported by this writer.
+		/// </summary>
+		/// <value>Always <see cref="Encoding.UTF8"/>.</value>
 		public override Encoding Encoding {
 			get { return Encoding.UTF8; }
 		}

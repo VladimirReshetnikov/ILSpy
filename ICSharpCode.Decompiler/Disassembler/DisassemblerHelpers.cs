@@ -27,6 +27,9 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.Disassembler
 {
+	/// <summary>
+	/// Describes IL type-name rendering modes used by the disassembler.
+	/// </summary>
 	public enum ILNameSyntax
 	{
 		/// <summary>
@@ -47,20 +50,40 @@ namespace ICSharpCode.Decompiler.Disassembler
 		ShortTypeName
 	}
 
+	/// <summary>
+	/// Provides utility methods used while writing textual IL disassembly.
+	/// </summary>
 	public static class DisassemblerHelpers
 	{
 		static readonly char[] _validNonLetterIdentifierCharacter = new char[] { '_', '$', '@', '?', '`', '.' };
 
+		/// <summary>
+		/// Formats an instruction offset using IL label syntax.
+		/// </summary>
+		/// <param name="offset">The byte offset within the method body.</param>
+		/// <returns>The label text in <c>IL_xxxx</c> form.</returns>
 		public static string OffsetToString(int offset)
 		{
 			return string.Format("IL_{0:x4}", offset);
 		}
 
+		/// <summary>
+		/// Formats an instruction offset using IL label syntax.
+		/// </summary>
+		/// <param name="offset">The byte offset within the method body.</param>
+		/// <returns>The label text in <c>IL_xxxx</c> form.</returns>
 		public static string OffsetToString(long offset)
 		{
 			return string.Format("IL_{0:x4}", offset);
 		}
 
+		/// <summary>
+		/// Writes a local reference to an IL instruction offset.
+		/// </summary>
+		/// <param name="writer">The output sink.</param>
+		/// <param name="offset">
+		/// The target offset, or <see langword="null"/> to emit the literal <c>null</c>.
+		/// </param>
 		public static void WriteOffsetReference(ITextOutput writer, int? offset)
 		{
 			if (offset == null)
@@ -69,6 +92,13 @@ namespace ICSharpCode.Decompiler.Disassembler
 				writer.WriteLocalReference(OffsetToString(offset.Value), offset);
 		}
 
+		/// <summary>
+		/// Writes one exception region clause in ILAsm-compatible form.
+		/// </summary>
+		/// <param name="exceptionHandler">The metadata exception region to format.</param>
+		/// <param name="module">The module containing type references used by the clause.</param>
+		/// <param name="context">Generic context used when rendering catch types.</param>
+		/// <param name="writer">The output sink.</param>
 		public static void WriteTo(this ExceptionRegion exceptionHandler, MetadataFile module, MetadataGenericContext context, ITextOutput writer)
 		{
 			writer.Write(".try ");
@@ -126,6 +156,13 @@ namespace ICSharpCode.Decompiler.Disassembler
 			return identifier.All(IsValidIdentifierCharacter);
 		}
 
+		/// <summary>
+		/// Escapes an identifier using ILAsm single-quote escaping when required.
+		/// </summary>
+		/// <param name="identifier">The raw identifier text.</param>
+		/// <returns>
+		/// The original identifier when it is already IL-legal; otherwise a quoted and escaped representation.
+		/// </returns>
 		public static string Escape(string identifier)
 		{
 			if (IsValidIdentifier(identifier))
@@ -138,6 +175,13 @@ namespace ICSharpCode.Decompiler.Disassembler
 			return $"'{EscapeString(identifier).Replace("'", "\\'")}'";
 		}
 
+		/// <summary>
+		/// Writes a method parameter reference token for an IL instruction operand.
+		/// </summary>
+		/// <param name="writer">The output sink.</param>
+		/// <param name="metadata">The metadata reader used to resolve parameter names.</param>
+		/// <param name="handle">The method definition that owns the parameter.</param>
+		/// <param name="index">The zero-based method signature parameter index.</param>
 		public static void WriteParameterReference(ITextOutput writer, MetadataReader metadata, MethodDefinitionHandle handle, int index)
 		{
 			string name = GetParameterName(index);
@@ -179,6 +223,13 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Writes a local-variable reference token for an IL instruction operand.
+		/// </summary>
+		/// <param name="writer">The output sink.</param>
+		/// <param name="metadata">The metadata reader used to resolve local names from debug scopes when available.</param>
+		/// <param name="handle">The method definition that owns the local.</param>
+		/// <param name="index">The local variable index.</param>
 		public static void WriteVariableReference(ITextOutput writer, MetadataReader metadata, MethodDefinitionHandle handle, int index)
 		{
 			writer.WriteLocalReference(index.ToString(), "loc_" + index);

@@ -28,6 +28,19 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler
 {
+	/// <summary>
+	/// Minimal <see cref="ITextOutput"/> implementation that writes plain text to a <see cref="TextWriter"/>.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This type deliberately ignores navigation metadata and fold markers. Calls such as <see cref="WriteReference(MetadataFile, Handle, string, string, bool)"/>
+	/// and <see cref="MarkFoldStart(string, bool, bool)"/> degrade to plain textual output so the same decompiler pipeline can target both rich and plain sinks.
+	/// </para>
+	/// <para>
+	/// <see cref="Location"/> tracks the logical write position in terms of line and column, including deferred indentation that has been requested but not
+	/// emitted yet. The implementation is not thread-safe.
+	/// </para>
+	/// </remarks>
 	public sealed class PlainTextOutput : ITextOutput
 	{
 		readonly TextWriter writer;
@@ -51,12 +64,22 @@ namespace ICSharpCode.Decompiler
 			this.writer = new StringWriter();
 		}
 
+		/// <summary>
+		/// Gets the current write location in the output stream.
+		/// </summary>
+		/// <value>
+		/// A one-based line and column pair that reflects the next emitted character.
+		/// </value>
 		public TextLocation Location {
 			get {
 				return new TextLocation(line, column + (needsIndent ? indent : 0));
 			}
 		}
 
+		/// <summary>
+		/// Returns the underlying writer content.
+		/// </summary>
+		/// <returns>The current text emitted into the wrapped writer.</returns>
 		public override string ToString()
 		{
 			return writer.ToString();
