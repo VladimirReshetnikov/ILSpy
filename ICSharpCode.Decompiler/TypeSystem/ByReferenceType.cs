@@ -22,8 +22,26 @@ using ICSharpCode.Decompiler.TypeSystem.Implementation;
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
+	/// <summary>
+	/// Represents a managed by-reference type (<c>T&amp;</c> in metadata, <c>ref T</c> in C# signatures).
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Instances of this type model managed references used for by-ref parameters, locals, returns, and
+	/// address-producing IL instructions. They are treated as ref-like in ILSpy's type system and therefore
+	/// report <see cref="IType.IsByRefLike"/> as <see langword="true"/>.
+	/// </para>
+	/// <para>
+	/// Unlike ordinary reference types, managed references do not have independent object identity; consequently
+	/// <see cref="IType.IsReferenceType"/> is intentionally <see langword="null"/>.
+	/// </para>
+	/// </remarks>
 	public sealed class ByReferenceType : TypeWithElementType
 	{
+		/// <summary>
+		/// Creates a managed by-reference wrapper for <paramref name="elementType"/>.
+		/// </summary>
+		/// <param name="elementType">The referenced element type.</param>
 		public ByReferenceType(IType elementType) : base(elementType)
 		{
 		}
@@ -71,10 +89,22 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	}
 
 	[Serializable]
+	/// <summary>
+	/// Represents an unresolved type reference for a managed by-reference type.
+	/// </summary>
+	/// <remarks>
+	/// This type preserves unresolved metadata shape and constructs the concrete <see cref="ByReferenceType"/>
+	/// only when <see cref="Resolve"/> is invoked against a resolution context.
+	/// </remarks>
 	public sealed class ByReferenceTypeReference : ITypeReference, ISupportsInterning
 	{
 		readonly ITypeReference elementType;
 
+		/// <summary>
+		/// Initializes a by-reference type reference for the specified unresolved element type.
+		/// </summary>
+		/// <param name="elementType">The unresolved element type that the managed reference points to.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="elementType"/> is <see langword="null"/>.</exception>
 		public ByReferenceTypeReference(ITypeReference elementType)
 		{
 			if (elementType == null)
@@ -82,10 +112,18 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.elementType = elementType;
 		}
 
+		/// <summary>
+		/// Gets the unresolved element type that this reference wraps.
+		/// </summary>
 		public ITypeReference ElementType {
 			get { return elementType; }
 		}
 
+		/// <summary>
+		/// Resolves this reference to a concrete <see cref="ByReferenceType"/> in the supplied type-system context.
+		/// </summary>
+		/// <param name="context">The context used to resolve <see cref="ElementType"/>.</param>
+		/// <returns>A managed by-reference type whose element type is resolved in <paramref name="context"/>.</returns>
 		public IType Resolve(ITypeResolveContext context)
 		{
 			return new ByReferenceType(elementType.Resolve(context));

@@ -22,8 +22,21 @@ using ICSharpCode.Decompiler.TypeSystem.Implementation;
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
+	/// <summary>
+	/// Represents an unmanaged pointer type (<c>T*</c>).
+	/// </summary>
+	/// <remarks>
+	/// Pointer types are used for unsafe IL/C# operations and are distinct from managed references
+	/// represented by <see cref="ByReferenceType"/>. As with other pointer-like forms, the runtime category is
+	/// neither a normal reference type nor a plain value type, so <see cref="IType.IsReferenceType"/> is
+	/// reported as <see langword="null"/>.
+	/// </remarks>
 	public sealed class PointerType : TypeWithElementType
 	{
+		/// <summary>
+		/// Creates an unmanaged pointer type for <paramref name="elementType"/>.
+		/// </summary>
+		/// <param name="elementType">The pointed-to element type.</param>
 		public PointerType(IType elementType) : base(elementType)
 		{
 		}
@@ -69,10 +82,18 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	}
 
 	[Serializable]
+	/// <summary>
+	/// Represents an unresolved type reference for an unmanaged pointer type.
+	/// </summary>
 	public sealed class PointerTypeReference : ITypeReference, ISupportsInterning
 	{
 		readonly ITypeReference elementType;
 
+		/// <summary>
+		/// Initializes a pointer type reference for the specified unresolved element type.
+		/// </summary>
+		/// <param name="elementType">The unresolved element type that the pointer points to.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="elementType"/> is <see langword="null"/>.</exception>
 		public PointerTypeReference(ITypeReference elementType)
 		{
 			if (elementType == null)
@@ -80,10 +101,18 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.elementType = elementType;
 		}
 
+		/// <summary>
+		/// Gets the unresolved pointed-to element type.
+		/// </summary>
 		public ITypeReference ElementType {
 			get { return elementType; }
 		}
 
+		/// <summary>
+		/// Resolves this reference to a concrete <see cref="PointerType"/>.
+		/// </summary>
+		/// <param name="context">The context used to resolve <see cref="ElementType"/>.</param>
+		/// <returns>An unmanaged pointer type whose element type is resolved in <paramref name="context"/>.</returns>
 		public IType Resolve(ITypeResolveContext context)
 		{
 			return new PointerType(elementType.Resolve(context));

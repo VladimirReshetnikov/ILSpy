@@ -1,13 +1,23 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
 
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
+	/// <summary>
+	/// Base implementation for wrapper types that decorate another <see cref="IType"/> while delegating most members.
+	/// </summary>
+	/// <remarks>
+	/// Decorated types keep the observable member surface of the wrapped <see cref="baseType"/> and override only
+	/// the aspects that the decoration changes (for example nullability annotations).
+	/// </remarks>
 	public abstract class DecoratedType : IType
 	{
 		protected readonly IType baseType;
 
+		/// <summary>
+		/// Initializes a decorated type wrapper.
+		/// </summary>
+		/// <param name="baseType">The underlying type instance being decorated.</param>
 		protected DecoratedType(IType baseType)
 		{
 			this.baseType = baseType;
