@@ -29,18 +29,30 @@ using ICSharpCode.Decompiler.Semantics;
 namespace ICSharpCode.Decompiler.CSharp.Resolver
 {
 	/// <summary>
-	/// Represents a type resolve result that's resolved using an alias.
+	/// Represents a type-name resolution that was written through a C# using-alias.
 	/// </summary>
+	/// <remarks>
+	/// This resolve result preserves the original alias token in addition to the resolved target type.
+	/// Consumers that care about source fidelity (for example, semantic highlighting or refactoring hints)
+	/// can therefore distinguish an alias reference from a direct type reference that resolves to the same symbol.
+	/// </remarks>
 	public class AliasTypeResolveResult : TypeResolveResult
 	{
 		/// <summary>
-		/// The alias used.
+		/// Gets the alias token used in source code.
 		/// </summary>
 		public string Alias {
 			get;
 			private set;
 		}
 
+		/// <summary>
+		/// Initializes a new alias-based type resolve result.
+		/// </summary>
+		/// <param name="alias">The alias token that appeared in source.</param>
+		/// <param name="underlyingResult">
+		/// The resolved type bound to <paramref name="alias"/>. Its <see cref="TypeResolveResult.Type"/> value is exposed as this result's type.
+		/// </param>
 		public AliasTypeResolveResult(string alias, TypeResolveResult underlyingResult) : base(underlyingResult.Type)
 		{
 			this.Alias = alias;

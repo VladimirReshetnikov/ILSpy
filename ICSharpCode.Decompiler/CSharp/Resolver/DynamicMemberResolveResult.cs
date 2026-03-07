@@ -25,31 +25,53 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.CSharp.Resolver
 {
 	/// <summary>
-	/// Represents the result of an access to a member of a dynamic object.
+	/// Represents a dynamic member-access operation (for example, <c>target.Member</c> where the runtime binder decides the member).
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The result type is always <see cref="SpecialType.Dynamic"/>, because compile-time overload and member selection are deferred
+	/// to the C# dynamic runtime binder.
+	/// </para>
+	/// <para>
+	/// This node captures syntactic intent only: it records the access target and member name without proving that the member exists.
+	/// </para>
+	/// </remarks>
 	public class DynamicMemberResolveResult : ResolveResult
 	{
 		/// <summary>
-		/// Target of the member access (a dynamic object).
+		/// Gets the dynamic access target expression.
 		/// </summary>
 		public readonly ResolveResult Target;
 
 		/// <summary>
-		/// Name of the accessed member.
+		/// Gets the member name requested from <see cref="Target"/>.
 		/// </summary>
 		public readonly string Member;
 
+		/// <summary>
+		/// Initializes a dynamic member-access resolve result.
+		/// </summary>
+		/// <param name="target">The expression on which the member is accessed.</param>
+		/// <param name="member">The member name that will be looked up by the runtime binder.</param>
 		public DynamicMemberResolveResult(ResolveResult target, string member) : base(SpecialType.Dynamic)
 		{
 			this.Target = target;
 			this.Member = member;
 		}
 
+		/// <summary>
+		/// Returns a debugger-oriented textual representation of this resolve result.
+		/// </summary>
+		/// <returns>A string containing the dynamic member name.</returns>
 		public override string ToString()
 		{
 			return string.Format(CultureInfo.InvariantCulture, "[Dynamic member '{0}']", Member);
 		}
 
+		/// <summary>
+		/// Returns child semantic results used by this dynamic member-access node.
+		/// </summary>
+		/// <returns>A single-item sequence containing <see cref="Target"/>.</returns>
 		public override IEnumerable<ResolveResult> GetChildResults()
 		{
 			return new[] { Target };

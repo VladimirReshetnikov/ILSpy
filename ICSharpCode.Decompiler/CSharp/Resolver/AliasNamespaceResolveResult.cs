@@ -29,22 +29,30 @@ using ICSharpCode.Decompiler.Semantics;
 namespace ICSharpCode.Decompiler.CSharp.Resolver
 {
 	/// <summary>
-	/// Represents a namespace resolve result that's resolved using an alias.
+	/// Represents a namespace resolution produced through a C# using-alias.
 	/// </summary>
+	/// <remarks>
+	/// Like <see cref="AliasTypeResolveResult"/>, this type records alias-origin information that is not present
+	/// in plain <see cref="NamespaceResolveResult"/>. This allows downstream consumers to preserve source intent.
+	/// </remarks>
 	public class AliasNamespaceResolveResult : NamespaceResolveResult
 	{
 		/// <summary>
-		/// The alias used.
+		/// Gets the alias token that was bound to the resolved namespace.
 		/// </summary>
 		public string Alias {
 			get;
 			private set;
 		}
 
+		/// <summary>
+		/// Initializes a new alias-based namespace resolve result.
+		/// </summary>
+		/// <param name="alias">The alias token that appeared in source.</param>
+		/// <param name="underlyingResult">The namespace resolve result that the alias expands to.</param>
 		public AliasNamespaceResolveResult(string alias, NamespaceResolveResult underlyingResult) : base(underlyingResult.Namespace)
 		{
 			this.Alias = alias;
 		}
 	}
 }
-
