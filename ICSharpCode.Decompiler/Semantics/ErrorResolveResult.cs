@@ -22,23 +22,34 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents a resolve error.
-	/// 
-	/// Note: some errors are represented by other classes; for example a <see cref="ConversionResolveResult"/> may
-	/// be erroneous if the conversion is invalid.
+	/// Represents an explicit semantic resolution error.
 	/// </summary>
+	/// <remarks>
+	/// Some failure states are encoded by other resolve-result subclasses (for example invalid conversions). Use
+	/// <see cref="ResolveResult.IsError"/> to detect errors in a subtype-agnostic way.
+	/// </remarks>
 	/// <seealso cref="ResolveResult.IsError"/>.
 	public class ErrorResolveResult : ResolveResult
 	{
 		/// <summary>
-		/// Gets an ErrorResolveResult instance with <c>Type</c> = <c>SpecialType.UnknownType</c>.
+		/// Gets a shared error instance whose <see cref="ResolveResult.Type"/> is <see cref="SpecialType.UnknownType"/>.
 		/// </summary>
 		public static readonly ErrorResolveResult UnknownError = new ErrorResolveResult(SpecialType.UnknownType);
 
+		/// <summary>
+		/// Initializes an error result with the specified fallback expression type.
+		/// </summary>
+		/// <param name="type">The type exposed to downstream consumers despite the error.</param>
 		public ErrorResolveResult(IType type) : base(type)
 		{
 		}
 
+		/// <summary>
+		/// Initializes an error result with a diagnostic message and source location.
+		/// </summary>
+		/// <param name="type">The type exposed to downstream consumers despite the error.</param>
+		/// <param name="message">A resolver diagnostic message, or <see langword="null"/> when no text is available.</param>
+		/// <param name="location">The source location associated with the diagnostic.</param>
 		public ErrorResolveResult(IType type, string message, TextLocation location) : base(type)
 		{
 			this.Message = message;
@@ -49,8 +60,14 @@ namespace ICSharpCode.Decompiler.Semantics
 			get { return true; }
 		}
 
+		/// <summary>
+		/// Gets the resolver diagnostic text, or <see langword="null"/> when no message was captured.
+		/// </summary>
 		public string Message { get; private set; }
 
+		/// <summary>
+		/// Gets the source location associated with <see cref="Message"/>.
+		/// </summary>
 		public TextLocation Location { get; private set; }
 	}
 }
