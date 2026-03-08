@@ -32,6 +32,10 @@ namespace ICSharpCode.Decompiler.Documentation
 	/// all possibilities.
 	/// The type parameter count only applies to the innermost type, all outer types must be non-generic.
 	/// </summary>
+	/// <remarks>
+	/// XML documentation IDs encode nested types by using <c>.</c>, while metadata represents nesting with separate type-definition scopes.
+	/// This helper delays committing to a namespace/type boundary until resolution time and probes all legal splits.
+	/// </remarks>
 	[Serializable]
 	public class GetPotentiallyNestedClassTypeReference : ITypeReference
 	{
@@ -99,10 +103,16 @@ namespace ICSharpCode.Decompiler.Documentation
 		/// <summary>
 		/// Resolves the type reference within the context of the given PE file.
 		/// </summary>
+		/// <param name="module">PE file whose type definitions and exported type forwarders are probed.</param>
 		/// <returns>Either TypeDefinitionHandle, if the type is defined in the module or ExportedTypeHandle,
 		/// if the module contains a type forwarder. Returns a nil handle, if the type was not found.</returns>
+		/// <remarks>
+		/// The probing strategy mirrors <see cref="Resolve(ITypeResolveContext)"/>, but uses metadata handles directly so callers can avoid
+		/// constructing type-system objects when they only need low-level metadata identity.
+		/// </remarks>
 		public EntityHandle ResolveInPEFile(MetadataFile module)
 		{
+
 			string[] parts = typeName.Split('.');
 			for (int i = parts.Length - 1; i >= 0; i--)
 			{

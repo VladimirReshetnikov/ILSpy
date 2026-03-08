@@ -32,6 +32,10 @@ namespace ICSharpCode.Decompiler.Documentation
 	/// <summary>
 	/// Provides XML documentation fragments for entities identified by type-system metadata.
 	/// </summary>
+	/// <remarks>
+	/// Implementations are expected to return the inner XML payload of a documentation member, not a wrapped <c>&lt;member&gt;</c> element.
+	/// Consumers such as ILSpy UI hosts inject that payload into their own parsing pipeline.
+	/// </remarks>
 	public interface IDocumentationProvider
 	{
 		/// <summary>
@@ -42,6 +46,9 @@ namespace ICSharpCode.Decompiler.Documentation
 		/// Inner XML content from the matching <c>&lt;member&gt;</c> element, or <see langword="null"/> when the entity has no available documentation.
 		/// </returns>
 		/// <exception cref="ArgumentNullException"><paramref name="entity"/> is <see langword="null"/>.</exception>
+		/// <remarks>
+		/// The lookup key is the canonical member ID produced by <see cref="IdStringProvider.GetIdString(IEntity)"/>.
+		/// </remarks>
 		string GetDocumentation(IEntity entity);
 	}
 
@@ -55,6 +62,9 @@ namespace ICSharpCode.Decompiler.Documentation
 	/// </para>
 	/// <para>
 	/// Lookups are cached in a small ring buffer for hot keys. If file contents change after index creation, the provider retries once with a rebuilt index.
+	/// </para>
+	/// <para>
+	/// The provider is thread-compatible for concurrent readers: lookup and cache mutation paths synchronize on the cache instance.
 	/// </para>
 	/// </remarks>
 	[Serializable]
@@ -84,6 +94,9 @@ namespace ICSharpCode.Decompiler.Documentation
 			/// <summary>
 			/// Tries to retrieve a cached value for the specified documentation key.
 			/// </summary>
+			/// <param name="key">Documentation member ID used as lookup key.</param>
+			/// <param name="value">Receives the cached XML fragment when the key is present.</param>
+			/// <returns><see langword="true"/> if a cache entry exists for <paramref name="key"/>; otherwise <see langword="false"/>.</returns>
 			internal bool TryGet(string key, out string value)
 			{
 				foreach (var pair in entries)
@@ -101,6 +114,8 @@ namespace ICSharpCode.Decompiler.Documentation
 			/// <summary>
 			/// Inserts or overwrites the next ring-buffer slot with a lookup result.
 			/// </summary>
+			/// <param name="key">Documentation member ID used as cache key.</param>
+			/// <param name="value">Cached XML fragment, or <see langword="null"/> for a negative lookup.</param>
 			internal void Add(string key, string value)
 			{
 				entries[pos++] = new KeyValuePair<string, string>(key, value);
@@ -129,6 +144,8 @@ namespace ICSharpCode.Decompiler.Documentation
 			/// <summary>
 			/// Creates an index entry.
 			/// </summary>
+			/// <param name="hashCode">Stable hash of the member ID key.</param>
+			/// <param name="positionInFile">Byte offset where the candidate <c>&lt;member&gt;</c> element starts.</param>
 			internal IndexEntry(int hashCode, int positionInFile)
 			{
 				this.HashCode = hashCode;
@@ -259,6 +276,10 @@ namespace ICSharpCode.Decompiler.Documentation
 		/// <summary>
 		/// Maps XML line numbers to byte positions in the encoded file stream.
 		/// </summary>
+		/// <remarks>
+		/// <see cref="XmlTextReader"/> reports line/column locations, but lookup requires byte offsets for stream seeking. This mapper bridges
+		/// the two coordinate systems by replaying decoder state over the original byte stream.
+		/// </remarks>
 		sealed class LinePositionMapper
 		{
 			readonly FileStream fs;
@@ -273,6 +294,8 @@ namespace ICSharpCode.Decompiler.Documentation
 			/// <summary>
 			/// Initializes the line-to-position mapper.
 			/// </summary>
+			/// <param name="fs">Readable stream positioned at the start of the XML file.</param>
+			/// <param name="encoding">Encoding used by the XML document.</param>
 			public LinePositionMapper(FileStream fs, Encoding encoding)
 			{
 				this.decoder = encoding.GetDecoder();
@@ -282,6 +305,9 @@ namespace ICSharpCode.Decompiler.Documentation
 			/// <summary>
 			/// Advances the stream to the requested line and returns the byte offset at that line start.
 			/// </summary>
+			/// <param name="line">1-based line number to map.</param>
+			/// <returns>Byte position corresponding to the start of <paramref name="line"/>.</returns>
+			/// <exception cref="EndOfStreamException">The underlying stream ends before reaching <paramref name="line"/>.</exception>
 			public int GetPositionForLine(int line)
 			{
 				Debug.Assert(line >= currentLine);
@@ -429,6 +455,8 @@ namespace ICSharpCode.Decompiler.Documentation
 		/// <summary>
 		/// Rebuilds the index once and retries a documentation lookup.
 		/// </summary>
+		/// <param name="key">Documentation member ID to resolve after index rebuild.</param>
+		/// <returns>The matching XML fragment, or <see langword="null"/> if lookup still fails.</returns>
 		string ReloadAndGetDocumentation(string key)
 		{
 			try
@@ -463,6 +491,12 @@ namespace ICSharpCode.Decompiler.Documentation
 		/// <summary>
 		/// Attempts to load a member entry by seeking to a previously indexed byte position.
 		/// </summary>
+		/// <param name="key">Documentation member ID expected at the indexed position.</param>
+		/// <param name="positionInFile">Byte offset of a candidate <c>&lt;member&gt;</c> element.</param>
+		/// <returns>Inner XML payload when the candidate entry matches <paramref name="key"/>; otherwise <see langword="null"/>.</returns>
+		/// <remarks>
+		/// Hash collisions are expected, so callers probe multiple index entries with the same hash until one yields a matching <c>name</c> attribute.
+		/// </remarks>
 		string LoadDocumentation(string key, int positionInFile)
 		{
 			using (FileStream fs = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
