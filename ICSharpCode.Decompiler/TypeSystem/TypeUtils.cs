@@ -23,8 +23,19 @@ using ICSharpCode.Decompiler.TypeSystem.Implementation;
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
+	/// <summary>
+	/// Provides helper methods for mapping between IL stack categories, primitive metadata types, and decompiler type abstractions.
+	/// </summary>
+	/// <remarks>
+	/// These helpers are used throughout IL reading, transform validation, and C# expression reconstruction to keep
+	/// numeric/sign semantics consistent when the original metadata type is partially erased at IL stack level.
+	/// </remarks>
 	public static class TypeUtils
 	{
+		/// <summary>
+		/// Sentinel byte-size used to represent native-sized integer and pointer-like categories.
+		/// </summary>
+		/// <value>Constant <c>6</c>, intentionally between 4-byte and 8-byte integer widths for ordering comparisons.</value>
 		public const int NativeIntSize = 6; // between 4 (Int32) and 8 (Int64)
 
 		/// <summary>
@@ -579,10 +590,24 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 	}
 
+	/// <summary>
+	/// Represents signedness classification used by IL numeric operations and conversion logic.
+	/// </summary>
 	public enum Sign : byte
 	{
+		/// <summary>
+		/// No sign semantics are known or required for the operation.
+		/// </summary>
 		None,
+
+		/// <summary>
+		/// Signed integer semantics are required.
+		/// </summary>
 		Signed,
+
+		/// <summary>
+		/// Unsigned integer semantics are required.
+		/// </summary>
 		Unsigned
 	}
 }

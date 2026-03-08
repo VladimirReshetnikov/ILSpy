@@ -23,15 +23,21 @@ using System.Text;
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Holds the full name of a type definition.
-	/// A full type name uniquely identifies a type definition within a single assembly.
+	/// Represents the metadata identity of a type definition, including nested-type segments.
 	/// </summary>
 	/// <remarks>
-	/// A full type name can only represent type definitions, not arbitrary types.
-	/// It does not include any type arguments, and can not refer to array or pointer types.
-	/// 
-	/// A full type name represented as reflection name has the syntax:
-	/// <c>NamespaceName '.' TopLevelTypeName ['`'#] { '+' NestedTypeName ['`'#] }</c>
+	/// <para>
+	/// <b>Semantics.</b> <see cref="FullTypeName"/> models only definition names. It does not encode assembly identity,
+	/// generic type arguments, array/pointer/byref modifiers, or other constructed-type information.
+	/// </para>
+	/// <para>
+	/// <b>Name forms.</b> <see cref="ReflectionName"/> uses <c>+</c> between nested segments and backtick arity suffixes;
+	/// <see cref="FullName"/> uses <c>.</c> separators and omits arity suffixes.
+	/// </para>
+	/// <para>
+	/// <b>Usage.</b> Use this type when traversing metadata handles or type-definition trees. For top-level-only keys,
+	/// use <see cref="TopLevelTypeName"/>.
+	/// </para>
 	/// </remarks>
 	[Serializable]
 	public readonly struct FullTypeName : IEquatable<FullTypeName>
@@ -116,8 +122,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 
 		/// <summary>
-		/// Gets whether this is a nested type.
+		/// Gets a value indicating whether at least one nested-type segment is present.
 		/// </summary>
+		/// <value><see langword="true"/> when this name refers to a nested definition; otherwise <see langword="false"/>.</value>
 		public bool IsNested {
 			get {
 				return nestedTypes != null;
@@ -146,6 +153,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Gets the reflection-style metadata name.
+		/// </summary>
+		/// <value>Namespace-qualified top-level name plus nested segments separated by <c>+</c>, including backtick arity suffixes.</value>
 		public string ReflectionName {
 			get {
 				if (nestedTypes == null)
@@ -165,6 +176,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Gets the dotted full name without generic arity suffixes.
+		/// </summary>
+		/// <value>The namespace-qualified type name using <c>.</c> for nested segments.</value>
 		public string FullName {
 			get {
 				if (nestedTypes == null)
@@ -199,8 +214,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 
 		/// <summary>
-		/// Gets the name of the nested type at the given level.
+		/// Gets the simple metadata name of the nested segment at <paramref name="nestingLevel"/>.
 		/// </summary>
+		/// <param name="nestingLevel">Zero-based nesting level, where <c>0</c> is the first nested type under the top-level definition.</param>
+		/// <returns>The simple name of the requested nested segment.</returns>
+		/// <exception cref="InvalidOperationException">This instance represents a top-level type and has no nested segments.</exception>
 		public string GetNestedTypeName(int nestingLevel)
 		{
 			if (nestedTypes == null)
@@ -209,8 +227,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 
 		/// <summary>
-		/// Gets the number of additional type parameters of the nested type at the given level.
+		/// Gets the generic arity introduced by the nested segment at <paramref name="nestingLevel"/>.
 		/// </summary>
+		/// <param name="nestingLevel">Zero-based nesting level, where <c>0</c> is the first nested type under the top-level definition.</param>
+		/// <returns>The number of additional type parameters declared by the selected nested type.</returns>
+		/// <exception cref="InvalidOperationException">This instance represents a top-level type and has no nested segments.</exception>
 		public int GetNestedTypeAdditionalTypeParameterCount(int nestingLevel)
 		{
 			if (nestedTypes == null)
@@ -235,8 +256,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 
 		/// <summary>
-		/// Creates a nested type name.
+		/// Returns a new name that appends a nested type segment to this instance.
 		/// </summary>
+		/// <param name="name">Simple metadata name of the nested type segment to append.</param>
+		/// <param name="additionalTypeParameterCount">Generic arity introduced by the appended nested segment.</param>
+		/// <returns>A new <see cref="FullTypeName"/> containing the additional nested segment.</returns>
+		/// <exception cref="ArgumentNullException"><paramref name="name"/> is <see langword="null"/>.</exception>
 		/// <example><c>new FullTypeName("NS.A+B").NestedType("C", 1)</c> will return <c>new FullTypeName("NS.A+B+C`1")</c></example>
 		public FullTypeName NestedType(string name, int additionalTypeParameterCount)
 		{
@@ -251,6 +276,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			return new FullTypeName(topLevelType, newNestedTypeNames);
 		}
 
+		/// <summary>
+		/// Converts a top-level type name into a non-nested <see cref="FullTypeName"/>.
+		/// </summary>
+		/// <param name="topLevelTypeName">The top-level type identity to convert.</param>
+		/// <returns>A <see cref="FullTypeName"/> with no nested segments.</returns>
 		public static implicit operator FullTypeName(TopLevelTypeName topLevelTypeName)
 		{
 			return new FullTypeName(topLevelTypeName);
@@ -289,6 +319,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		#endregion
 	}
 
+	/// <summary>
+	/// Compares <see cref="FullTypeName"/> values using a configurable string comparison policy.
+	/// </summary>
+	/// <remarks>
+	/// Comparison includes top-level namespace/name/arity and every nested segment name/arity pair.
+	/// </remarks>
 	[Serializable]
 	public sealed class FullTypeNameComparer : IEqualityComparer<FullTypeName>
 	{
