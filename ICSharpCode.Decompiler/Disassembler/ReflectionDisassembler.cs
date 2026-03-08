@@ -33,8 +33,19 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Disassembler
 {
 	/// <summary>
-	/// Disassembles type and member definitions.
+	/// Emits ILAsm-style textual disassembly from ECMA-335 metadata and method bodies.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This type coordinates high-level metadata emission (assemblies, types, members, and attributes) while delegating
+	/// instruction-level formatting to <see cref="MethodBodyDisassembler"/>. Most options on this class are pass-through
+	/// toggles that control emitted detail level and are shared with the method-body writer.
+	/// </para>
+	/// <para>
+	/// A single instance is stateful (for example <c>isInType</c> controls folding hints) and should be treated as
+	/// thread-compatible rather than thread-safe. Use separate instances for concurrent disassembly operations.
+	/// </para>
+	/// </remarks>
 	public sealed class ReflectionDisassembler
 	{
 		readonly ITextOutput output;
@@ -42,36 +53,64 @@ namespace ICSharpCode.Decompiler.Disassembler
 		bool isInType;   // whether we are currently disassembling a whole type (-> defaultCollapsed for foldings)
 		MethodBodyDisassembler methodBodyDisassembler;
 
+		/// <summary>
+		/// Gets or sets whether method-body output should synthesize higher-level loop/exception structure markers.
+		/// </summary>
+		/// <value>
+		/// <see langword="true"/> to emit <c>.try</c>, <c>loop</c>, and related structural blocks where detectable;
+		/// <see langword="false"/> to emit a flat instruction stream.
+		/// </value>
 		public bool DetectControlStructure {
 			get => methodBodyDisassembler.DetectControlStructure;
 			set => methodBodyDisassembler.DetectControlStructure = value;
 		}
 
+		/// <summary>
+		/// Gets or sets whether source sequence-point annotations are emitted when debug information is available.
+		/// </summary>
 		public bool ShowSequencePoints {
 			get => methodBodyDisassembler.ShowSequencePoints;
 			set => methodBodyDisassembler.ShowSequencePoints = value;
 		}
 
+		/// <summary>
+		/// Gets or sets whether metadata tokens are emitted as comments next to declarations and references.
+		/// </summary>
 		public bool ShowMetadataTokens {
 			get => methodBodyDisassembler.ShowMetadataTokens;
 			set => methodBodyDisassembler.ShowMetadataTokens = value;
 		}
 
+		/// <summary>
+		/// Gets or sets whether emitted metadata tokens use base-10 instead of hexadecimal formatting.
+		/// </summary>
+		/// <remarks>
+		/// This setting is ignored when <see cref="ShowMetadataTokens"/> is <see langword="false"/>.
+		/// </remarks>
 		public bool ShowMetadataTokensInBase10 {
 			get => methodBodyDisassembler.ShowMetadataTokensInBase10;
 			set => methodBodyDisassembler.ShowMetadataTokensInBase10 = value;
 		}
 
+		/// <summary>
+		/// Gets or sets whether method-body output includes raw RVA, file offset, and encoded bytes per instruction.
+		/// </summary>
 		public bool ShowRawRVAOffsetAndBytes {
 			get => methodBodyDisassembler.ShowRawRVAOffsetAndBytes;
 			set => methodBodyDisassembler.ShowRawRVAOffsetAndBytes = value;
 		}
 
+		/// <summary>
+		/// Gets or sets the debug-information provider consulted for sequence points, locals, and scopes.
+		/// </summary>
 		public IDebugInfoProvider DebugInfo {
 			get => methodBodyDisassembler.DebugInfo;
 			set => methodBodyDisassembler.DebugInfo = value;
 		}
 
+		/// <summary>
+		/// Gets or sets whether member declarations are emitted expanded by default in folding-capable outputs.
+		/// </summary>
 		public bool ExpandMemberDefinitions { get; set; }
 
 		/// <summary>
@@ -80,15 +119,39 @@ namespace ICSharpCode.Decompiler.Disassembler
 		/// </summary>
 		public bool DecodeCustomAttributeBlobs { get; set; }
 
+		/// <summary>
+		/// Gets or sets the resolver used when decoding assembly-qualified names in security declarations and attributes.
+		/// </summary>
+		/// <value>
+		/// A resolver instance, or <see langword="null"/> to disable cross-assembly decoding and fall back to raw blobs.
+		/// </value>
 		public IAssemblyResolver AssemblyResolver { get; set; }
 
+		/// <summary>
+		/// Gets or sets an optional post-processor that can reorder or filter metadata entities before emission.
+		/// </summary>
+		/// <value>
+		/// An <see cref="IEntityProcessor"/> implementation, or <see langword="null"/> to preserve metadata table order.
+		/// </value>
 		public IEntityProcessor EntityProcessor { get; set; }
 
+		/// <summary>
+		/// Initializes a disassembler that writes to <paramref name="output"/> using a default <see cref="MethodBodyDisassembler"/>.
+		/// </summary>
+		/// <param name="output">Destination for emitted IL text.</param>
+		/// <param name="cancellationToken">Token observed during long-running metadata/member traversal.</param>
 		public ReflectionDisassembler(ITextOutput output, CancellationToken cancellationToken)
 			: this(output, new MethodBodyDisassembler(output, cancellationToken), cancellationToken)
 		{
 		}
 
+		/// <summary>
+		/// Initializes a disassembler using a caller-supplied method-body formatter.
+		/// </summary>
+		/// <param name="output">Destination for emitted IL text.</param>
+		/// <param name="methodBodyDisassembler">Formatter used for instruction-level disassembly.</param>
+		/// <param name="cancellationToken">Token observed during long-running metadata/member traversal.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="output"/> is <see langword="null"/>.</exception>
 		public ReflectionDisassembler(ITextOutput output, MethodBodyDisassembler methodBodyDisassembler, CancellationToken cancellationToken)
 		{
 			if (output == null)
@@ -150,6 +213,11 @@ namespace ICSharpCode.Decompiler.Disassembler
 			{ MethodImplAttributes.AggressiveInlining, "aggressiveinlining" },
 		};
 
+		/// <summary>
+		/// Writes a complete method declaration, including header, custom attributes, and method body.
+		/// </summary>
+		/// <param name="module">Module containing the method definition.</param>
+		/// <param name="handle">Handle of the method definition to disassemble.</param>
 		public void DisassembleMethod(MetadataFile module, MethodDefinitionHandle handle)
 		{
 			var genericContext = new MetadataGenericContext(handle, module);
@@ -160,6 +228,11 @@ namespace ICSharpCode.Decompiler.Disassembler
 			DisassembleMethodBlock(module, handle, genericContext);
 		}
 
+		/// <summary>
+		/// Writes only the method declaration header without custom attributes or body.
+		/// </summary>
+		/// <param name="module">Module containing the method definition.</param>
+		/// <param name="handle">Handle of the method definition to disassemble.</param>
 		public void DisassembleMethodHeader(MetadataFile module, MethodDefinitionHandle handle)
 		{
 			var genericContext = new MetadataGenericContext(handle, module);
@@ -482,12 +555,18 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Resolves type tokens while decoding XML-style security declarations embedded in metadata blobs.
+		/// </summary>
 		class SecurityDeclarationDecoder : ICustomAttributeTypeProvider<(PrimitiveTypeCode Code, string Name)>
 		{
 			readonly ITextOutput output;
 			readonly IAssemblyResolver resolver;
 			readonly MetadataFile module;
 
+			/// <summary>
+			/// Initializes a decoder for declarative-security type signatures.
+			/// </summary>
 			public SecurityDeclarationDecoder(ITextOutput output, IAssemblyResolver resolver, MetadataFile module)
 			{
 				this.output = output;
@@ -562,6 +641,12 @@ namespace ICSharpCode.Decompiler.Disassembler
 				}
 			}
 
+			/// <summary>
+			/// Resolves a serialized type name and preserves enum identity for downstream constant decoding.
+			/// </summary>
+			/// <exception cref="EnumUnderlyingTypeResolveException">
+			/// Thrown when the type cannot be resolved far enough to determine whether it is an enum and, if so, its underlying type.
+			/// </exception>
 			public (PrimitiveTypeCode, string) GetTypeFromSerializedName(string name)
 			{
 				if (resolver == null)
@@ -1285,6 +1370,11 @@ namespace ICSharpCode.Decompiler.Disassembler
 			{ FieldAttributes.NotSerialized, "notserialized" },
 		};
 
+		/// <summary>
+		/// Writes a complete field declaration, including attributes and RVA-backed initial data when present.
+		/// </summary>
+		/// <param name="module">Module containing the field definition.</param>
+		/// <param name="handle">Handle of the field definition to disassemble.</param>
 		public void DisassembleField(MetadataFile module, FieldDefinitionHandle handle)
 		{
 			var metadata = module.Metadata;
@@ -1343,6 +1433,9 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Writes only the field declaration header (type/name/flags) without attribute and data blocks.
+		/// </summary>
 		public void DisassembleFieldHeader(MetadataFile module, FieldDefinitionHandle handle)
 		{
 			var metadata = module.Metadata;
@@ -1421,6 +1514,9 @@ namespace ICSharpCode.Decompiler.Disassembler
 			{ PropertyAttributes.HasDefault, "hasdefault" },
 		};
 
+		/// <summary>
+		/// Writes a complete property declaration and associated accessor method blocks.
+		/// </summary>
 		public void DisassembleProperty(MetadataFile module, PropertyDefinitionHandle property)
 		{
 			var metadata = module.Metadata;
@@ -1438,6 +1534,9 @@ namespace ICSharpCode.Decompiler.Disassembler
 			CloseBlock();
 		}
 
+		/// <summary>
+		/// Writes only the property declaration line.
+		/// </summary>
 		public void DisassemblePropertyHeader(MetadataFile module, PropertyDefinitionHandle property)
 		{
 			var metadata = module.Metadata;
@@ -1494,6 +1593,9 @@ namespace ICSharpCode.Decompiler.Disassembler
 			{ EventAttributes.RTSpecialName, "rtspecialname" },
 		};
 
+		/// <summary>
+		/// Writes a complete event declaration and associated accessor method blocks.
+		/// </summary>
 		public void DisassembleEvent(MetadataFile module, EventDefinitionHandle handle)
 		{
 			var eventDefinition = module.Metadata.GetEventDefinition(handle);
@@ -1511,6 +1613,9 @@ namespace ICSharpCode.Decompiler.Disassembler
 			CloseBlock();
 		}
 
+		/// <summary>
+		/// Writes only the event declaration line.
+		/// </summary>
 		public void DisassembleEventHeader(MetadataFile module, EventDefinitionHandle handle)
 		{
 			var eventDefinition = module.Metadata.GetEventDefinition(handle);
@@ -1595,6 +1700,9 @@ namespace ICSharpCode.Decompiler.Disassembler
 			{ TypeAttributes.HasSecurity, null },
 		};
 
+		/// <summary>
+		/// Writes a complete type declaration including nested members and nested types.
+		/// </summary>
 		public void DisassembleType(MetadataFile module, TypeDefinitionHandle type)
 		{
 			var typeDefinition = module.Metadata.GetTypeDefinition(type);
@@ -1716,6 +1824,9 @@ namespace ICSharpCode.Decompiler.Disassembler
 			isInType = oldIsInType;
 		}
 
+		/// <summary>
+		/// Writes only the type declaration header line and inheritance/interface clauses.
+		/// </summary>
 		public void DisassembleTypeHeader(MetadataFile module, TypeDefinitionHandle type)
 		{
 			var typeDefinition = module.Metadata.GetTypeDefinition(type);
@@ -2006,19 +2117,34 @@ namespace ICSharpCode.Decompiler.Disassembler
 
 		}
 
+		/// <summary>
+		/// Associates enum flags with the textual tokens written into IL output.
+		/// </summary>
+		/// <typeparam name="T">The enum type represented by the mapping.</typeparam>
 		internal struct EnumNameCollection<T> : IEnumerable<KeyValuePair<long, string>> where T : struct
 		{
 			List<KeyValuePair<long, string>> names = new List<KeyValuePair<long, string>>();
 
+			/// <summary>
+			/// Initializes an empty mapping collection.
+			/// </summary>
 			public EnumNameCollection()
 			{
 			}
 
+			/// <summary>
+			/// Adds a mapping from an enum value to its emitted textual token.
+			/// </summary>
+			/// <param name="flag">Enum value or bit mask to map.</param>
+			/// <param name="name">Text to emit; may be <see langword="null"/> when the value is intentionally suppressed.</param>
 			public void Add(T flag, string name)
 			{
 				this.names.Add(new KeyValuePair<long, string>(Convert.ToInt64(flag), name));
 			}
 
+			/// <summary>
+			/// Returns an enumerator over the configured mappings in insertion order.
+			/// </summary>
 			public IEnumerator<KeyValuePair<long, string>> GetEnumerator()
 			{
 				return names.GetEnumerator();
@@ -2031,6 +2157,12 @@ namespace ICSharpCode.Decompiler.Disassembler
 		}
 		#endregion
 
+		/// <summary>
+		/// Writes the supplied type definitions, optionally wrapped in a <c>.namespace</c> block.
+		/// </summary>
+		/// <param name="nameSpace">Namespace name to emit, or <see langword="null"/>/<see cref="string.Empty"/> for the global namespace.</param>
+		/// <param name="module">Module containing the type definitions.</param>
+		/// <param name="types">Type-definition handles to emit in the provided order.</param>
 		public void DisassembleNamespace(string nameSpace, MetadataFile module, IEnumerable<TypeDefinitionHandle> types)
 		{
 			if (!string.IsNullOrEmpty(nameSpace))
@@ -2053,6 +2185,9 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Writes the <c>.assembly</c> block for <paramref name="module"/> when assembly metadata is present.
+		/// </summary>
 		public void WriteAssemblyHeader(MetadataFile module)
 		{
 			var metadata = module.Metadata;
@@ -2087,6 +2222,9 @@ namespace ICSharpCode.Decompiler.Disassembler
 			CloseBlock();
 		}
 
+		/// <summary>
+		/// Writes <c>.module extern</c> and <c>.assembly extern</c> declarations from the provided metadata reader.
+		/// </summary>
 		public void WriteAssemblyReferences(MetadataReader metadata)
 		{
 			foreach (var m in metadata.GetModuleReferences())
@@ -2116,6 +2254,13 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Writes the module-level header block, including exported types and PE header directives when available.
+		/// </summary>
+		/// <param name="module">Module whose header should be emitted.</param>
+		/// <param name="skipMVID">
+		/// <see langword="true"/> to suppress the MVID comment line; <see langword="false"/> to include it.
+		/// </param>
 		public void WriteModuleHeader(MetadataFile module, bool skipMVID = false)
 		{
 			var metadata = module.Metadata;
@@ -2196,6 +2341,12 @@ namespace ICSharpCode.Decompiler.Disassembler
 			WriteAttributes(module, metadata.GetCustomAttributes(EntityHandle.ModuleDefinition));
 		}
 
+		/// <summary>
+		/// Writes all top-level type definitions contained in <paramref name="module"/>.
+		/// </summary>
+		/// <remarks>
+		/// Types are optionally reordered through <see cref="EntityProcessor"/> before emission.
+		/// </remarks>
 		public void WriteModuleContents(MetadataFile module)
 		{
 			foreach (var handle in Process(module, module.Metadata.GetTopLevelTypeDefinitions().ToArray()))

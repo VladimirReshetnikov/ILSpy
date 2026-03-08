@@ -235,6 +235,21 @@ namespace ICSharpCode.Decompiler.Disassembler
 			writer.WriteLocalReference(index.ToString(), "loc_" + index);
 		}
 
+		/// <summary>
+		/// Writes an IL operand using ILAsm-compatible literal formatting.
+		/// </summary>
+		/// <param name="writer">The output sink.</param>
+		/// <param name="operand">The operand value to format.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="operand"/> is <see langword="null"/>.</exception>
+		/// <remarks>
+		/// <para>
+		/// This overload dispatches to the strongly typed overloads for strings and floating-point values so special
+		/// cases such as NaN, infinity, and escaped strings stay consistent with ILDasm-like output.
+		/// </para>
+		/// <para>
+		/// Character operands are emitted as their numeric UTF-16 code unit value, matching IL constant syntax.
+		/// </para>
+		/// </remarks>
 		public static void WriteOperand(ITextOutput writer, object operand)
 		{
 			if (operand == null)
@@ -268,11 +283,30 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Writes an integral operand using invariant-culture formatting.
+		/// </summary>
+		/// <param name="writer">The output sink.</param>
+		/// <param name="val">The integral value to write.</param>
 		public static void WriteOperand(ITextOutput writer, long val)
 		{
 			writer.Write(ToInvariantCultureString(val));
 		}
 
+		/// <summary>
+		/// Writes a <see cref="float"/> operand using IL-compatible syntax.
+		/// </summary>
+		/// <param name="writer">The output sink.</param>
+		/// <param name="val">The floating-point value to write.</param>
+		/// <remarks>
+		/// <para>
+		/// Finite numbers use round-trip formatting (<c>R</c>) so re-parsing can recover the same IEEE-754 value.
+		/// </para>
+		/// <para>
+		/// NaN and infinities are emitted as raw byte tuples because ILAsm does not accept textual NaN/Infinity literals.
+		/// Negative zero is preserved explicitly.
+		/// </para>
+		/// </remarks>
 		public static void WriteOperand(ITextOutput writer, float val)
 		{
 			if (val == 0)
@@ -302,6 +336,14 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Writes a <see cref="double"/> operand using IL-compatible syntax.
+		/// </summary>
+		/// <param name="writer">The output sink.</param>
+		/// <param name="val">The floating-point value to write.</param>
+		/// <remarks>
+		/// Behavior mirrors <see cref="WriteOperand(ITextOutput, float)"/> at 64-bit precision.
+		/// </remarks>
 		public static void WriteOperand(ITextOutput writer, double val)
 		{
 			if (val == 0)
@@ -331,6 +373,11 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Writes a string operand enclosed in IL string literal quotes.
+		/// </summary>
+		/// <param name="writer">The output sink.</param>
+		/// <param name="operand">The string value to escape and emit.</param>
 		public static void WriteOperand(ITextOutput writer, string operand)
 		{
 			writer.Write('"');
@@ -338,6 +385,15 @@ namespace ICSharpCode.Decompiler.Disassembler
 			writer.Write('"');
 		}
 
+		/// <summary>
+		/// Escapes text for inclusion in an IL string literal.
+		/// </summary>
+		/// <param name="str">The raw string to escape.</param>
+		/// <returns>The escaped text without surrounding quote characters.</returns>
+		/// <remarks>
+		/// Control characters, surrogate code units, and non-space whitespace are emitted as <c>\uXXXX</c> escapes so
+		/// the resulting literal is explicit and round-trippable.
+		/// </remarks>
 		public static string EscapeString(string str)
 		{
 			var sb = new StringBuilder();
@@ -390,6 +446,15 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 			return sb.ToString();
 		}
+
+		/// <summary>
+		/// Maps fully-qualified BCL primitive type names to IL keyword type names.
+		/// </summary>
+		/// <param name="fullName">The fully-qualified runtime type name (for example <c>System.Int32</c>).</param>
+		/// <returns>
+		/// The IL primitive keyword (for example <c>int32</c>), or <see langword="null"/> when
+		/// <paramref name="fullName"/> is not one of the recognized primitive aliases.
+		/// </returns>
 		public static string PrimitiveTypeName(string fullName)
 		{
 			switch (fullName)
