@@ -28,9 +28,21 @@ namespace ICSharpCode.Decompiler.Util
 	static class FileUtility
 	{
 		/// <summary>
-		/// Gets the normalized version of fileName.
-		/// Slashes are replaced with backslashes, backreferences "." and ".." are 'evaluated'.
+		/// Normalizes a path-like string by collapsing separators and dot-segments.
 		/// </summary>
+		/// <param name="fileName">Path or URI-like value to normalize.</param>
+		/// <returns>
+		/// The normalized representation of <paramref name="fileName"/>, or the original null/empty input value.
+		/// </returns>
+		/// <remarks>
+		/// <para>
+		/// The algorithm removes <c>.</c> segments, resolves <c>..</c> segments where possible, and preserves leading semantics
+		/// for UNC paths, rooted Unix paths, drive-rooted Windows paths, and URI-style prefixes containing a colon before the first separator.
+		/// </para>
+		/// <para>
+		/// This method does purely lexical normalization. It does not query the file system and does not resolve symbolic links.
+		/// </para>
+		/// </remarks>
 		[return: NotNullIfNotNull("fileName")]
 		public static string? NormalizePath(string? fileName)
 		{
@@ -173,6 +185,12 @@ namespace ICSharpCode.Decompiler.Util
 				&& (fileName[1] == '\\' || fileName[1] == '/');
 		}
 
+		/// <summary>
+		/// Compares two file-name strings using normalized, case-insensitive semantics.
+		/// </summary>
+		/// <param name="fileName1">First path to compare.</param>
+		/// <param name="fileName2">Second path to compare.</param>
+		/// <returns><see langword="true"/> when both normalized paths are equal; otherwise <see langword="false"/>.</returns>
 		public static bool IsEqualFileName(string? fileName1, string? fileName2)
 		{
 			return string.Equals(NormalizePath(fileName1),
@@ -180,6 +198,15 @@ namespace ICSharpCode.Decompiler.Util
 								 StringComparison.OrdinalIgnoreCase);
 		}
 
+		/// <summary>
+		/// Determines whether <paramref name="testDirectory"/> is equal to, or nested under, <paramref name="baseDirectory"/>.
+		/// </summary>
+		/// <param name="baseDirectory">Candidate base directory.</param>
+		/// <param name="testDirectory">Candidate child directory.</param>
+		/// <returns>
+		/// <see langword="true"/> when <paramref name="testDirectory"/> lies within <paramref name="baseDirectory"/> according to normalized
+		/// case-insensitive path comparison; otherwise <see langword="false"/>.
+		/// </returns>
 		public static bool IsBaseDirectory(string? baseDirectory, string? testDirectory)
 		{
 			if (baseDirectory == null || testDirectory == null)
@@ -263,6 +290,15 @@ namespace ICSharpCode.Decompiler.Util
 			return erg.ToString();
 		}
 
+		/// <summary>
+		/// Truncates a path string to fit within a character budget while keeping the tail segments visible.
+		/// </summary>
+		/// <param name="path">Path to shorten.</param>
+		/// <param name="max_chars">Maximum output length in characters.</param>
+		/// <returns>
+		/// <paramref name="path"/> unchanged when it already fits; otherwise a shortened representation that starts with an ellipsis and retains
+		/// as many trailing path segments as possible.
+		/// </returns>
 		[return: NotNullIfNotNull("path")]
 		public static string? TrimPath(string? path, int max_chars)
 		{

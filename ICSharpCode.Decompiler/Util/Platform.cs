@@ -26,6 +26,18 @@ namespace ICSharpCode.Decompiler.Util
 	/// </summary>
 	public static class Platform
 	{
+		/// <summary>
+		/// Gets the default comparer used for filesystem-style path and file-name comparisons.
+		/// </summary>
+		/// <remarks>
+		/// <para>
+		/// On Unix-like platforms this property returns <see cref="StringComparer.Ordinal"/> because file names are usually case-sensitive.
+		/// </para>
+		/// <para>
+		/// On Windows it returns <see cref="StringComparer.OrdinalIgnoreCase"/> to match the typical case-insensitive file-system behavior used by
+		/// project decompilation paths and lookup tables.
+		/// </para>
+		/// </remarks>
 		public static StringComparer FileNameComparer {
 			get {
 				switch (Environment.OSVersion.Platform)

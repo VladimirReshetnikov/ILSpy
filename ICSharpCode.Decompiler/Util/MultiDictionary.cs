@@ -94,9 +94,10 @@ namespace ICSharpCode.Decompiler.Util
 		}
 
 		/// <summary>
-		/// Removes all entries with the specified key.
+		/// Removes all values associated with <paramref name="key"/>.
 		/// </summary>
-		/// <returns>Returns true if at least one entry was removed.</returns>
+		/// <param name="key">Key whose value group should be removed.</param>
+		/// <returns><see langword="true"/> when the key existed; otherwise <see langword="false"/>.</returns>
 		public bool RemoveAll(TKey key)
 		{
 			return dict.Remove(key);
@@ -146,7 +147,7 @@ namespace ICSharpCode.Decompiler.Util
 		}
 
 		/// <summary>
-		/// Returns the number of different keys.
+		/// Gets the number of keys that currently have at least one associated value.
 		/// </summary>
 		public int Count {
 			get { return dict.Count; }
