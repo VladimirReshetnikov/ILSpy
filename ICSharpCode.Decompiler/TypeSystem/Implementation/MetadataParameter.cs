@@ -26,6 +26,13 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
+	/// <summary>
+	/// Represents a parameter decoded from metadata for a method, property accessor, or indexer signature.
+	/// </summary>
+	/// <remarks>
+	/// The implementation delays expensive metadata decoding until members are queried and translates low-level flags/custom
+	/// attributes into the higher-level parameter contract used by language output and semantic analysis.
+	/// </remarks>
 	sealed class MetadataParameter : IParameter
 	{
 		readonly MetadataModule module;
@@ -41,6 +48,13 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		byte constantValueInSignatureState;
 		byte decimalConstantState;
 
+		/// <summary>
+		/// Initializes a metadata-backed parameter wrapper.
+		/// </summary>
+		/// <param name="module">Metadata module providing table and custom-attribute access.</param>
+		/// <param name="owner">Member that declares this parameter.</param>
+		/// <param name="type">Decoded parameter type from signature metadata.</param>
+		/// <param name="handle">Handle to the underlying parameter row.</param>
 		internal MetadataParameter(MetadataModule module, IParameterizedMember owner, IType type, ParameterHandle handle)
 		{
 			this.module = module;
@@ -54,6 +68,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				decimalConstantState = ThreeState.False; // only optional parameters can be constants
 		}
 
+		/// <summary>
+		/// Gets the metadata token for the underlying parameter row.
+		/// </summary>
 		public EntityHandle MetadataToken => handle;
 
 		#region Attributes
@@ -88,8 +105,14 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		const ParameterAttributes inOut = ParameterAttributes.In | ParameterAttributes.Out;
 
+		/// <summary>
+		/// Gets the effective reference kind inferred from byref signature shape and known compiler attributes.
+		/// </summary>
 		public ReferenceKind ReferenceKind => DetectRefKind();
 
+		/// <summary>
+		/// Gets whether the metadata optional flag is set for this parameter.
+		/// </summary>
 		public bool IsOptional => (attributes & ParameterAttributes.Optional) != 0;
 
 		ReferenceKind DetectRefKind()
@@ -116,6 +139,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return ReferenceKind.Ref;
 		}
 
+		/// <summary>
+		/// Gets the decoded lifetime annotation (for example scoped-ref metadata) when supported by the active type-system options.
+		/// </summary>
 		public LifetimeAnnotation Lifetime {
 			get {
 				if ((module.TypeSystemOptions & TypeSystemOptions.ScopedRef) == 0)
@@ -139,6 +165,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
+		/// <summary>
+		/// Gets whether this parameter is treated as a params parameter (array form or params-collection attribute form).
+		/// </summary>
 		public bool IsParams {
 			get {
 				var metadata = module.metadata;
@@ -155,6 +184,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
+		/// <summary>
+		/// Gets the metadata name of the parameter.
+		/// </summary>
 		public string Name {
 			get {
 				string name = LazyInit.VolatileRead(ref this.name);
@@ -168,6 +200,14 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		bool IVariable.IsConst => false;
 
+		/// <summary>
+		/// Gets the default constant value encoded for this parameter, if any.
+		/// </summary>
+		/// <param name="throwOnInvalidMetadata">
+		/// <see langword="true"/> to surface malformed metadata as <see cref="BadImageFormatException"/>;
+		/// <see langword="false"/> to return <see langword="null"/> on metadata decoding failures.
+		/// </param>
+		/// <returns>The decoded constant value, or <see langword="null"/> when no constant is present or decoding is suppressed.</returns>
 		public object GetConstantValue(bool throwOnInvalidMetadata)
 		{
 			try
@@ -198,6 +238,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
+		/// <summary>
+		/// Gets whether the parameter declaration carries an embedded default constant in metadata.
+		/// </summary>
 		public bool HasConstantValueInSignature {
 			get {
 				if (constantValueInSignatureState == ThreeState.Unknown)
