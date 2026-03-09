@@ -110,15 +110,59 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		Nullability NullabilityConstraint { get; }
 
+		/// <summary>
+		/// Gets explicit type constraints declared for this type parameter.
+		/// </summary>
+		/// <value>
+		/// A list that contains one entry for each type constraint from the declaration's <c>where</c> clause.
+		/// The list is empty when no type constraints are declared.
+		/// </value>
 		IReadOnlyList<TypeConstraint> TypeConstraints { get; }
 	}
 
+	/// <summary>
+	/// Represents one explicit type constraint entry declared in a generic parameter clause.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Instances correspond to individual constraints in metadata order (for example <c>where T : IDisposable, new()</c>
+	/// contributes a type constraint for <c>IDisposable</c> while constructor and special constraints are exposed through
+	/// dedicated boolean properties on <see cref="ITypeParameter"/>).
+	/// </para>
+	/// <para>
+	/// Constraint attributes preserve required/optional custom modifiers attached to the constraint type so emit and
+	/// round-tripping scenarios can recover full signature fidelity.
+	/// </para>
+	/// </remarks>
 	public readonly struct TypeConstraint
 	{
+		/// <summary>
+		/// Gets the symbol classification used by visitors and symbol-formatting helpers.
+		/// </summary>
 		public SymbolKind SymbolKind => SymbolKind.Constraint;
+
+		/// <summary>
+		/// Gets the constrained type.
+		/// </summary>
+		/// <value>
+		/// The resolved type that the generic argument is required to satisfy.
+		/// </value>
 		public IType Type { get; }
+
+		/// <summary>
+		/// Gets attributes attached directly to the constraint type reference.
+		/// </summary>
+		/// <value>
+		/// A read-only list that is empty when no attributes are present.
+		/// </value>
 		public IReadOnlyList<IAttribute> Attributes { get; }
 
+		/// <summary>
+		/// Initializes a constraint record from a resolved type and optional attached attributes.
+		/// </summary>
+		/// <param name="type">The constrained type represented by this entry.</param>
+		/// <param name="attributes">Attributes attached to the constraint type reference, or <see langword="null"/>.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="type"/> is <see langword="null"/>.</exception>
 		public TypeConstraint(IType type, IReadOnlyList<IAttribute>? attributes = null)
 		{
 			this.Type = type ?? throw new ArgumentNullException(nameof(type));
