@@ -25,14 +25,31 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Holds information about a conversion between two types.
+	/// Represents the resolver's classification for a conversion between two expressions or types.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Instances are produced by <see cref="CSharp.Resolver.CSharpConversions"/> and then consumed by overload resolution,
+	/// resolve results, and code generation/decompilation rewrites. The object carries conversion category flags rather than
+	/// executable conversion logic.
+	/// </para>
+	/// <para>
+	/// Conversion instances are immutable and can be compared using <see cref="Equals(Conversion)"/>. Some categories are
+	/// represented as shared singleton instances (for example <see cref="IdentityConversion"/>), while category variants that
+	/// carry additional metadata (for example user-defined operators and tuple element conversions) are allocated per classification.
+	/// </para>
+	/// </remarks>
 	public abstract class Conversion : IEquatable<Conversion>
 	{
 		#region Conversion factory methods
 		/// <summary>
-		/// Not a valid conversion.
+		/// Represents the absence of a valid conversion.
 		/// </summary>
+		/// <remarks>
+		/// This value is returned by conversion classification APIs when no language-defined conversion exists between
+		/// the source and target. Downstream consumers typically interpret it as an error unless a caller-specific fallback
+		/// (such as unknown-type tolerance) applies.
+		/// </remarks>
 		public static readonly Conversion None = new InvalidConversion();
 
 		/// <summary>
@@ -40,16 +57,40 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// </summary>
 		public static readonly Conversion IdentityConversion = new BuiltinConversion(true, 0);
 
+		/// <summary>
+		/// Represents an implicit numeric conversion.
+		/// </summary>
 		public static readonly Conversion ImplicitNumericConversion = new NumericOrEnumerationConversion(true, false);
+
+		/// <summary>
+		/// Represents an explicit numeric conversion.
+		/// </summary>
 		public static readonly Conversion ExplicitNumericConversion = new NumericOrEnumerationConversion(false, false);
+
+		/// <summary>
+		/// Represents an implicit lifted numeric conversion for nullable operands.
+		/// </summary>
 		public static readonly Conversion ImplicitLiftedNumericConversion = new NumericOrEnumerationConversion(true, true);
+
+		/// <summary>
+		/// Represents an explicit lifted numeric conversion for nullable operands.
+		/// </summary>
 		public static readonly Conversion ExplicitLiftedNumericConversion = new NumericOrEnumerationConversion(false, true);
 
+		/// <summary>
+		/// Creates an enumeration conversion classification.
+		/// </summary>
+		/// <param name="isImplicit"><see langword="true"/> for implicit enum conversions; <see langword="false"/> for explicit conversions.</param>
+		/// <param name="isLifted"><see langword="true"/> when the conversion is lifted to nullable enum operands.</param>
+		/// <returns>A conversion object with <see cref="IsEnumerationConversion"/> set to <see langword="true"/>.</returns>
 		public static Conversion EnumerationConversion(bool isImplicit, bool isLifted)
 		{
 			return new NumericOrEnumerationConversion(isImplicit, isLifted, true);
 		}
 
+		/// <summary>
+		/// Represents conversion of the <see langword="null"/> literal to a compatible reference or nullable target type.
+		/// </summary>
 		public static readonly Conversion NullLiteralConversion = new BuiltinConversion(true, 1);
 
 		/// <summary>
@@ -57,16 +98,44 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// </summary>
 		public static readonly Conversion ImplicitConstantExpressionConversion = new BuiltinConversion(true, 2);
 
+		/// <summary>
+		/// Represents implicit or explicit reference conversions.
+		/// </summary>
 		public static readonly Conversion ImplicitReferenceConversion = new BuiltinConversion(true, 3);
+
+		/// <summary>
+		/// Represents explicit reference conversions.
+		/// </summary>
 		public static readonly Conversion ExplicitReferenceConversion = new BuiltinConversion(false, 3);
 
+		/// <summary>
+		/// Represents implicit dynamic conversions.
+		/// </summary>
 		public static readonly Conversion ImplicitDynamicConversion = new BuiltinConversion(true, 4);
+
+		/// <summary>
+		/// Represents explicit dynamic conversions.
+		/// </summary>
 		public static readonly Conversion ExplicitDynamicConversion = new BuiltinConversion(false, 4);
 
+		/// <summary>
+		/// Represents implicit nullable conversions between <c>T</c> and <c>T?</c> forms.
+		/// </summary>
 		public static readonly Conversion ImplicitNullableConversion = new BuiltinConversion(true, 5);
+
+		/// <summary>
+		/// Represents explicit nullable conversions between <c>T</c> and <c>T?</c> forms.
+		/// </summary>
 		public static readonly Conversion ExplicitNullableConversion = new BuiltinConversion(false, 5);
 
+		/// <summary>
+		/// Represents implicit pointer conversions.
+		/// </summary>
 		public static readonly Conversion ImplicitPointerConversion = new BuiltinConversion(true, 6);
+
+		/// <summary>
+		/// Represents explicit pointer conversions.
+		/// </summary>
 		public static readonly Conversion ExplicitPointerConversion = new BuiltinConversion(false, 6);
 
 		public static readonly Conversion BoxingConversion = new BuiltinConversion(true, 7);
@@ -97,6 +166,17 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// </summary>
 		public static readonly Conversion ImplicitSpanConversion = new BuiltinConversion(true, 13);
 
+		/// <summary>
+		/// Creates a conversion classification for user-defined <c>op_Implicit</c> or <c>op_Explicit</c> operators.
+		/// </summary>
+		/// <param name="operatorMethod">The operator method selected by overload resolution.</param>
+		/// <param name="isImplicit"><see langword="true"/> if the selected operator is considered implicit in the calling context.</param>
+		/// <param name="conversionBeforeUserDefinedOperator">Conversion applied from the original source type to the operator input type.</param>
+		/// <param name="conversionAfterUserDefinedOperator">Conversion applied from the operator result type to the requested target type.</param>
+		/// <param name="isLifted"><see langword="true"/> if the selected operator is lifted for nullable operands.</param>
+		/// <param name="isAmbiguous"><see langword="true"/> when multiple candidates remain and the conversion is intentionally marked invalid.</param>
+		/// <returns>A conversion that reports <see cref="IsUserDefined"/> as <see langword="true"/>.</returns>
+		/// <exception cref="ArgumentNullException"><paramref name="operatorMethod"/> is <see langword="null"/>.</exception>
 		public static Conversion UserDefinedConversion(IMethod operatorMethod, bool isImplicit, Conversion conversionBeforeUserDefinedOperator, Conversion conversionAfterUserDefinedOperator, bool isLifted = false, bool isAmbiguous = false)
 		{
 			if (operatorMethod == null)
@@ -104,6 +184,14 @@ namespace ICSharpCode.Decompiler.Semantics
 			return new UserDefinedConv(isImplicit, operatorMethod, conversionBeforeUserDefinedOperator, conversionAfterUserDefinedOperator, isLifted, isAmbiguous);
 		}
 
+		/// <summary>
+		/// Creates a valid method-group conversion to a delegate target.
+		/// </summary>
+		/// <param name="chosenMethod">Method selected from the method group.</param>
+		/// <param name="isVirtualMethodLookup">Whether the eventual delegate invocation performs virtual dispatch lookup.</param>
+		/// <param name="delegateCapturesFirstArgument">Whether the conversion binds the first argument as the delegate instance target.</param>
+		/// <returns>A valid conversion with <see cref="IsMethodGroupConversion"/> set to <see langword="true"/>.</returns>
+		/// <exception cref="ArgumentNullException"><paramref name="chosenMethod"/> is <see langword="null"/>.</exception>
 		public static Conversion MethodGroupConversion(IMethod chosenMethod, bool isVirtualMethodLookup, bool delegateCapturesFirstArgument)
 		{
 			if (chosenMethod == null)
@@ -111,6 +199,14 @@ namespace ICSharpCode.Decompiler.Semantics
 			return new MethodGroupConv(chosenMethod, isVirtualMethodLookup, delegateCapturesFirstArgument, isValid: true);
 		}
 
+		/// <summary>
+		/// Creates an invalid method-group conversion placeholder.
+		/// </summary>
+		/// <param name="chosenMethod">Method that was tentatively selected from the group.</param>
+		/// <param name="isVirtualMethodLookup">Whether virtual lookup would have been required for invocation.</param>
+		/// <param name="delegateCapturesFirstArgument">Whether the first argument would have been captured by the delegate target.</param>
+		/// <returns>A conversion with <see cref="IsMethodGroupConversion"/> set to <see langword="true"/> and <see cref="IsValid"/> set to <see langword="false"/>.</returns>
+		/// <exception cref="ArgumentNullException"><paramref name="chosenMethod"/> is <see langword="null"/>.</exception>
 		public static Conversion InvalidMethodGroupConversion(IMethod chosenMethod, bool isVirtualMethodLookup, bool delegateCapturesFirstArgument)
 		{
 			if (chosenMethod == null)
@@ -118,6 +214,14 @@ namespace ICSharpCode.Decompiler.Semantics
 			return new MethodGroupConv(chosenMethod, isVirtualMethodLookup, delegateCapturesFirstArgument, isValid: false);
 		}
 
+		/// <summary>
+		/// Creates a tuple conversion whose element-wise conversions are already classified.
+		/// </summary>
+		/// <param name="conversions">Per-element conversions in tuple element order.</param>
+		/// <returns>A tuple conversion descriptor.</returns>
+		/// <remarks>
+		/// The resulting conversion is implicit only when every element conversion is implicit.
+		/// </remarks>
 		public static Conversion TupleConversion(ImmutableArray<Conversion> conversions)
 		{
 			return new TupleConv(conversions);
@@ -470,10 +574,16 @@ namespace ICSharpCode.Decompiler.Semantics
 			get { return true; }
 		}
 
+		/// <summary>
+		/// Gets whether the conversion is implicit in the current classification context.
+		/// </summary>
 		public virtual bool IsImplicit {
 			get { return false; }
 		}
 
+		/// <summary>
+		/// Gets whether the conversion is explicit in the current classification context.
+		/// </summary>
 		public virtual bool IsExplicit {
 			get { return false; }
 		}
@@ -485,18 +595,30 @@ namespace ICSharpCode.Decompiler.Semantics
 			get { return false; }
 		}
 
+		/// <summary>
+		/// Gets whether this conversion classifies conversion of a <see langword="throw"/> expression.
+		/// </summary>
 		public virtual bool IsThrowExpressionConversion {
 			get { return false; }
 		}
 
+		/// <summary>
+		/// Gets whether this conversion is an identity conversion.
+		/// </summary>
 		public virtual bool IsIdentityConversion {
 			get { return false; }
 		}
 
+		/// <summary>
+		/// Gets whether this conversion classifies <see langword="null"/> literal conversion.
+		/// </summary>
 		public virtual bool IsNullLiteralConversion {
 			get { return false; }
 		}
 
+		/// <summary>
+		/// Gets whether this conversion is the constant-expression numeric conversion category.
+		/// </summary>
 		public virtual bool IsConstantExpressionConversion {
 			get { return false; }
 		}
@@ -619,6 +741,9 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// For user-defined conversions, this is the method being called.
 		/// For method-group conversions, this is the method that was chosen from the group.
 		/// </summary>
+		/// <remarks>
+		/// Returns <see langword="null"/> for built-in conversions that do not originate from method symbols.
+		/// </remarks>
 		public virtual IMethod Method {
 			get { return null; }
 		}
@@ -658,6 +783,11 @@ namespace ICSharpCode.Decompiler.Semantics
 			return base.GetHashCode();
 		}
 
+		/// <summary>
+		/// Determines whether this conversion instance is equal to another conversion instance.
+		/// </summary>
+		/// <param name="other">The conversion to compare with the current instance.</param>
+		/// <returns><see langword="true"/> when both instances classify the same conversion category and payload; otherwise <see langword="false"/>.</returns>
 		public virtual bool Equals(Conversion other)
 		{
 			return this == other;
