@@ -27,20 +27,42 @@ using ICSharpCode.Decompiler.TypeSystem.Implementation;
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// ParameterizedType represents an instance of a generic type.
-	/// Example: List&lt;string&gt;
+	/// Represents a constructed generic type where all type parameters are bound to concrete type arguments.
 	/// </summary>
 	/// <remarks>
-	/// When getting the members, this type modifies the lists so that
-	/// type parameters in the signatures of the members are replaced with
-	/// the type arguments.
+	/// <para>
+	/// This wrapper preserves the generic definition identity (<see cref="GenericType"/>) and overlays a stable
+	/// type-argument vector. Member enumeration APIs project definition members through this substitution so callers
+	/// see signatures as they appear on the constructed receiver.
+	/// </para>
+	/// <para>
+	/// Use <see cref="GetMemberOptions.ReturnMemberDefinitions"/> on member queries when you need original unspecialized
+	/// symbols instead of substituted wrappers.
+	/// </para>
 	/// </remarks>
+	/// <example>
+	/// <code>
+	/// IType listDefinition = compilation.FindType(new FullTypeName("System.Collections.Generic.List`1"));
+	/// IType constructed = new ParameterizedType(listDefinition, new[] { compilation.FindType(KnownTypeCode.String) });
+	///
+	/// // Returns methods specialized for List&lt;string&gt;.
+	/// var methods = constructed.GetMethods();
+	/// </code>
+	/// </example>
 	[Serializable]
 	public sealed class ParameterizedType : IType
 	{
 		readonly IType genericType;
 		readonly IType[] typeArguments;
 
+		/// <summary>
+		/// Initializes a constructed generic type.
+		/// </summary>
+		/// <param name="genericType">Generic type definition or open generic type to construct.</param>
+		/// <param name="typeArguments">Type arguments that bind the generic type parameters.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="genericType"/> or <paramref name="typeArguments"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentException">The argument sequence is empty, or its length does not match <paramref name="genericType"/>'s arity.</exception>
+		/// <exception cref="InvalidOperationException">Any argument belongs to a different compilation than <paramref name="genericType"/>.</exception>
 		public ParameterizedType(IType genericType, IEnumerable<IType> typeArguments)
 		{
 			if (genericType == null)
@@ -162,8 +184,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		public IReadOnlyList<IType> TypeArguments => typeArguments;
 
 		/// <summary>
-		/// Same as 'parameterizedType.TypeArguments[index]'.
+		/// Gets the type argument at the specified generic parameter position.
 		/// </summary>
+		/// <param name="index">Zero-based generic parameter index.</param>
+		/// <returns>The bound type argument at <paramref name="index"/>.</returns>
+		/// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is outside the valid range.</exception>
 		public IType GetTypeArgument(int index)
 		{
 			return typeArguments[index];
@@ -172,9 +197,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		public IReadOnlyList<ITypeParameter> TypeParameters => genericType.TypeParameters;
 
 		/// <summary>
-		/// Gets the definition of the generic type.
-		/// For <c>ParameterizedType</c>, this method never returns null.
+		/// Gets the type definition behind <see cref="GenericType"/>.
 		/// </summary>
+		/// <returns>The non-null generic type definition for this constructed instance.</returns>
 		public ITypeDefinition GetDefinition()
 		{
 			return genericType.GetDefinition();
@@ -186,19 +211,19 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 
 		/// <summary>
-		/// Gets a type visitor that performs the substitution of class type parameters with the type arguments
-		/// of this parameterized type.
+		/// Creates a substitution that maps the declaring type's generic parameters to this instance's type arguments.
 		/// </summary>
+		/// <returns>A substitution usable for specializing member/type signatures against this constructed type.</returns>
 		public TypeParameterSubstitution GetSubstitution()
 		{
 			return new TypeParameterSubstitution(typeArguments, null);
 		}
 
 		/// <summary>
-		/// Gets a type visitor that performs the substitution of class type parameters with the type arguments
-		/// of this parameterized type,
-		/// and also substitutes method type parameters with the specified method type arguments.
+		/// Creates a substitution that combines this type's class-parameter bindings with method type arguments.
 		/// </summary>
+		/// <param name="methodTypeArguments">Type arguments to bind method generic parameters.</param>
+		/// <returns>A composed substitution for class and method generic parameters.</returns>
 		public TypeParameterSubstitution GetSubstitution(IReadOnlyList<IType> methodTypeArguments)
 		{
 			return new TypeParameterSubstitution(typeArguments, methodTypeArguments);
@@ -360,15 +385,24 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	}
 
 	/// <summary>
-	/// ParameterizedTypeReference is a reference to generic class that specifies the type parameters.
-	/// Example: List&lt;string&gt;
+	/// Represents an unresolved reference to a constructed generic type.
 	/// </summary>
+	/// <remarks>
+	/// The reference resolves both the generic type and each argument in the supplied <see cref="ITypeResolveContext"/>,
+	/// then materializes a <see cref="ParameterizedType"/> instance.
+	/// </remarks>
 	[Serializable]
 	public sealed class ParameterizedTypeReference : ITypeReference, ISupportsInterning
 	{
 		readonly ITypeReference genericType;
 		readonly ITypeReference[] typeArguments;
 
+		/// <summary>
+		/// Initializes a new constructed-type reference.
+		/// </summary>
+		/// <param name="genericType">Reference to the generic type being constructed.</param>
+		/// <param name="typeArguments">References for the type arguments.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="genericType"/>, <paramref name="typeArguments"/>, or any element is <see langword="null"/>.</exception>
 		public ParameterizedTypeReference(ITypeReference genericType, IEnumerable<ITypeReference> typeArguments)
 		{
 			if (genericType == null)
@@ -394,6 +428,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Resolves this constructed-type reference in the supplied context.
+		/// </summary>
+		/// <param name="context">Resolution context that supplies type definitions and substitutions.</param>
+		/// <returns>
+		/// A resolved constructed type. If the resolved generic type has arity zero, the generic type itself is returned.
+		/// Missing trailing arguments are substituted with <see cref="SpecialType.UnknownType"/>.
+		/// </returns>
 		public IType Resolve(ITypeResolveContext context)
 		{
 			IType baseType = genericType.Resolve(context);

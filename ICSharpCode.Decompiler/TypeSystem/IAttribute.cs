@@ -24,35 +24,61 @@ using System.Reflection.Metadata;
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Represents an attribute.
+	/// Represents a decoded custom attribute instance attached to a type-system symbol.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This abstraction is intentionally higher-level than raw ECMA-335 blobs. Implementations expose constructor and
+	/// argument values as resolved <see cref="IType"/>-based structures so decompiler transforms and semantic analysis can
+	/// inspect attributes without reparsing metadata signatures.
+	/// </para>
+	/// <para>
+	/// <see cref="HasDecodeErrors"/> allows callers to distinguish "attribute exists but payload could not be decoded"
+	/// from "attribute is absent". This is important when operating on malformed or partially-resolved inputs.
+	/// </para>
+	/// </remarks>
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Naming", "CA1711:IdentifiersShouldNotHaveIncorrectSuffix")]
 	public interface IAttribute
 	{
 		/// <summary>
-		/// Gets the type of the attribute.
+		/// Gets the resolved attribute type.
 		/// </summary>
+		/// <value>
+		/// The concrete type that defines the attribute instance (for example <c>System.ObsoleteAttribute</c>).
+		/// </value>
 		IType AttributeType { get; }
 
 		/// <summary>
-		/// Gets the constructor being used.
-		/// This property may return null if no matching constructor was found.
+		/// Gets the constructor that was matched for the attribute payload.
 		/// </summary>
+		/// <value>
+		/// The resolved constructor symbol, or <see langword="null"/> when constructor resolution failed even though
+		/// attribute metadata was present.
+		/// </value>
 		IMethod? Constructor { get; }
 
 		/// <summary>
-		/// Gets whether there were errors decoding the attribute.
+		/// Gets whether payload decoding encountered metadata/signature errors.
 		/// </summary>
+		/// <value>
+		/// <see langword="true"/> when fixed or named arguments could not be decoded reliably; otherwise <see langword="false"/>.
+		/// </value>
 		bool HasDecodeErrors { get; }
 
 		/// <summary>
-		/// Gets the positional arguments.
+		/// Gets the positional constructor arguments in declaration order.
 		/// </summary>
+		/// <value>
+		/// A decoded immutable array that corresponds to constructor parameters from left to right.
+		/// </value>
 		ImmutableArray<CustomAttributeTypedArgument<IType>> FixedArguments { get; }
 
 		/// <summary>
-		/// Gets the named arguments passed to the attribute.
+		/// Gets the named property/field assignments applied after constructor invocation.
 		/// </summary>
+		/// <value>
+		/// A decoded immutable array of named assignments; each entry identifies whether it targets a field or property.
+		/// </value>
 		ImmutableArray<CustomAttributeNamedArgument<IType>> NamedArguments { get; }
 	}
 }
