@@ -20,9 +20,19 @@ using System;
 
 namespace ICSharpCode.Decompiler.CSharp.Resolver
 {
+	/// <summary>
+	/// Describes why a candidate method/member failed during overload resolution.
+	/// </summary>
+	/// <remarks>
+	/// Multiple values may be combined for a single candidate because argument mapping, type inference, and
+	/// conversion checks run in separate phases.
+	/// </remarks>
 	[Flags]
 	public enum OverloadResolutionErrors
 	{
+		/// <summary>
+		/// Indicates that no overload-resolution error was recorded.
+		/// </summary>
 		None = 0,
 		/// <summary>
 		/// Too many positional arguments (some could not be mapped to any parameter).
@@ -77,10 +87,10 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 		/// </remarks>
 		Inaccessible = 0x0400,
 		/// <summary>
-		/// A generic method 
+		/// Generic constraints on the selected method are not satisfied by the inferred or supplied type arguments.
 		/// </summary>
 		/// <remarks>
-		/// This error does not prevent a candidate from being applicable.
+		/// This value is attached during final validation and does not affect the earlier applicability filtering step.
 		/// </remarks>
 		MethodConstraintsNotSatisfied = 0x0800,
 		/// <summary>

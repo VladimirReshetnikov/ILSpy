@@ -28,6 +28,9 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.CSharp.Resolver
 {
+	/// <summary>
+	/// Selects the generic method type-inference strategy used by <see cref="TypeInference"/>.
+	/// </summary>
 	public enum TypeInferenceAlgorithm
 	{
 		/// <summary>
@@ -35,13 +38,15 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 		/// </summary>
 		CSharp4,
 		/// <summary>
-		/// Improved algorithm (not part of any specification) using FindTypeInBounds for fixing.
+		/// Uses ILSpy's enhanced inference pass, including <c>FindTypeInBounds</c> during type fixing.
 		/// </summary>
 		Improved,
 		/// <summary>
-		/// Improved algorithm (not part of any specification) using FindTypeInBounds for fixing;
-		/// uses <see cref="IntersectionType"/> to report all results (in case of ambiguities).
+		/// Uses the enhanced inference pass and preserves all ambiguous candidates via <see cref="IntersectionType"/>.
 		/// </summary>
+		/// <remarks>
+		/// This mode is primarily consumed by decompilation paths that prefer representable output over early ambiguity collapse.
+		/// </remarks>
 		ImprovedReturnAllResults
 	}
 
