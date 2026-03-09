@@ -23,6 +23,13 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler
 {
+	/// <summary>
+	/// Extension helpers for identifying compiler-generated symbols and retrieving metadata-backed documentation.
+	/// </summary>
+	/// <remarks>
+	/// These helpers are used across decompiler transforms and output shaping to decide whether synthesized artifacts
+	/// should be hidden, rewritten, or rendered using higher-level language constructs.
+	/// </remarks>
 	public static class NRExtensions
 	{
 		/// <summary>
@@ -105,6 +112,9 @@ namespace ICSharpCode.Decompiler
 
 		class ContainsAnonTypeVisitor : TypeVisitor
 		{
+			/// <summary>
+			/// Gets whether any visited type matched the anonymous-type predicate.
+			/// </summary>
 			public bool ContainsAnonType;
 
 			public override IType VisitOtherType(IType type)
@@ -122,6 +132,13 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <summary>
+		/// Loads XML documentation text for an entity from the owning module's documentation provider.
+		/// </summary>
+		/// <param name="entity">Entity whose documentation should be retrieved.</param>
+		/// <returns>
+		/// Raw XML documentation content when available; otherwise <see langword="null"/>.
+		/// </returns>
 		internal static string GetDocumentation(this IEntity entity)
 		{
 			var docProvider = XmlDocLoader.LoadDocumentation(entity.ParentModule.MetadataFile);
@@ -130,6 +147,13 @@ namespace ICSharpCode.Decompiler
 			return docProvider.GetDocumentation(entity);
 		}
 
+		/// <summary>
+		/// Reads raw metadata <see cref="System.Reflection.TypeAttributes"/> for a type definition.
+		/// </summary>
+		/// <param name="type">Type definition to inspect.</param>
+		/// <returns>
+		/// Metadata attributes from the declaring module when available; otherwise <c>0</c>.
+		/// </returns>
 		internal static System.Reflection.TypeAttributes GetMetadataAttributes(this ITypeDefinition type)
 		{
 			var metadata = type.ParentModule.MetadataFile?.Metadata;

@@ -27,6 +27,19 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Signature decoder that determines whether a decoded signature references a specific target type.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The decoder propagates a boolean through the signature tree. Leaf callbacks return whether the current token
+	/// identifies the configured target type, while composite callbacks aggregate child results.
+	/// </para>
+	/// <para>
+	/// Depending on the constructor used, identity checks are either direct metadata-handle comparisons (same-module
+	/// decoding) or reference-resolution checks through <see cref="MetadataModule.ResolveType"/>.
+	/// </para>
+	/// </remarks>
 	public class FindTypeDecoder : ISignatureTypeProvider<bool, Unit>
 	{
 		readonly MetadataFile declaringModule;
@@ -37,9 +50,10 @@ namespace ICSharpCode.Decompiler.Metadata
 		readonly PrimitiveTypeCode primitiveType;
 
 		/// <summary>
-		/// Constructs a FindTypeDecoder that finds uses of a specific type-definition handle.
-		/// This assumes that the module we are search in is the same as the module containing the type-definiton.
+		/// Creates a decoder that matches a type definition handle in the same metadata module.
 		/// </summary>
+		/// <param name="handle">Type definition to search for.</param>
+		/// <param name="declaringModule">Metadata module that owns <paramref name="handle"/>.</param>
 		internal FindTypeDecoder(TypeDefinitionHandle handle, MetadataFile declaringModule)
 		{
 			this.handle = handle;
@@ -49,8 +63,11 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 		/// <summary>
-		/// Constructs a FindTypeDecoder that can be used to find <paramref name="type"/> in signatures from <paramref name="currentModule"/>.
+		/// Creates a decoder that resolves type references from <paramref name="currentModule"/> to <paramref name="type"/>.
 		/// </summary>
+		/// <param name="currentModule">Module whose signatures will be decoded.</param>
+		/// <param name="type">Target type to detect in decoded signatures.</param>
+		/// <exception cref="InvalidOperationException"><paramref name="type"/> is not metadata-backed.</exception>
 		public FindTypeDecoder(MetadataModule currentModule, ITypeDefinition type)
 		{
 			this.currentModule = currentModule;
@@ -61,13 +78,23 @@ namespace ICSharpCode.Decompiler.Metadata
 			this.namespaceName = type.Namespace;
 		}
 
+		/// <inheritdoc />
 		public bool GetArrayType(bool elementType, ArrayShape shape) => elementType;
+		/// <inheritdoc />
 		public bool GetByReferenceType(bool elementType) => elementType;
+		/// <inheritdoc />
 		public bool GetFunctionPointerType(MethodSignature<bool> signature)
 		{
 			return AnyInMethodSignature(signature);
 		}
 
+		/// <summary>
+		/// Checks whether a decoded method signature contains any match.
+		/// </summary>
+		/// <param name="signature">Method signature whose boolean-encoded types should be aggregated.</param>
+		/// <returns>
+		/// <see langword="true"/> when the return type or any parameter type matched; otherwise <see langword="false"/>.
+		/// </returns>
 		public static bool AnyInMethodSignature(MethodSignature<bool> signature)
 		{
 			if (signature.ReturnType)
@@ -80,6 +107,7 @@ namespace ICSharpCode.Decompiler.Metadata
 			return false;
 		}
 
+		/// <inheritdoc />
 		public bool GetGenericInstantiation(bool genericType, ImmutableArray<bool> typeArguments)
 		{
 			if (genericType)
@@ -92,24 +120,39 @@ namespace ICSharpCode.Decompiler.Metadata
 			return false;
 		}
 
+		/// <inheritdoc />
 		public bool GetGenericMethodParameter(Unit genericContext, int index) => false;
+		/// <inheritdoc />
 		public bool GetGenericTypeParameter(Unit genericContext, int index) => false;
+		/// <inheritdoc />
 		public bool GetModifiedType(bool modifier, bool unmodifiedType, bool isRequired) => unmodifiedType || modifier;
+		/// <inheritdoc />
 		public bool GetPinnedType(bool elementType) => elementType;
+		/// <inheritdoc />
 		public bool GetPointerType(bool elementType) => elementType;
 
+		/// <inheritdoc />
 		public bool GetPrimitiveType(PrimitiveTypeCode typeCode)
 		{
 			return typeCode == primitiveType;
 		}
 
+		/// <inheritdoc />
 		public bool GetSZArrayType(bool elementType) => elementType;
 
+		/// <inheritdoc />
+		/// <remarks>
+		/// Metadata-reader identity is part of the comparison so equal row numbers from different modules do not match.
+		/// </remarks>
 		public bool GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind)
 		{
 			return this.handle == handle && reader == declaringModule.Metadata;
 		}
 
+		/// <inheritdoc />
+		/// <remarks>
+		/// A fast textual prefilter is applied before resolving the reference to avoid unnecessary resolution work.
+		/// </remarks>
 		public bool GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind)
 		{
 			if (currentModule == null || typeName == null || namespaceName == null)
@@ -129,11 +172,23 @@ namespace ICSharpCode.Decompiler.Metadata
 			return td.MetadataToken == this.handle && td.ParentModule?.MetadataFile == declaringModule;
 		}
 
+		/// <inheritdoc />
 		public bool GetTypeFromSpecification(MetadataReader reader, Unit genericContext, TypeSpecificationHandle handle, byte rawTypeKind)
 		{
 			return reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
 		}
 
+		/// <summary>
+		/// Resolves an arbitrary metadata entity handle as a potential type usage.
+		/// </summary>
+		/// <param name="reader">Metadata reader that owns <paramref name="handle"/>.</param>
+		/// <param name="handle">Entity handle to inspect.</param>
+		/// <param name="genericContext">Generic context for type-specification decoding.</param>
+		/// <param name="rawTypeKind">Raw type kind propagated by metadata decoding APIs.</param>
+		/// <returns>
+		/// <see langword="true"/> when the entity can be interpreted as a type reference that resolves to the target type;
+		/// otherwise <see langword="false"/>.
+		/// </returns>
 		public bool GetTypeFromEntity(MetadataReader reader, EntityHandle handle, Unit genericContext = default, byte rawTypeKind = 0)
 		{
 			switch (handle.Kind)
