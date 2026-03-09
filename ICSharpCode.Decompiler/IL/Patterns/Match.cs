@@ -21,6 +21,13 @@ using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.IL.Patterns
 {
+	/// <summary>
+	/// Identifies a named capture slot used by IL pattern matching.
+	/// </summary>
+	/// <remarks>
+	/// Capture groups are intentionally compared by object identity.
+	/// A pattern producer typically stores static instances and reuses them to retrieve captured nodes from <see cref="Match"/>.
+	/// </remarks>
 	public class CaptureGroup { }
 
 	/// <summary>
@@ -72,6 +79,11 @@ namespace ICSharpCode.Decompiler.IL.Patterns
 			return !m.Success;
 		}
 
+		/// <summary>
+		/// Adds a captured node to the specified capture group.
+		/// </summary>
+		/// <param name="g">Capture group identifier.</param>
+		/// <param name="n">Captured instruction.</param>
 		internal void Add(CaptureGroup g, ILInstruction n)
 		{
 			if (results == null)
@@ -79,17 +91,37 @@ namespace ICSharpCode.Decompiler.IL.Patterns
 			results.Add(new KeyValuePair<CaptureGroup, ILInstruction>(g, n));
 		}
 
+		/// <summary>
+		/// Saves the current capture-list length so a caller can roll back partial captures.
+		/// </summary>
+		/// <returns>Current capture count.</returns>
 		internal int CheckPoint()
 		{
 			return results != null ? results.Count : 0;
 		}
 
+		/// <summary>
+		/// Removes any captures added after a previously saved checkpoint.
+		/// </summary>
+		/// <param name="checkPoint">Checkpoint value returned by <see cref="CheckPoint"/>.</param>
 		internal void RestoreCheckPoint(int checkPoint)
 		{
 			if (results != null)
 				results.RemoveRange(checkPoint, results.Count - checkPoint);
 		}
 
+		/// <summary>
+		/// Enumerates all instructions captured for a specific capture group.
+		/// </summary>
+		/// <param name="captureGroup">Capture group to query.</param>
+		/// <returns>
+		/// A deferred sequence containing captures in insertion order.
+		/// If no captures exist, the returned sequence is empty.
+		/// </returns>
+		/// <remarks>
+		/// The sequence filters the internal capture list at enumeration time.
+		/// Callers that need a stable snapshot should materialize the result before mutating the underlying <see cref="Match"/>.
+		/// </remarks>
 		public IEnumerable<ILInstruction> Get(CaptureGroup captureGroup)
 		{
 			if (results != null)
