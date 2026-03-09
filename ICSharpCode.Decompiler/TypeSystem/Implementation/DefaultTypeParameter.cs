@@ -23,6 +23,20 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
+	/// <summary>
+	/// Default mutable implementation of <see cref="ITypeParameter"/> used by metadata-backed and synthetic symbols.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This type captures constraint flags and explicit type-constraint list exactly once during construction,
+	/// and then exposes the normalized view expected by <see cref="AbstractTypeParameter"/>.
+	/// </para>
+	/// <para>
+	/// Normalization intentionally injects <c>System.Object</c> or <c>System.ValueType</c> when needed so that
+	/// effective-base-class calculations can rely on an explicit anchor even if metadata omits that base in the
+	/// declared constraint list.
+	/// </para>
+	/// </remarks>
 	public class DefaultTypeParameter : AbstractTypeParameter
 	{
 		readonly bool hasValueTypeConstraint;
@@ -31,6 +45,19 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		readonly Nullability nullabilityConstraint;
 		readonly IReadOnlyList<IAttribute> attributes;
 
+		/// <summary>
+		/// Initializes a type parameter that is owned by an existing symbol.
+		/// </summary>
+		/// <param name="owner">Owning method or type definition.</param>
+		/// <param name="index">Zero-based type-parameter index in the owning symbol.</param>
+		/// <param name="name">Optional display name. If <see langword="null"/>, a metadata-style fallback name is generated.</param>
+		/// <param name="variance">Declared variance for interface/delegate type parameters.</param>
+		/// <param name="attributes">Custom attributes applied to the type parameter declaration.</param>
+		/// <param name="hasValueTypeConstraint">Whether the parameter has a <c>struct</c>/<c>valuetype</c> constraint.</param>
+		/// <param name="hasReferenceTypeConstraint">Whether the parameter has a <c>class</c> constraint.</param>
+		/// <param name="hasDefaultConstructorConstraint">Whether the parameter has a <c>new()</c> constraint.</param>
+		/// <param name="constraints">Explicit type constraints (base type/interfaces/type parameters).</param>
+		/// <param name="nullabilityConstraint">Nullable-reference-type constraint flavor decoded from metadata.</param>
 		public DefaultTypeParameter(
 			IEntity owner,
 			int index, string name = null,
@@ -48,6 +75,20 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			this.attributes = attributes ?? EmptyList<IAttribute>.Instance;
 		}
 
+		/// <summary>
+		/// Initializes a type parameter from compilation context without requiring a concrete owning symbol instance.
+		/// </summary>
+		/// <param name="compilation">Compilation that provides known-type lookups and symbol identity.</param>
+		/// <param name="ownerType">Kind of owner that declares this type parameter.</param>
+		/// <param name="index">Zero-based type-parameter index in the owner scope.</param>
+		/// <param name="name">Optional display name. If <see langword="null"/>, a metadata-style fallback name is generated.</param>
+		/// <param name="variance">Declared variance for interface/delegate type parameters.</param>
+		/// <param name="attributes">Custom attributes applied to the type parameter declaration.</param>
+		/// <param name="hasValueTypeConstraint">Whether the parameter has a <c>struct</c>/<c>valuetype</c> constraint.</param>
+		/// <param name="hasReferenceTypeConstraint">Whether the parameter has a <c>class</c> constraint.</param>
+		/// <param name="hasDefaultConstructorConstraint">Whether the parameter has a <c>new()</c> constraint.</param>
+		/// <param name="constraints">Explicit type constraints (base type/interfaces/type parameters).</param>
+		/// <param name="nullabilityConstraint">Nullable-reference-type constraint flavor decoded from metadata.</param>
 		public DefaultTypeParameter(
 			ICompilation compilation, SymbolKind ownerType,
 			int index, string name = null,
@@ -65,6 +106,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			this.attributes = attributes ?? EmptyList<IAttribute>.Instance;
 		}
 
+		/// <inheritdoc/>
 		public override IEnumerable<IAttribute> GetAttributes() => attributes;
 
 		public override bool HasValueTypeConstraint => hasValueTypeConstraint;
@@ -74,6 +116,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		public override bool AllowsRefLikeType => false;
 		public override Nullability NullabilityConstraint => nullabilityConstraint;
 
+		/// <inheritdoc/>
 		public override IReadOnlyList<TypeConstraint> TypeConstraints { get; }
 
 		IReadOnlyList<TypeConstraint> MakeConstraints(IReadOnlyList<IType> constraints)

@@ -24,17 +24,40 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
+	/// <summary>
+	/// Synthetic <see cref="ITypeParameter"/> implementation used as a placeholder when a generic index is out of scope.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Metadata decoding and substitution paths sometimes encounter generic parameter indices that are unavailable in the
+	/// current context (for example incomplete metadata or speculative resolution).
+	/// </para>
+	/// <para>
+	/// Instead of failing early, the type system maps those indices to stable dummy instances so downstream analysis can
+	/// continue and surface partial results.
+	/// </para>
+	/// </remarks>
 	public sealed class DummyTypeParameter : AbstractType, ITypeParameter
 	{
 		static ITypeParameter[] methodTypeParameters = { new DummyTypeParameter(SymbolKind.Method, 0) };
 		static ITypeParameter[] classTypeParameters = { new DummyTypeParameter(SymbolKind.TypeDefinition, 0) };
 		static IReadOnlyList<ITypeParameter>[] classTypeParameterLists = { EmptyList<ITypeParameter>.Instance };
 
+		/// <summary>
+		/// Gets a placeholder method type parameter for the specified index.
+		/// </summary>
+		/// <param name="index">Zero-based method type-parameter index.</param>
+		/// <returns>A stable dummy method type parameter instance for <paramref name="index"/>.</returns>
 		public static ITypeParameter GetMethodTypeParameter(int index)
 		{
 			return GetTypeParameter(ref methodTypeParameters, SymbolKind.Method, index);
 		}
 
+		/// <summary>
+		/// Gets a placeholder class type parameter for the specified index.
+		/// </summary>
+		/// <param name="index">Zero-based class type-parameter index.</param>
+		/// <returns>A stable dummy class type parameter instance for <paramref name="index"/>.</returns>
 		public static ITypeParameter GetClassTypeParameter(int index)
 		{
 			return GetTypeParameter(ref classTypeParameters, SymbolKind.TypeDefinition, index);
@@ -184,6 +207,14 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		IReadOnlyList<TypeConstraint> ITypeParameter.TypeConstraints => EmptyList<TypeConstraint>.Instance;
 
+		/// <summary>
+		/// Applies a nullability annotation to this placeholder parameter.
+		/// </summary>
+		/// <param name="nullability">Requested nullability state.</param>
+		/// <returns>
+		/// <see langword="this"/> when <paramref name="nullability"/> is <see cref="Nullability.Oblivious"/>;
+		/// otherwise a wrapping <see cref="NullabilityAnnotatedTypeParameter"/>.
+		/// </returns>
 		public override IType ChangeNullability(Nullability nullability)
 		{
 			if (nullability == Nullability.Oblivious)

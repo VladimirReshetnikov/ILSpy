@@ -21,8 +21,12 @@ using System;
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
 	/// <summary>
-	/// Type reference used to reference nested types.
+	/// Represents a metadata-style reference to a nested type definition.
 	/// </summary>
+	/// <remarks>
+	/// This reference resolves by scanning nested type definitions on the resolved declaring type and matching
+	/// both nested-name and total generic arity (declaring + nested parameters).
+	/// </remarks>
 	[Serializable]
 	public sealed class NestedTypeReference : ITypeReference, ISupportsInterning
 	{
@@ -54,18 +58,34 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			this.isReferenceType = isReferenceType;
 		}
 
+		/// <summary>
+		/// Gets the declaring type reference that owns the nested type.
+		/// </summary>
 		public ITypeReference DeclaringTypeReference {
 			get { return declaringTypeRef; }
 		}
 
+		/// <summary>
+		/// Gets the metadata name of the nested type.
+		/// </summary>
 		public string Name {
 			get { return name; }
 		}
 
+		/// <summary>
+		/// Gets the number of type parameters introduced by the nested type itself.
+		/// </summary>
 		public int AdditionalTypeParameterCount {
 			get { return additionalTypeParameterCount; }
 		}
 
+		/// <summary>
+		/// Resolves the nested type against the specified type-resolution context.
+		/// </summary>
+		/// <param name="context">Resolution context that provides the declaring type definition.</param>
+		/// <returns>
+		/// The matching nested type definition when found; otherwise an <see cref="UnknownType"/> placeholder.
+		/// </returns>
 		public IType Resolve(ITypeResolveContext context)
 		{
 			ITypeDefinition declaringType = declaringTypeRef.Resolve(context) as ITypeDefinition;
@@ -78,6 +98,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 						return type;
 				}
 			}
+			// [Codex] Potential bug: this fallback ignores the isReferenceType hint captured by the constructor.
 			return new UnknownType(null, name, additionalTypeParameterCount);
 		}
 
