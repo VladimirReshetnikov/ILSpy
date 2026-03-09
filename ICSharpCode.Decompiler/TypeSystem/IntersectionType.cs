@@ -28,12 +28,25 @@ using ICSharpCode.Decompiler.TypeSystem.Implementation;
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Represents the intersection of several types.
+	/// Represents a type that must satisfy multiple candidate types simultaneously.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Intersection types are primarily produced by type-inference and overload-resolution flows to retain ambiguity
+	/// until later phases can choose a concrete type. They are not ordinary CLR metadata types.
+	/// </para>
+	/// <para>
+	/// Member queries are projected across all participating types through <see cref="GetMembersHelper"/>, and static
+	/// members are excluded because intersections model value capabilities, not declaring containers.
+	/// </para>
+	/// </remarks>
 	public class IntersectionType : AbstractType
 	{
 		readonly ReadOnlyCollection<IType> types;
 
+		/// <summary>
+		/// Gets the component types that form this intersection in stable order.
+		/// </summary>
 		public ReadOnlyCollection<IType> Types {
 			get { return types; }
 		}
@@ -44,6 +57,15 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.types = Array.AsReadOnly(types);
 		}
 
+		/// <summary>
+		/// Creates a normalized intersection from candidate types.
+		/// </summary>
+		/// <param name="types">Candidate types to intersect.</param>
+		/// <returns>
+		/// <see cref="SpecialType.UnknownType"/> when <paramref name="types"/> is empty, the only candidate when exactly
+		/// one distinct type remains, or a new <see cref="IntersectionType"/> when multiple distinct candidates exist.
+		/// </returns>
+		/// <exception cref="ArgumentNullException">A null type entry is present in <paramref name="types"/>.</exception>
 		public static IType Create(IEnumerable<IType> types)
 		{
 			IType[] arr = types.Distinct().ToArray();
@@ -131,6 +153,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			return false;
 		}
 
+		/// <summary>
+		/// Gets the component types as direct bases for capability lookup.
+		/// </summary>
 		public override IEnumerable<IType> DirectBaseTypes {
 			get { return types; }
 		}

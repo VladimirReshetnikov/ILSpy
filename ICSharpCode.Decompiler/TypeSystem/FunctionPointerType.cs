@@ -197,12 +197,29 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			Debug.Assert(parameterTypes.Length == parameterReferenceKinds.Length);
 		}
 
+		/// <summary>
+		/// Gets the language-level keyword used when formatting function pointer types.
+		/// </summary>
 		public override string Name => "delegate*";
 
 		public override bool? IsReferenceType => false;
 
+		/// <summary>
+		/// Gets the effective kind for this type in the current type-system option set.
+		/// </summary>
+		/// <value>
+		/// <see cref="TypeKind.FunctionPointer"/> when function pointers are enabled; otherwise <see cref="TypeKind.Struct"/>
+		/// to preserve compatibility with language modes that do not understand first-class function pointers.
+		/// </value>
 		public override TypeKind Kind => ((module.TypeSystemOptions & TypeSystemOptions.FunctionPointers) != 0) ? TypeKind.FunctionPointer : TypeKind.Struct;
 
+		/// <summary>
+		/// Gets a backing type definition when the current option set requires one.
+		/// </summary>
+		/// <returns>
+		/// <see langword="null"/> for native function-pointer mode; otherwise the <see cref="KnownTypeCode.UIntPtr"/>
+		/// definition used as a compatibility surrogate.
+		/// </returns>
 		public override ITypeDefinition GetDefinition()
 		{
 			if ((module.TypeSystemOptions & TypeSystemOptions.FunctionPointers) != 0)
@@ -217,6 +234,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Gets the definition-like view used by callers that accept unknown or synthetic results.
+		/// </summary>
 		public override ITypeDefinitionOrUnknown GetDefinitionOrUnknown()
 		{
 			return GetDefinition();
