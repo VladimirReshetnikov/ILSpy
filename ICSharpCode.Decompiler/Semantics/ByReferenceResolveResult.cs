@@ -25,22 +25,41 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents the resolve result of an 'ref x', 'in x' or 'out x' expression.
+	/// Represents semantic classification for by-reference expressions such as <c>ref x</c>, <c>in x</c>, and <c>out x</c>.
 	/// </summary>
 	public class ByReferenceResolveResult : ResolveResult
 	{
+		/// <summary>
+		/// Gets the by-reference modifier kind (<c>ref</c>, <c>in</c>, or <c>out</c>).
+		/// </summary>
 		public ReferenceKind ReferenceKind { get; }
 
+		/// <summary>
+		/// Gets the wrapped expression when this node originates from source-level by-reference syntax.
+		/// </summary>
+		/// <remarks>
+		/// This field is <see langword="null"/> for temporary instances created through the internal constructor.
+		/// </remarks>
 		public readonly ResolveResult ElementResult;
 
+		/// <summary>
+		/// Initializes a by-reference resolve result that wraps an existing expression.
+		/// </summary>
+		/// <param name="elementResult">The underlying expression referenced by the by-ref operation.</param>
+		/// <param name="kind">The by-reference modifier kind.</param>
 		public ByReferenceResolveResult(ResolveResult elementResult, ReferenceKind kind)
 			: this(elementResult.Type, kind)
 		{
 			this.ElementResult = elementResult;
 		}
 
+		/// <summary>
+		/// Initializes a temporary by-reference result from an element type only.
+		/// </summary>
+		/// <param name="elementType">The element type carried by the by-reference wrapper.</param>
+		/// <param name="kind">The by-reference modifier kind.</param>
 		/// <remarks>
-		/// Should only be used for temporary ResolveResults in TypeInference and CSharpConversions, etc.
+		/// Should only be used for temporary resolve results in type inference and conversion classification paths.
 		/// </remarks>
 		internal ByReferenceResolveResult(IType elementType, ReferenceKind kind)
 			: base(new ByReferenceType(elementType))
@@ -48,6 +67,9 @@ namespace ICSharpCode.Decompiler.Semantics
 			this.ReferenceKind = kind;
 		}
 
+		/// <summary>
+		/// Gets the element type referenced by this by-reference expression.
+		/// </summary>
 		public IType ElementType {
 			get { return ((ByReferenceType)this.Type).ElementType; }
 		}

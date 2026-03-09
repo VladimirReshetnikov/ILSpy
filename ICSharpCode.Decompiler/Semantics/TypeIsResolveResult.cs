@@ -23,17 +23,31 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Resolve result for a C# 'is' expression.
-	/// "Input is TargetType".
+	/// Represents semantic classification for a C# <c>is</c> type-test expression.
 	/// </summary>
+	/// <remarks>
+	/// This result models expressions of the form <c>input is TargetType</c> and always reports the
+	/// expression type supplied to the constructor (typically <c>System.Boolean</c>).
+	/// </remarks>
 	public class TypeIsResolveResult : ResolveResult
 	{
-		public readonly ResolveResult Input;
 		/// <summary>
-		/// Type that is being compared with.
+		/// Gets the expression being tested.
+		/// </summary>
+		public readonly ResolveResult Input;
+
+		/// <summary>
+		/// Gets the tested type from the right-hand side of the <c>is</c> expression.
 		/// </summary>
 		public readonly IType TargetType;
 
+		/// <summary>
+		/// Initializes a type-test resolve result.
+		/// </summary>
+		/// <param name="input">The resolved left-hand side expression to test.</param>
+		/// <param name="targetType">The type used as the test target.</param>
+		/// <param name="booleanType">The result type for the expression.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="input"/> or <paramref name="targetType"/> is <see langword="null"/>.</exception>
 		public TypeIsResolveResult(ResolveResult input, IType targetType, IType booleanType)
 			: base(booleanType)
 		{

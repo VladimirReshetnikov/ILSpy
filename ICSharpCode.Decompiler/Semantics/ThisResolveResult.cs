@@ -21,13 +21,23 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents the 'this' reference.
-	/// Also used for the 'base' reference.
+	/// Represents semantic classification for <c>this</c> and <c>base</c> receiver expressions.
 	/// </summary>
+	/// <remarks>
+	/// The same type is used for both keywords. <see cref="CausesNonVirtualInvocation"/> distinguishes
+	/// the <c>base</c> case where member dispatch must bypass virtual override lookup.
+	/// </remarks>
 	public class ThisResolveResult : ResolveResult
 	{
 		bool causesNonVirtualInvocation;
 
+		/// <summary>
+		/// Initializes a receiver resolve result.
+		/// </summary>
+		/// <param name="type">The receiver type used for member lookup and typing.</param>
+		/// <param name="causesNonVirtualInvocation">
+		/// <see langword="true"/> when this receiver enforces non-virtual dispatch semantics (as with <c>base</c>).
+		/// </param>
 		public ThisResolveResult(IType type, bool causesNonVirtualInvocation = false) : base(type)
 		{
 			this.causesNonVirtualInvocation = causesNonVirtualInvocation;
