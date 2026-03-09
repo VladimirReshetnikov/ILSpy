@@ -138,7 +138,14 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// </summary>
 		public static readonly Conversion ExplicitPointerConversion = new BuiltinConversion(false, 6);
 
+		/// <summary>
+		/// Represents implicit boxing conversion from value types to compatible reference types.
+		/// </summary>
 		public static readonly Conversion BoxingConversion = new BuiltinConversion(true, 7);
+
+		/// <summary>
+		/// Represents explicit unboxing conversion from boxed values to value types.
+		/// </summary>
 		public static readonly Conversion UnboxingConversion = new BuiltinConversion(false, 8);
 
 		/// <summary>
@@ -623,6 +630,9 @@ namespace ICSharpCode.Decompiler.Semantics
 			get { return false; }
 		}
 
+		/// <summary>
+		/// Gets whether this conversion is a numeric conversion.
+		/// </summary>
 		public virtual bool IsNumericConversion {
 			get { return false; }
 		}
