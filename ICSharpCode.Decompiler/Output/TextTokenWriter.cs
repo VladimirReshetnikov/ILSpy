@@ -31,6 +31,20 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler
 {
+	/// <summary>
+	/// <see cref="TokenWriter"/> implementation that emits C# tokens to an <see cref="ITextOutput"/> while preserving symbol references.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This writer is used by decompilation frontends that want navigable output (for example symbol hyperlinks, local-definition linkage,
+	/// and fold regions) instead of plain text only. It inspects AST annotations and roles to decide whether a token should be written with
+	/// one of the <see cref="ITextOutput.WriteReference"/> overloads or as ordinary text.
+	/// </para>
+	/// <para>
+	/// Instance members are not thread-safe. The writer maintains mutable traversal state in <c>nodeStack</c> and assumes balanced
+	/// <see cref="StartNode"/>/<see cref="EndNode"/> calls from a single traversal.
+	/// </para>
+	/// </remarks>
 	public class TextTokenWriter : TokenWriter
 	{
 		readonly ITextOutput output;
@@ -42,6 +56,15 @@ namespace ICSharpCode.Decompiler
 		bool firstUsingDeclaration;
 		bool lastUsingDeclaration;
 
+		/// <summary>
+		/// Initializes a token writer that forwards formatted output to <paramref name="output"/>.
+		/// </summary>
+		/// <param name="output">The destination that receives text, symbol links, and fold markers.</param>
+		/// <param name="settings">Decompiler settings that control folding behavior and formatting choices.</param>
+		/// <param name="typeSystem">Type-system context used to resolve and classify symbols attached to AST nodes.</param>
+		/// <exception cref="ArgumentNullException">
+		/// Thrown when <paramref name="output"/>, <paramref name="settings"/>, or <paramref name="typeSystem"/> is <see langword="null"/>.
+		/// </exception>
 		public TextTokenWriter(ITextOutput output, DecompilerSettings settings, IDecompilerTypeSystem typeSystem)
 		{
 			if (output == null)
@@ -55,6 +78,14 @@ namespace ICSharpCode.Decompiler
 			this.typeSystem = typeSystem;
 		}
 
+		/// <summary>
+		/// Writes an identifier token and attaches the most specific available reference metadata.
+		/// </summary>
+		/// <param name="identifier">The identifier token to emit.</param>
+		/// <remarks>
+		/// Resolution order is definition symbol, member reference symbol, local definition, then local reference.
+		/// If no reference information is available, the escaped identifier text is written as plain text.
+		/// </remarks>
 		public override void WriteIdentifier(Identifier identifier)
 		{
 			if (identifier.IsVerbatim || CSharpOutputVisitor.IsKeyword(identifier.Name, identifier))
@@ -108,6 +139,12 @@ namespace ICSharpCode.Decompiler
 			output.Write(name);
 		}
 
+		/// <summary>
+		/// Gets the symbol referenced by the current node when it represents a member usage position.
+		/// </summary>
+		/// <returns>
+		/// The referenced symbol, or <see langword="null"/> when the current node does not represent a navigable member reference.
+		/// </returns>
 		ISymbol GetCurrentMemberReference()
 		{
 			AstNode node = nodeStack.Peek();
@@ -132,6 +169,13 @@ namespace ICSharpCode.Decompiler
 			return FilterMember(symbol);
 		}
 
+		/// <summary>
+		/// Removes symbols that should not be emitted as navigable member links.
+		/// </summary>
+		/// <param name="symbol">The symbol candidate.</param>
+		/// <returns>
+		/// <paramref name="symbol"/> when it should be linked; otherwise <see langword="null"/>.
+		/// </returns>
 		ISymbol FilterMember(ISymbol symbol)
 		{
 			if (symbol == null)
@@ -143,6 +187,12 @@ namespace ICSharpCode.Decompiler
 			return symbol;
 		}
 
+		/// <summary>
+		/// Gets the local-reference identity associated with the current node.
+		/// </summary>
+		/// <returns>
+		/// The local identity object used with <see cref="ITextOutput.WriteLocalReference"/>, or <see langword="null"/> when none applies.
+		/// </returns>
 		object GetCurrentLocalReference()
 		{
 			AstNode node = nodeStack.Peek();
@@ -171,6 +221,13 @@ namespace ICSharpCode.Decompiler
 			return null;
 		}
 
+		/// <summary>
+		/// Gets the local-definition identity introduced by the current identifier.
+		/// </summary>
+		/// <param name="id">The identifier currently being emitted.</param>
+		/// <returns>
+		/// An identity object that should be marked as a local definition, or <see langword="null"/> when the identifier is not a definition site.
+		/// </returns>
 		object GetCurrentLocalDefinition(Identifier id)
 		{
 			AstNode node = nodeStack.Peek();
@@ -215,6 +272,10 @@ namespace ICSharpCode.Decompiler
 			return null;
 		}
 
+		/// <summary>
+		/// Gets the definition symbol for the current node, if the node denotes a declaration site.
+		/// </summary>
+		/// <returns>The declared symbol, or <see langword="null"/> when the current node is not a symbol definition.</returns>
 		ISymbol GetCurrentDefinition()
 		{
 			if (nodeStack == null || nodeStack.Count == 0)
@@ -229,6 +290,11 @@ namespace ICSharpCode.Decompiler
 			return null;
 		}
 
+		/// <summary>
+		/// Writes a keyword token and attaches constructor references for <c>this</c>/<c>base</c> initializers when available.
+		/// </summary>
+		/// <param name="role">The syntactic role for the keyword.</param>
+		/// <param name="keyword">The keyword text.</param>
 		public override void WriteKeyword(Role role, string keyword)
 		{
 			//To make reference for 'this' and 'base' keywords in the ClassName():this() expression
@@ -243,6 +309,11 @@ namespace ICSharpCode.Decompiler
 			output.Write(keyword);
 		}
 
+		/// <summary>
+		/// Writes punctuation and structural tokens, adding fold markers and reference metadata where applicable.
+		/// </summary>
+		/// <param name="role">The syntactic role represented by <paramref name="token"/>.</param>
+		/// <param name="token">The token text.</param>
 		public override void WriteToken(Role role, string token)
 		{
 			switch (token)
@@ -292,21 +363,33 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <summary>
+		/// Writes a single space character.
+		/// </summary>
 		public override void Space()
 		{
 			output.Write(' ');
 		}
 
+		/// <summary>
+		/// Increases indentation depth in the underlying output.
+		/// </summary>
 		public override void Indent()
 		{
 			output.Indent();
 		}
 
+		/// <summary>
+		/// Decreases indentation depth in the underlying output.
+		/// </summary>
 		public override void Unindent()
 		{
 			output.Unindent();
 		}
 
+		/// <summary>
+		/// Writes a line break and closes the using-declaration fold region when the group ends.
+		/// </summary>
 		public override void NewLine()
 		{
 			if (!firstUsingDeclaration && lastUsingDeclaration)
@@ -317,6 +400,11 @@ namespace ICSharpCode.Decompiler
 			output.WriteLine();
 		}
 
+		/// <summary>
+		/// Writes a comment token and manages documentation-comment folding for consecutive lines.
+		/// </summary>
+		/// <param name="commentType">The comment syntax kind.</param>
+		/// <param name="content">The comment text excluding start/end markers.</param>
 		public override void WriteComment(CommentType commentType, string content)
 		{
 			switch (commentType)
@@ -352,6 +440,11 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <summary>
+		/// Writes a preprocessor directive token sequence.
+		/// </summary>
+		/// <param name="type">The directive kind.</param>
+		/// <param name="argument">The directive argument text, or empty when no argument exists.</param>
 		public override void WritePreProcessorDirective(PreProcessorDirectiveType type, string argument)
 		{
 			// pre-processor directive must start on its own line
@@ -365,16 +458,29 @@ namespace ICSharpCode.Decompiler
 			output.WriteLine();
 		}
 
+		/// <summary>
+		/// Formats and writes a literal value by delegating to <see cref="TextWriterTokenWriter"/>.
+		/// </summary>
+		/// <param name="value">The literal value to format.</param>
+		/// <param name="format">Additional literal-formatting hints.</param>
 		public override void WritePrimitiveValue(object value, LiteralFormat format = LiteralFormat.None)
 		{
 			new TextWriterTokenWriter(new TextOutputWriter(output)).WritePrimitiveValue(value, format);
 		}
 
+		/// <summary>
+		/// Writes the text portion of an interpolated string after applying C# escaping rules.
+		/// </summary>
+		/// <param name="text">The unescaped interpolation text segment.</param>
 		public override void WriteInterpolatedText(string text)
 		{
 			output.Write(TextWriterTokenWriter.ConvertString(text));
 		}
 
+		/// <summary>
+		/// Writes a primitive type token and associates it with symbol metadata when resolvable.
+		/// </summary>
+		/// <param name="type">The primitive type token text.</param>
 		public override void WritePrimitiveType(string type)
 		{
 			switch (type)
@@ -426,6 +532,10 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <summary>
+		/// Pushes <paramref name="node"/> onto the traversal stack and initializes using-fold tracking at the root level.
+		/// </summary>
+		/// <param name="node">The AST node being entered.</param>
 		public override void StartNode(AstNode node)
 		{
 			if (nodeStack.Count == 0)
@@ -444,17 +554,34 @@ namespace ICSharpCode.Decompiler
 			nodeStack.Push(node);
 		}
 
+		/// <summary>
+		/// Determines whether <paramref name="node"/> is a top-level using declaration node.
+		/// </summary>
+		/// <param name="node">The node to examine.</param>
+		/// <returns><see langword="true"/> when <paramref name="node"/> is a <see cref="UsingDeclaration"/> or <see cref="UsingAliasDeclaration"/>.</returns>
 		private bool IsUsingDeclaration(AstNode node)
 		{
 			return node is UsingDeclaration || node is UsingAliasDeclaration;
 		}
 
+		/// <summary>
+		/// Pops <paramref name="node"/> from the traversal stack.
+		/// </summary>
+		/// <param name="node">The AST node being left.</param>
+		/// <exception cref="InvalidOperationException">
+		/// Thrown when node boundaries are unbalanced and <paramref name="node"/> is not the current stack top.
+		/// </exception>
 		public override void EndNode(AstNode node)
 		{
 			if (nodeStack.Pop() != node)
 				throw new InvalidOperationException();
 		}
 
+		/// <summary>
+		/// Determines whether <paramref name="node"/> denotes a symbol definition site and normalizes field/event variable initializers.
+		/// </summary>
+		/// <param name="node">The candidate node. Updated to the owning declaration for field/event initializer definitions.</param>
+		/// <returns><see langword="true"/> when the node should be treated as a definition; otherwise <see langword="false"/>.</returns>
 		public static bool IsDefinition(ref AstNode node)
 		{
 			if (node is EntityDeclaration && !(node.Parent is LocalFunctionDeclarationStatement))
