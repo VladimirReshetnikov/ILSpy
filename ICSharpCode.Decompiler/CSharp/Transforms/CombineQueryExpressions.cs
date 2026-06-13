@@ -77,8 +77,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					Match m = castPattern.Match(fromClause.Expression);
 					if (m.Success)
 					{
-						fromClause.Type = m.Get<AstType>("targetType").Single().Detach();
-						fromClause.Expression = m.Get<Expression>("inExpr").Single().Detach();
+						var inExpr = m.Get<Expression>("inExpr").Single();
+						// Folding "X.Cast<T>()" into "from T x in X" would strand a trailing null-conditional
+						// operator: "X?.Cast<T>()" becomes "from T x in X?", which is not valid C#. Keep the
+						// explicit Cast call as the query source in that case so the result still parses.
+						if (inExpr is not UnaryOperatorExpression { Operator: UnaryOperatorType.NullConditional })
+						{
+							fromClause.Type = m.Get<AstType>("targetType").Single().Detach();
+							fromClause.Expression = inExpr.Detach();
+						}
 					}
 				}
 			}
