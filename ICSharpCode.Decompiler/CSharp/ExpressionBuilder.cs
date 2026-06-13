@@ -3710,7 +3710,11 @@ namespace ICSharpCode.Decompiler.CSharp
 			IType elementType;
 			if (block.Instructions.Count < 2 || !block.Instructions[1].MatchStObj(out _, out _, out var t))
 				throw new ArgumentException("given Block is invalid!");
-			if (typeHint is PointerType pt && !TypeUtils.IsCompatibleTypeForMemoryAccess(t, pt.ElementType))
+			// Derive the stack-alloc element type from the element store type whenever the type hint
+			// does not already provide a compatible pointer element type. The hint is often a non-pointer
+			// type (e.g. nint/IntPtr when the stackalloc result is consumed as an integer), in which case
+			// TranslateLocAlloc would otherwise default the element type to byte and mismatch the stores.
+			if (!(typeHint is PointerType pt && TypeUtils.IsCompatibleTypeForMemoryAccess(t, pt.ElementType)))
 			{
 				typeHint = new PointerType(t);
 			}
