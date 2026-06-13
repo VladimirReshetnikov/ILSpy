@@ -13,8 +13,19 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		internal static FindResult CanIntroduceNamedArgument(CallInstruction call, ILInstruction child, ILVariable v, ILInstruction expressionBeingMoved)
 		{
 			Debug.Assert(child.Parent == call);
-			if (call.IsInstanceCall && child.ChildIndex == 0)
-				return FindResult.Stop; // cannot use named arg to move expressionBeingMoved before this pointer
+			if (child.ChildIndex == 0)
+			{
+				if (call.IsInstanceCall)
+					return FindResult.Stop; // cannot use named arg to move expressionBeingMoved before this pointer
+				if (call.Method.IsExtensionMethod && call.Arguments.Count > 0
+					&& call.Arguments[0].HasFlag(InstructionFlags.MayUnwrapNull))
+				{
+					// Reordering an argument before the receiver of an extension method forces a static
+					// call (Class.M(reordered, receiver, ...)). If the receiver is null-conditional that
+					// would strand the '?' on it ("receiver?" as a plain argument), which is invalid C#.
+					return FindResult.Stop;
+				}
+			}
 			if (call.Method.IsOperator || call.Method.IsAccessor)
 				return FindResult.Stop; // cannot use named arg for operators or accessors
 			if (call.Method is VarArgInstanceMethod)
