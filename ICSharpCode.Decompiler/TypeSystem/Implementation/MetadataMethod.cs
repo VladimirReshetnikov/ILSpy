@@ -473,8 +473,14 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			#endregion
 
 			// SpecialName
+			// Don't emit [SpecialName] on members of compiler-generated types or on compiler-generated
+			// methods themselves. The VB compiler, for example, marks the lambda methods it lowers into
+			// closure display classes with the specialname flag; that flag is a lowering implementation
+			// detail and has no place in the reconstructed source.
 			if ((def.Attributes & (MethodAttributes.SpecialName | MethodAttributes.RTSpecialName)) == MethodAttributes.SpecialName
-				&& SymbolKind == SymbolKind.Method)
+				&& SymbolKind == SymbolKind.Method
+				&& !def.GetCustomAttributes().HasKnownAttribute(module.metadata, KnownAttribute.CompilerGenerated)
+				&& !(DeclaringTypeDefinition?.HasAttribute(KnownAttribute.CompilerGenerated) ?? false))
 			{
 				b.Add(KnownAttribute.SpecialName);
 			}
