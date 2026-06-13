@@ -511,6 +511,14 @@ namespace ICSharpCode.Decompiler.CSharp
 					.WithoutILInstruction()
 					.WithRR(new ByReferenceResolveResult(elementRR, ReferenceKind.Ref));
 			}
+			if (type.Kind == TypeKind.ByReference && Expression is DirectionExpression sourceDirection)
+			{
+				// The source is a managed reference 'ref x', but a value of targetType is expected here
+				// (e.g. a struct receiver or a deconstruction source). A 'ref' expression cannot be cast --
+				// "(T)(ref x)" is not valid C# -- so render the referenced value and convert that instead.
+				return this.UnwrapChild(sourceDirection.Expression)
+					.ConvertTo(targetType, expressionBuilder, checkForOverflow, allowImplicitConversion);
+			}
 			if (this.ResolveResult.IsCompileTimeConstant && this.ResolveResult.ConstantValue != null
 				&& NullableType.IsNullable(targetType) && !utype.Equals(targetUType)
 				&& targetUType.GetStackType().IsIntegerType())
