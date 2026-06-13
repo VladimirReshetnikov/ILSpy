@@ -71,6 +71,10 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public double C { get; init; } = 1.0;
 			public string D { get; } = A + B;
 		}
+		public record PrimaryCtorWithIndexer(int A)
+		{
+			public int this[int index] => A + index;
+		}
 
 		public record Properties
 		{

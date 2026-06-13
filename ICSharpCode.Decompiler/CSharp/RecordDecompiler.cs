@@ -777,6 +777,10 @@ namespace ICSharpCode.Decompiler.CSharp
 				{
 					return false; // static fields/properties are not printed
 				}
+				if (member is IProperty { IsIndexer: true })
+				{
+					return false; // indexers are not part of the synthesized PrintMembers output
+				}
 				if (member.Accessibility != Accessibility.Public)
 				{
 					return false; // non-public fields/properties are not printed
