@@ -806,8 +806,29 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		internal static VariableDesignation TranslateDeconstructionDesignation(DeconstructInstruction inst, bool isForeach)
 		{
-			var assignments = inst.Assignments.Instructions;
-			int assignmentPos = 0;
+			// Map every deconstruction pattern variable that is actually consumed to the user variable it
+			// is assigned to. A pattern variable feeds an assignment either directly
+			// (stloc target(ldloc patternVar)) or through a conversion temporary
+			// (stloc conv(conv(ldloc patternVar)); stloc target(ldloc conv)). Pattern variables that are
+			// never assigned -- an unused, possibly still named, deconstruction element -- have no
+			// assignment and are rendered as a discard '_'. Matching by variable identity instead of by
+			// position keeps designated elements and discards aligned no matter how many are unused.
+			var conversionInput = new Dictionary<ILVariable, ILVariable>();
+			foreach (var conv in inst.Conversions.Instructions)
+			{
+				if (DeconstructInstruction.IsConversionStLoc(conv, out var convVar, out var inputVar))
+					conversionInput[convVar] = inputVar;
+			}
+			var targetByPatternVariable = new Dictionary<ILVariable, ILVariable>();
+			foreach (var assignment in inst.Assignments.Instructions)
+			{
+				if (assignment is StLoc stloc && stloc.Value.MatchLdLoc(out var loaded))
+				{
+					if (conversionInput.TryGetValue(loaded, out var patternVar))
+						loaded = patternVar;
+					targetByPatternVariable[loaded] = stloc.Variable;
+				}
+			}
 
 			return ConstructDesignation(inst.Pattern);
 
@@ -819,14 +840,12 @@ namespace ICSharpCode.Decompiler.CSharp
 					if (subPattern.IsVar)
 					{
 						var designation = new SingleVariableDesignation();
-						if (subPattern.HasDesignator)
+						if (subPattern.Variable != null && targetByPatternVariable.TryGetValue(subPattern.Variable, out var v))
 						{
-							ILVariable v = ((StLoc)assignments[assignmentPos]).Variable;
 							if (isForeach)
 								v.Kind = VariableKind.ForeachLocal;
 							designation.Identifier = v.Name;
 							designation.AddAnnotation(new ILVariableResolveResult(v));
-							assignmentPos++;
 						}
 						else
 						{

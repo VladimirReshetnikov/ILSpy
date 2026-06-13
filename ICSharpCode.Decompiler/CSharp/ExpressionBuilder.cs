@@ -4717,7 +4717,6 @@ namespace ICSharpCode.Decompiler.CSharp
 			var rhs = Translate(inst.Pattern.TestedOperand, rhsType);
 			rhs = rhs.ConvertTo(rhsType, this); // TODO allowImplicitConversion
 			var assignments = inst.Assignments.Instructions;
-			int assignmentPos = 0;
 			var inits = inst.Init;
 			int initPos = 0;
 
@@ -4728,6 +4727,20 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (!DeconstructInstruction.IsConversionStLoc(conv, out var outputVariable, out var inputVariable))
 					continue;
 				conversionMapping.Add(inputVariable, outputVariable);
+			}
+
+			// Map the variable each assignment reads (a pattern variable, or a conversion output for
+			// converted elements) to that assignment, so designated elements can be matched by identity.
+			// A designated pattern element with no matching assignment is an unused deconstruction element
+			// and is rendered as a discard rather than mis-consuming a later element's assignment.
+			var assignmentByValue = new Dictionary<ILVariable, ILInstruction>();
+			foreach (var assignment in assignments)
+			{
+				if (DeconstructInstruction.IsAssignment(assignment, compilation, out _, out var assignedValue)
+					&& assignedValue.MatchLdLoc(out var loadedVariable))
+				{
+					assignmentByValue[loadedVariable] = assignment;
+				}
 			}
 
 			var lhs = ConstructTuple(inst.Pattern);
@@ -4748,8 +4761,10 @@ namespace ICSharpCode.Decompiler.CSharp
 							{
 								value = subPattern.Variable;
 							}
-							expr.Elements.Add(ConstructAssignmentTarget(assignments[assignmentPos], value));
-							assignmentPos++;
+							if (assignmentByValue.TryGetValue(value, out var assignment))
+								expr.Elements.Add(ConstructAssignmentTarget(assignment, value));
+							else
+								expr.Elements.Add(new IdentifierExpression("_"));
 						}
 						else
 							expr.Elements.Add(new IdentifierExpression("_"));
