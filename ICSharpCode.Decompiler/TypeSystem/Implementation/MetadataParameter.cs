@@ -72,7 +72,16 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 			if (!IsDecimalConstant && HasConstantValueInSignature && !defaultValueAssignmentAllowed)
 			{
-				b.Add(KnownAttribute.DefaultParameterValue, KnownTypeCode.Object, GetConstantValue(throwOnInvalidMetadata: false));
+				object constantValue = GetConstantValue(throwOnInvalidMetadata: false);
+				// The signature default is stored as the constant's element type (e.g. int 0 for an
+				// enum or a small-integer parameter). C# requires a DefaultParameterValue argument's
+				// type to match the parameter type (CS1908), so for those parameter types type the
+				// synthesized argument as the parameter type - the value then renders as (MyEnum)0 /
+				// (short)3 instead of a bare int literal. Other parameter types are not affected.
+				if (Type.Kind == TypeKind.Enum || Type.IsCSharpSmallIntegerType())
+					b.Add(KnownAttribute.DefaultParameterValue, Type, constantValue);
+				else
+					b.Add(KnownAttribute.DefaultParameterValue, KnownTypeCode.Object, constantValue);
 			}
 
 			if ((attributes & ParameterAttributes.In) == ParameterAttributes.In && ReferenceKind is not (ReferenceKind.In or ReferenceKind.RefReadOnly))

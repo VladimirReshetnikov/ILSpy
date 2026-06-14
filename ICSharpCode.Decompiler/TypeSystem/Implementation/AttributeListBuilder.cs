@@ -83,6 +83,14 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		}
 
 		/// <summary>
+		/// Construct a builtin attribute with a single positional argument of the given type.
+		/// </summary>
+		public void Add(KnownAttribute type, IType argType, object argValue)
+		{
+			Add(type, ImmutableArray.Create(new CustomAttributeTypedArgument<IType>(argType, argValue)));
+		}
+
+		/// <summary>
 		/// Construct a builtin attribute.
 		/// </summary>
 		public void Add(KnownAttribute type, ImmutableArray<CustomAttributeTypedArgument<IType>> fixedArguments)
