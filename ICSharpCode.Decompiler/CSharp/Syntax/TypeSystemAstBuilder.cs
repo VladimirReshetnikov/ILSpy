@@ -2291,8 +2291,9 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 						// normally omitted. But a type parameter used as a nullable annotation (T?) is read
 						// as Nullable<T> unless its reference-type-ness is visible at the signature, so
 						// restate the minimal constraint that disambiguates it (CS0453/CS0508 otherwise):
-						// 'class' for a reference-type-constrained parameter, 'default' for an otherwise
-						// unconstrained one (the C# 9 disambiguator for unconstrained-nullable overrides).
+						// 'class' for a reference-type-constrained parameter (whether the constraint is the
+						// 'class' keyword or a base-class type), and 'default' for an otherwise unconstrained
+						// one (the C# 9 disambiguator for unconstrained-nullable overrides).
 						if (UsesTypeParameterAsNullableReference(method, tp))
 						{
 							Constraint c = null;
@@ -2307,6 +2308,15 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 							{
 								c = new Constraint { TypeParameter = MakeSimpleType(tp.Name) };
 								c.BaseTypes.Add(new PrimitiveType("default"));
+							}
+							else if (!tp.HasValueTypeConstraint && tp.IsReferenceType == true)
+							{
+								// The parameter is a reference type by virtue of a base-class constraint
+								// rather than the 'class' keyword. Restate bare 'class': an override may not
+								// repeat the base-class constraint or use 'class?' (CS0460), and bare 'class'
+								// is enough to make T? read as a nullable reference.
+								c = new Constraint { TypeParameter = MakeSimpleType(tp.Name) };
+								c.BaseTypes.Add(new PrimitiveType("class"));
 							}
 							if (c != null)
 								decl.Constraints.Add(c);

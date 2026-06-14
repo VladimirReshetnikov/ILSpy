@@ -184,4 +184,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			throw new NotImplementedException();
 		}
 	}
+
+	public class T08_Decoration
+	{
+	}
+	public abstract class T08_DecorationSet
+	{
+		public abstract TDecoration? Get<TDecoration>() where TDecoration : T08_Decoration;
+	}
+	public class T08_EmptyDecorationSet : T08_DecorationSet
+	{
+		public override TDecoration? Get<TDecoration>() where TDecoration : class
+		{
+			return null;
+		}
+	}
 }
