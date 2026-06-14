@@ -58,7 +58,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				case NewObj newObjInst:
 					if (newObjInst.ILStackWasEmpty && v.Kind == VariableKind.Local
-						&& !TypeContainsInitOnlyProperties(newObjInst.Method.DeclaringTypeDefinition)
+						&& !TypeContainsInitOnlyOrRequiredMembers(newObjInst.Method.DeclaringTypeDefinition, context.Settings.RequiredMembers)
 						&& !currentMethod.IsConstructor
 						&& !currentMethod.IsCompilerGeneratedOrIsInCompilerGeneratedClass())
 					{
@@ -188,13 +188,29 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			ILInlining.InlineIfPossible(block, pos, context);
 		}
 
-		private static bool TypeContainsInitOnlyProperties(ITypeDefinition? typeDefinition)
+		private static bool TypeContainsInitOnlyOrRequiredMembers(ITypeDefinition? typeDefinition, bool includeRequiredMembers)
 		{
-			foreach (var property in typeDefinition?.Properties ?? [])
+			if (typeDefinition == null)
+				return false;
+			foreach (var property in typeDefinition.Properties)
 			{
 				if (property.Setter?.IsInitOnly ?? false)
 				{
 					return true;
+				}
+				if (includeRequiredMembers && property.HasAttribute(KnownAttribute.Required, inherit: false))
+				{
+					return true;
+				}
+			}
+			if (includeRequiredMembers)
+			{
+				foreach (var field in typeDefinition.Fields)
+				{
+					if (field.HasAttribute(KnownAttribute.Required, inherit: false))
+					{
+						return true;
+					}
 				}
 			}
 			return false;
