@@ -332,6 +332,10 @@ namespace ICSharpCode.Decompiler.CSharp
 							return true;
 						if (settings.Dynamic && type.IsDelegate(metadata) && (name.StartsWith("<>A", StringComparison.Ordinal) || name.StartsWith("<>F", StringComparison.Ordinal)))
 							return true;
+						// Read-only collection-expression wrappers whose uses TransformReadOnlyCollectionExpression
+						// unwraps; only the two unwrapped variants are hidden, never <>z__ReadOnlyList.
+						if (settings.CollectionExpressions && (name.StartsWith("<>z__ReadOnlyArray", StringComparison.Ordinal) || name.StartsWith("<>z__ReadOnlySingleElementList", StringComparison.Ordinal)))
+							return true;
 					}
 					if (settings.ArrayInitializers && settings.SwitchStatementOnString && name.StartsWith("<PrivateImplementationDetails>", StringComparison.Ordinal))
 						return true;

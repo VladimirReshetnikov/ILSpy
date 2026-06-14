@@ -328,6 +328,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				inst.ReplaceWith(replacement);
 				return;
 			}
+			if (TransformArrayInitializers.TransformReadOnlyCollectionExpression(inst, context, out var collectionReplacement))
+			{
+				context.Step("TransformReadOnlyCollectionExpression", inst);
+				inst.ReplaceWith(collectionReplacement);
+				return;
+			}
 			if (TransformDelegateCtorLdVirtFtnToLdVirtDelegate(inst, out LdVirtDelegate ldVirtDelegate))
 			{
 				context.Step("new Delegate(target, ldvirtftn Method) -> ldvirtdelegate Delegate Method(target)", inst);

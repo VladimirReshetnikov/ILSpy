@@ -128,6 +128,48 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			return replacement != null;
 		}
 
+		/// <summary>
+		/// Unwraps the read-only collection wrappers the C# 12.0 compiler emits when a collection
+		/// expression targets an interface (IEnumerable&lt;T&gt;, IReadOnlyList&lt;T&gt;, ...):
+		///   new &lt;&gt;z__ReadOnlyArray&lt;T&gt;(T[] items)         -> the items array
+		///   new &lt;&gt;z__ReadOnlySingleElementList&lt;T&gt;(T item) -> new T[] { item }
+		/// The wrapper stores its argument without copying, and an array satisfies all the read-only
+		/// collection interfaces the wrapper implements, so the unwrapped form is equivalent for the
+		/// interface targets these wrappers are used with. The &lt;&gt;z__ReadOnlyList wrapper, which
+		/// stores a live List&lt;T&gt; by reference, is intentionally left alone: unwrapping it would
+		/// expose the mutators the wrapper hides.
+		/// </summary>
+		internal static bool TransformReadOnlyCollectionExpression(NewObj inst, StatementTransformContext context, out ILInstruction replacement)
+		{
+			replacement = null;
+			if (!context.Settings.CollectionExpressions)
+				return false;
+			if (inst.Arguments.Count != 1 || !inst.Method.IsConstructor)
+				return false;
+			var declaringType = inst.Method.DeclaringTypeDefinition;
+			if (declaringType == null || declaringType.DeclaringTypeDefinition != null)
+				return false; // the wrappers are top-level types
+			if (declaringType.Kind != TypeKind.Class || !declaringType.IsSealed)
+				return false;
+			if (declaringType.TypeParameterCount != 1)
+				return false;
+			if (!declaringType.HasAttribute(KnownAttribute.CompilerGenerated))
+				return false;
+			switch (declaringType.Name)
+			{
+				case "<>z__ReadOnlyArray":
+					replacement = inst.Arguments[0];
+					return true;
+				case "<>z__ReadOnlySingleElementList":
+					IType elementType = inst.Method.DeclaringType.TypeArguments[0];
+					var tempStore = context.Function.RegisterVariable(VariableKind.InitializerTarget, new ArrayType(context.TypeSystem, elementType));
+					replacement = BlockFromInitializer(tempStore, elementType, new[] { 1 }, new ILInstruction[] { inst.Arguments[0], new LdcI4(0) });
+					return true;
+				default:
+					return false;
+			}
+		}
+
 		internal static bool TransformRuntimeHelpersCreateSpanInitialization(Call inst, StatementTransformContext context, out ILInstruction replacement)
 		{
 			replacement = null;

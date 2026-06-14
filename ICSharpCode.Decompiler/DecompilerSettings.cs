@@ -2168,6 +2168,28 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		bool collectionExpressions = true;
+
+		/// <summary>
+		/// Gets/Sets whether the read-only collection wrappers that the C# 12.0 compiler emits for
+		/// interface-targeted collection expressions (&lt;&gt;z__ReadOnlyArray, &lt;&gt;z__ReadOnlyList,
+		/// &lt;&gt;z__ReadOnlySingleElementList) are unwrapped to array initializers and hidden.
+		/// This produces array-initializer syntax that is valid in any language version, so it is not
+		/// gated by the target language version and does not affect GetMinimumRequiredVersion.
+		/// </summary>
+		[Category("C# 12.0 / VS 2022.8")]
+		[Description("DecompilerSettings.CollectionExpressions")]
+		public bool CollectionExpressions {
+			get { return collectionExpressions; }
+			set {
+				if (collectionExpressions != value)
+				{
+					collectionExpressions = value;
+					OnPropertyChanged();
+				}
+			}
+		}
+
 		bool extensionMembers = true;
 
 		/// <summary>
