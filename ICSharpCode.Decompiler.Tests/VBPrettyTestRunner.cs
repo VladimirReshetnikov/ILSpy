@@ -150,6 +150,14 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task VBClosures([ValueSource(nameof(roslynOnlyOptions))] CompilerOptions options)
+		{
+			// The Roslyn VB compiler emits copy-constructor closures; the legacy (pre-Roslyn) compiler
+			// uses a different closure shape, so this fixture targets the Roslyn compilers only.
+			await Run(options: options | CompilerOptions.Library);
+		}
+
+		[Test]
 		public async Task YieldReturn([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			await Run(options: options | CompilerOptions.Library);

@@ -134,6 +134,127 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			this.context = null;
 		}
 
+		/// <summary>
+		/// VB closures are initialized with a copy constructor <c>c = new Closure(prev)</c> that copies
+		/// the captured fields from a previous instance (the parent scope, or the previous loop
+		/// iteration), whereas SROA expects a parameterless constructor and a single store. When the
+		/// copied values are dead - every instance field is reassigned before the closure instance is
+		/// read or captured - the copy is unobservable. In that case we neutralize the copy-constructor
+		/// argument to <c>null</c> and drop the dead default store, turning the closure into a single,
+		/// empty-initialized display class that the normal SROA path dissolves.
+		/// </summary>
+		internal static void NormalizeVisualBasicClosures(ILFunction function, ILTransformContext context)
+		{
+			foreach (var newObj in function.Descendants.OfType<NewObj>().ToArray())
+			{
+				if (newObj.Arguments.Count != 1)
+					continue;
+				if (!(newObj.Parent is StLoc stloc) || stloc.Value != newObj)
+					continue;
+				// self-referential copy-constructor init: stloc c (newobj Closure(ldloc c))
+				if (!newObj.Arguments[0].MatchLdLoc(out var argVariable) || argVariable != stloc.Variable)
+					continue;
+				var closureType = newObj.Method.DeclaringTypeDefinition;
+				if (closureType == null || newObj.Method.Parameters.Count != 1
+					|| !IsPotentialClosure(context, closureType))
+				{
+					continue;
+				}
+				if (!(stloc.Parent is Block block))
+					continue;
+				if (!IsVisualBasicCopyDead(stloc.Variable, block, stloc.ChildIndex, closureType))
+					continue;
+				context.Step($"Normalize VB closure initializer for {stloc.Variable.Name}", stloc);
+				newObj.Arguments[0].ReplaceWith(new LdNull());
+				RemoveDeadDefaultStores(stloc.Variable, stloc);
+				// The self-referential argument was the only reader of the variable's initial/loop-carried
+				// value; once it is null the closure is freshly constructed each time, so it no longer uses
+				// its initial value (which would otherwise count as a second definition and block SROA).
+				stloc.Variable.UsesInitialValue = false;
+			}
+		}
+
+		/// <summary>
+		/// Returns true if every instance field copied by the copy constructor is reassigned before the
+		/// closure instance is read or captured, making the copied values unobservable. The scan is
+		/// limited to the initializing block; anything more complex is treated as a live copy (no rewrite).
+		/// </summary>
+		static bool IsVisualBasicCopyDead(ILVariable variable, Block block, int initIndex, ITypeDefinition closureType)
+		{
+			var unwritten = new HashSet<IField>(closureType.Fields
+				.Where(f => !f.IsStatic)
+				.Select(f => (IField)f.MemberDefinition));
+			for (int i = initIndex + 1; i < block.Instructions.Count; i++)
+			{
+				var stmt = block.Instructions[i];
+				// a field store `c.f = value`: the value is evaluated first, then f becomes written
+				if (stmt.MatchStFld(out var storeTarget, out var storeField, out var storeValue)
+					&& storeTarget.MatchLdLoc(variable))
+				{
+					if (!FieldReadsAreWritten(storeValue, variable, unwritten))
+						return false;
+					unwritten.Remove((IField)storeField.MemberDefinition);
+					continue;
+				}
+				// otherwise the statement must not read an unwritten field, and if it captures the
+				// closure instance, all fields must be written by now.
+				if (!FieldReadsAreWritten(stmt, variable, unwritten))
+					return false;
+				if (LoadsVariableInstance(stmt, variable))
+					return unwritten.Count == 0;
+			}
+			return unwritten.Count == 0;
+		}
+
+		/// <summary>
+		/// Returns false if <paramref name="inst"/> reads a field of <paramref name="variable"/> that is
+		/// still in <paramref name="unwritten"/> (i.e. only holds the copied value).
+		/// </summary>
+		static bool FieldReadsAreWritten(ILInstruction inst, ILVariable variable, HashSet<IField> unwritten)
+		{
+			foreach (var node in inst.Descendants)
+			{
+				if (node.MatchLdFld(out var ldTarget, out var ldField)
+					&& ldTarget.MatchLdLoc(variable)
+					&& unwritten.Contains((IField)ldField.MemberDefinition))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+
+		/// <summary>
+		/// Returns true if <paramref name="inst"/> loads the closure instance itself (capture/escape),
+		/// as opposed to only using it as the target of a field access.
+		/// </summary>
+		static bool LoadsVariableInstance(ILInstruction inst, ILVariable variable)
+		{
+			foreach (var node in inst.Descendants.OfType<IInstructionWithVariableOperand>())
+			{
+				if (node.Variable != variable)
+					continue;
+				// a load used as the target of a field access is not a capture of the instance
+				if (node is LdLoc ldloc && ldloc.Parent is LdFlda)
+					continue;
+				return true;
+			}
+			return false;
+		}
+
+		static void RemoveDeadDefaultStores(ILVariable variable, StLoc keepStore)
+		{
+			foreach (var store in variable.StoreInstructions.OfType<StLoc>().ToArray())
+			{
+				if (store == keepStore)
+					continue;
+				if ((store.Value is LdNull || store.Value is DefaultValue) && store.Parent is Block block)
+				{
+					block.Instructions.RemoveAt(store.ChildIndex);
+				}
+			}
+		}
+
 		void AnalyzeFunction(ILFunction function)
 		{
 			void VisitFunction(ILFunction f)
@@ -436,7 +557,15 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		{
 			try
 			{
-				if (method.Parameters.Count != 0)
+				// VB closures use a copy constructor 'Closure(Closure other)' that copies the
+				// captured fields from another instance, instead of the parameterless constructor
+				// emitted for C# display classes. Accept both shapes here; NormalizeVisualBasicClosures
+				// rewrites the copy-constructor call's argument to null when the copy is dead, so by the
+				// time SROA dissolves the closure the constructor behaves as an empty initializer.
+				bool isCopyConstructor = method.Parameters.Count == 1
+					&& method.Parameters[0].Type.GetDefinition() is { } parameterType
+					&& parameterType.Equals(method.DeclaringTypeDefinition);
+				if (method.Parameters.Count != 0 && !isCopyConstructor)
 					return false;
 				var handle = (MethodDefinitionHandle)method.MetadataToken;
 				var module = (MetadataModule)method.ParentModule;
@@ -483,7 +612,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					return false;
 				if (!objectCtor.IsConstructor || objectCtor.Parameters.Count != 0)
 					return false;
-				return DecodeOpCodeSkipNop(ref reader) == ILOpCode.Ret;
+				if (DecodeOpCodeSkipNop(ref reader) == ILOpCode.Ret)
+					return true;
+				// A VB copy constructor continues past the base call with field copies from the
+				// argument (optionally guarded by a null check); the parameterless C# constructor
+				// returns immediately. Accept the former only when this is actually a copy constructor.
+				return isCopyConstructor;
 			}
 			catch (BadImageFormatException)
 			{

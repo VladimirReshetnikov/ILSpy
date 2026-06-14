@@ -117,6 +117,7 @@
     <Compile Include="Humanizer\StringHumanizeExtensions.cs" />
     <Compile Include="IL\ILAmbience.cs" />
     <Compile Include="IL\Transforms\InlineArrayTransform.cs" />
+    <Compile Include="IL\Transforms\NormalizeVisualBasicClosures.cs" />
     <Compile Include="IL\Transforms\RemoveUnconstrainedGenericReferenceTypeCheck.cs" />
     <Compile Include="Metadata\MetadataFile.cs" />
     <Compile Include="Metadata\ModuleReferenceMetadata.cs" />
