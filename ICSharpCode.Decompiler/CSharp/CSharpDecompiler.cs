@@ -1476,6 +1476,113 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 		}
 
+		// Visual Basic implements an interface property or event with an accessor that carries a
+		// .override directive but an ordinary (dotless) name, so it is rendered as a plain public
+		// member and the interface member is left unimplemented (CS0535). Methods get a forwarder
+		// from the .override directive (AddInterfaceImplHelpers above); these emit the property/event
+		// analogue, forwarding to the public member that the accessor's .override resolves to.
+		IEnumerable<EntityDeclaration> AddInterfaceImplHelpers(
+			EntityDeclaration memberDecl, IProperty property,
+			TypeSystemAstBuilder astBuilder)
+		{
+			if (!memberDecl.GetChildByRole(EntityDeclaration.PrivateImplementationTypeRole).IsNull)
+			{
+				yield break; // cannot create forwarder for existing explicit interface impl
+			}
+			if (property.IsStatic)
+			{
+				yield break; // cannot create forwarder for static interface impl
+			}
+			if (memberDecl.HasModifier(Modifiers.Extern))
+			{
+				yield break; // cannot create forwarder for extern property
+			}
+			if (property.IsIndexer)
+			{
+				yield break; // forwarder generation for indexers is not implemented
+			}
+			foreach (var interfaceMember in property.ExplicitlyImplementedInterfaceMembers)
+			{
+				if (interfaceMember is not IProperty interfaceProperty
+					|| interfaceProperty.DeclaringType.Kind != TypeKind.Interface)
+				{
+					continue;
+				}
+				var propertyDecl = new PropertyDeclaration();
+				propertyDecl.ReturnType = memberDecl.GetChildByRole(Roles.Type).Clone();
+				propertyDecl.PrivateImplementationType = astBuilder.ConvertType(interfaceProperty.DeclaringType);
+				propertyDecl.Name = interfaceProperty.Name;
+				bool commentEmitted = false;
+				if (interfaceProperty.CanGet)
+				{
+					var getter = new Accessor { Body = new BlockStatement() };
+					getter.Body.AddChild(InterfaceImplComment(memberDecl.Name), Roles.Comment);
+					getter.Body.Add(new ReturnStatement(
+						new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name)));
+					propertyDecl.Getter = getter;
+					commentEmitted = true;
+				}
+				if (interfaceProperty.CanSet)
+				{
+					var setter = new Accessor { Body = new BlockStatement() };
+					if (!commentEmitted)
+						setter.Body.AddChild(InterfaceImplComment(memberDecl.Name), Roles.Comment);
+					setter.Body.Add(new ExpressionStatement(new AssignmentExpression(
+						new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name),
+						new IdentifierExpression("value"))));
+					propertyDecl.Setter = setter;
+				}
+				yield return propertyDecl;
+			}
+		}
+
+		IEnumerable<EntityDeclaration> AddInterfaceImplHelpers(
+			EntityDeclaration memberDecl, IEvent @event,
+			TypeSystemAstBuilder astBuilder)
+		{
+			if (!memberDecl.GetChildByRole(EntityDeclaration.PrivateImplementationTypeRole).IsNull)
+			{
+				yield break; // cannot create forwarder for existing explicit interface impl
+			}
+			if (@event.IsStatic)
+			{
+				yield break; // cannot create forwarder for static interface impl
+			}
+			if (memberDecl.HasModifier(Modifiers.Extern))
+			{
+				yield break; // cannot create forwarder for extern event
+			}
+			foreach (var interfaceMember in @event.ExplicitlyImplementedInterfaceMembers)
+			{
+				if (interfaceMember is not IEvent interfaceEvent
+					|| interfaceEvent.DeclaringType.Kind != TypeKind.Interface)
+				{
+					continue;
+				}
+				var eventDecl = new CustomEventDeclaration();
+				eventDecl.ReturnType = memberDecl.GetChildByRole(Roles.Type).Clone();
+				eventDecl.PrivateImplementationType = astBuilder.ConvertType(interfaceEvent.DeclaringType);
+				eventDecl.Name = interfaceEvent.Name;
+				var addAccessor = new Accessor { Body = new BlockStatement() };
+				addAccessor.Body.AddChild(InterfaceImplComment(memberDecl.Name), Roles.Comment);
+				addAccessor.Body.Add(new ExpressionStatement(new AssignmentExpression(
+					new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name),
+					AssignmentOperatorType.Add, new IdentifierExpression("value"))));
+				eventDecl.AddAccessor = addAccessor;
+				var removeAccessor = new Accessor { Body = new BlockStatement() };
+				removeAccessor.Body.Add(new ExpressionStatement(new AssignmentExpression(
+					new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name),
+					AssignmentOperatorType.Subtract, new IdentifierExpression("value"))));
+				eventDecl.RemoveAccessor = removeAccessor;
+				yield return eventDecl;
+			}
+		}
+
+		static Comment InterfaceImplComment(string memberName)
+		{
+			return new Comment("ILSpy generated this explicit interface implementation from .override directive in " + memberName);
+		}
+
 		/// <summary>
 		/// Sets new modifier if the member hides some other member from a base type.
 		/// </summary>
@@ -1786,6 +1893,10 @@ namespace ICSharpCode.Decompiler.CSharp
 						}
 						entityDecl = DoDecompile(property, decompileRun, decompilationContext.WithCurrentMember(property), null);
 						entityMap.Add(property, entityDecl);
+						foreach (var helper in AddInterfaceImplHelpers(entityDecl, property, typeSystemAstBuilder))
+						{
+							entityMap.Add(property, helper);
+						}
 						break;
 					case IMethod method:
 						if (recordDecompiler?.MethodIsGenerated(method) == true)
@@ -1802,6 +1913,10 @@ namespace ICSharpCode.Decompiler.CSharp
 					case IEvent @event:
 						entityDecl = DoDecompile(@event, decompileRun, decompilationContext.WithCurrentMember(@event));
 						entityMap.Add(@event, entityDecl);
+						foreach (var helper in AddInterfaceImplHelpers(entityDecl, @event, typeSystemAstBuilder))
+						{
+							entityMap.Add(@event, helper);
+						}
 						break;
 					case ITypeDefinition type:
 						entityDecl = DoDecompile(type, decompileRun, decompilationContext.WithCurrentTypeDefinition(type));

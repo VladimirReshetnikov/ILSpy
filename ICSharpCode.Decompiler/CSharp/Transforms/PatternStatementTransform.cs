@@ -612,6 +612,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		PropertyDeclaration TransformAutomaticProperty(PropertyDeclaration propertyDeclaration)
 		{
 			IProperty property = propertyDeclaration.GetSymbol() as IProperty;
+			if (property == null)
+				return null; // synthesized declaration (e.g. an explicit-interface-impl forwarder) has no symbol
 			if (!CanTransformToAutomaticProperty(property, !property.DeclaringTypeDefinition.Fields.Any(f => f.Name == "_" + property.Name && f.IsCompilerGenerated())))
 				return null;
 			IField field = null;
