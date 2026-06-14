@@ -126,6 +126,16 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						currentLowerCaseTypeOrMemberNames.Add(name);
 						AddExistingName(reservedVariableNames, name);
 					}
+					// Reserve type simple-names regardless of case. The collections above are limited to
+					// lower-case because variable names are normally lower-case, but a name recovered
+					// verbatim from a display-class field (no PDB) can be PascalCase, e.g. 'Logger'. Such a
+					// variable would otherwise shadow a same-named type used as a static-call receiver in
+					// scope (CS1061/CS0165/CS0119/CS0117). Matching is case-sensitive, so this only affects a
+					// variable whose name exactly equals a type name.
+					foreach (var name in CollectAllTypeNames(function.Method.DeclaringTypeDefinition))
+						AddExistingName(reservedVariableNames, name);
+					foreach (var name in CollectAllTypeNames(context.UsingScope))
+						AddExistingName(reservedVariableNames, name);
 					this.currentLowerCaseTypeOrMemberNames = currentLowerCaseTypeOrMemberNames.ToImmutableHashSet();
 
 					// handle implicit parameters of set or event accessors
@@ -654,6 +664,25 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		static IEnumerable<string> CollectAllLowerCaseTypeNames(UsingScope usingScope)
 		{
 			return usingScope?.Usings.SelectMany(n => n.Types).Select(t => t.Name).Where(IsLowerCase) ?? [];
+		}
+
+		static IEnumerable<string> CollectAllTypeNames(ITypeDefinition type)
+		{
+			var ns = type.ParentModule.Compilation.GetNamespaceByFullName(type.Namespace);
+			foreach (var item in ns.Types)
+				yield return item.Name;
+			var current = type;
+			while (current != null)
+			{
+				foreach (var nested in current.NestedTypes)
+					yield return nested.Name;
+				current = current.DeclaringTypeDefinition;
+			}
+		}
+
+		static IEnumerable<string> CollectAllTypeNames(UsingScope usingScope)
+		{
+			return usingScope?.Usings.SelectMany(n => n.Types).Select(t => t.Name) ?? [];
 		}
 
 		static bool IsLowerCase(string name)
