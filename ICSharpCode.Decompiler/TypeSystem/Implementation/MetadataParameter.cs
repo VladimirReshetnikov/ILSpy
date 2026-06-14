@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
@@ -122,7 +123,40 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				if (parameterDef.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.RequiresLocation))
 					return ReferenceKind.RefReadOnly;
 			}
+			// A Visual Basic ByRef parameter that implements or overrides an 'out' parameter carries no
+			// ParameterAttributes.Out flag, because the VB compiler does not emit one. Without the flag it
+			// would render as 'ref' and no longer match the overridden/implemented 'out' member, so the
+			// override fails to bind (CS0115/CS0534/CS0539). Recover the direction from the contract.
+			if (Owner is IMethod method && !handle.IsNil)
+			{
+				int parameterIndex = module.metadata.GetParameter(handle).SequenceNumber - 1;
+				if (parameterIndex >= 0 && ContractParameterIsOut(method, parameterIndex))
+					return ReferenceKind.Out;
+			}
 			return ReferenceKind.Ref;
+		}
+
+		/// <summary>
+		/// Returns true if the parameter at <paramref name="parameterIndex"/> is declared 'out' by a member
+		/// that <paramref name="method"/> implements or overrides. 'out' and 'ref' share the same byref
+		/// signature, so the contract is what distinguishes them when the implementation drops the flag.
+		/// </summary>
+		static bool ContractParameterIsOut(IMethod method, int parameterIndex)
+		{
+			// Direct interface-implementation links cover Visual Basic 'Implements' (renamed or not) and
+			// C#-style explicit implementations; GetBaseMembers additionally covers overrides and implicit
+			// same-signature interface implementations.
+			foreach (var contract in method.ExplicitlyImplementedInterfaceMembers
+				.Concat(InheritanceHelper.GetBaseMembers(method, includeImplementedInterfaces: true)))
+			{
+				if (contract is IMethod contractMethod
+					&& parameterIndex < contractMethod.Parameters.Count
+					&& contractMethod.Parameters[parameterIndex].ReferenceKind == ReferenceKind.Out)
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		public LifetimeAnnotation Lifetime {
