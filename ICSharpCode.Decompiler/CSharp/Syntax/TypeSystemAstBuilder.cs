@@ -2280,13 +2280,44 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			if (method.IsExtensionMethod && method.ReducedFrom == null && decl.Parameters.Any())
 				decl.Parameters.First().HasThisModifier = true;
 
-			if (this.ShowTypeParameters && this.ShowTypeParameterConstraints && !method.IsOverride && !method.IsExplicitInterfaceImplementation)
+			if (this.ShowTypeParameters && this.ShowTypeParameterConstraints)
 			{
+				bool inheritsConstraints = method.IsOverride || method.IsExplicitInterfaceImplementation;
 				foreach (ITypeParameter tp in method.TypeParameters)
 				{
-					var constraint = ConvertTypeParameterConstraint(tp);
-					if (constraint != null)
-						decl.Constraints.Add(constraint);
+					if (inheritsConstraints)
+					{
+						// Constraints on overrides and explicit interface implementations are inherited and
+						// normally omitted. But a type parameter used as a nullable annotation (T?) is read
+						// as Nullable<T> unless its reference-type-ness is visible at the signature, so
+						// restate the minimal constraint that disambiguates it (CS0453/CS0508 otherwise):
+						// 'class' for a reference-type-constrained parameter, 'default' for an otherwise
+						// unconstrained one (the C# 9 disambiguator for unconstrained-nullable overrides).
+						if (UsesTypeParameterAsNullableReference(method, tp))
+						{
+							Constraint c = null;
+							if (tp.HasReferenceTypeConstraint)
+							{
+								c = new Constraint { TypeParameter = MakeSimpleType(tp.Name) };
+								c.BaseTypes.Add(tp.NullabilityConstraint == Nullability.Nullable
+									? new PrimitiveType("class").MakeNullableType()
+									: new PrimitiveType("class"));
+							}
+							else if (!tp.HasValueTypeConstraint && tp.DirectBaseTypes.All(IsObjectOrValueType))
+							{
+								c = new Constraint { TypeParameter = MakeSimpleType(tp.Name) };
+								c.BaseTypes.Add(new PrimitiveType("default"));
+							}
+							if (c != null)
+								decl.Constraints.Add(c);
+						}
+					}
+					else
+					{
+						var constraint = ConvertTypeParameterConstraint(tp);
+						if (constraint != null)
+							decl.Constraints.Add(constraint);
+					}
 				}
 			}
 			decl.Body = GenerateBodyBlock();
@@ -2546,6 +2577,36 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return c;
 		}
 
+		static bool UsesTypeParameterAsNullableReference(IMethod method, ITypeParameter tp)
+		{
+			if (ContainsNullableReferenceTo(method.ReturnType, tp))
+				return true;
+			foreach (IParameter p in method.Parameters)
+			{
+				if (ContainsNullableReferenceTo(p.Type, tp))
+					return true;
+			}
+			return false;
+		}
+
+		static bool ContainsNullableReferenceTo(IType type, ITypeParameter tp)
+		{
+			if (type is ITypeParameter usedTypeParameter)
+			{
+				return type.Nullability == Nullability.Nullable
+					&& usedTypeParameter.OwnerType == tp.OwnerType
+					&& usedTypeParameter.Index == tp.Index;
+			}
+			foreach (IType typeArgument in type.TypeArguments)
+			{
+				if (ContainsNullableReferenceTo(typeArgument, tp))
+					return true;
+			}
+			if (type is TypeWithElementType typeWithElementType)
+				return ContainsNullableReferenceTo(typeWithElementType.ElementType, tp);
+			return false;
+		}
+
 		static bool IsObjectOrValueType(IType type)
 		{
 			ITypeDefinition d = type.GetDefinition();
@@ -2587,7 +2648,23 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				var baseMember = member.ExplicitlyImplementedInterfaceMembers.FirstOrDefault();
 				if (baseMember != null)
-					return ConvertType(baseMember.DeclaringType);
+				{
+					IType interfaceType = baseMember.DeclaringType;
+					// The MethodImpl reference that yields baseMember carries no TupleElementNamesAttribute,
+					// so its tuple type arguments are unnamed; the implementing type's base-interface list
+					// does carry the names. Prefer that named variant so the explicit-implementation
+					// qualifier's tuple element names match the member signature (otherwise CS8141).
+					// Match a base interface that differs only in tuple element names (not nullability):
+					// equivalent when both names and nullability are ignored, but NOT equivalent when only
+					// nullability is ignored. This recovers the names without altering the nullability that
+					// the MethodImpl reference already encodes.
+					IType named = member.DeclaringType.GetAllBaseTypes().FirstOrDefault(
+						t => t.Kind == TypeKind.Interface
+							&& !t.Equals(interfaceType)
+							&& NormalizeTypeVisitor.IgnoreNullabilityAndTuples.EquivalentTypes(t, interfaceType)
+							&& !NormalizeTypeVisitor.IgnoreNullability.EquivalentTypes(t, interfaceType));
+					return ConvertType(named ?? interfaceType);
+				}
 			}
 			return null;
 		}
