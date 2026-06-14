@@ -148,8 +148,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 							{
 								localFunction.DeclarationScope = BlockContainer.FindClosestContainer(useSite);
 							}
-							else
+							else if (GetDeclaringFunction(localFunction) == context.Function)
 							{
+								// Broaden the declaration scope to cover this use-site, but only while the
+								// scope still lives directly in the constructor body. Once closure analysis
+								// has placed the function inside a nested local function (e.g. its closure
+								// arrives via a forwarded by-ref display-class struct), pulling the scope up
+								// to a common ancestor with a use-site would move it out of that function and
+								// leave the captured display-class fields without a declaration.
 								localFunction.DeclarationScope = FindCommonAncestorInstruction<BlockContainer>(useSite, localFunction.DeclarationScope);
 								if (localFunction.DeclarationScope == null)
 								{
@@ -743,8 +749,25 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				closureVar.Kind = VariableKind.DisplayClassLocal;
 			}
 			if (function.DeclarationScope == null)
+			{
 				function.DeclarationScope = closureVar.CaptureScope;
-			else if (!IsInNestedLocalFunction(function.DeclarationScope, closureVar.CaptureScope.Ancestors.OfType<ILFunction>().First()))
+			}
+			else if (IsInNestedLocalFunction(function.DeclarationScope, closureVar.CaptureScope.Ancestors.OfType<ILFunction>().First()))
+			{
+				// The existing declaration scope already lies inside a local function nested within
+				// the new capture scope's function. That deeper scope is required to see all captured
+				// variables, so keep it.
+			}
+			else if (IsInNestedLocalFunction(closureVar.CaptureScope, function.DeclarationScope.Ancestors.OfType<ILFunction>().First()))
+			{
+				// The new capture scope lies inside a local function nested within the existing
+				// declaration scope's function. This happens when a closure arrives only via a by-ref
+				// display-class struct forwarded from an enclosing local function: the function must be
+				// declared inside that enclosing function to reach the struct, so adopt the deeper
+				// capture scope instead of climbing to a common ancestor.
+				function.DeclarationScope = closureVar.CaptureScope;
+			}
+			else
 			{
 				var common = FindCommonAncestorInstruction<BlockContainer>(function.DeclarationScope, closureVar.CaptureScope);
 				// A local function must be declared where all of its captured closures are visible.
