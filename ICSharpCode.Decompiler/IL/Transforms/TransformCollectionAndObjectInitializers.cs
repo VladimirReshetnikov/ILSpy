@@ -47,6 +47,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			var insertionPos = initInst.ChildIndex;
 			var siblings = initInst.Parent!.Children;
 			IMethod currentMethod = context.Function.Method!;
+			// A non-record value-type 'with' is only recovered when at least one of the
+			// folded members is an init-only setter (which cannot be assigned outside an
+			// initializer). Without that guarantee a plain struct copy followed by member
+			// assignments is legitimate separate statements and must be left untouched.
+			bool requireInitOnlyForValueTypeWith = false;
 			// we allow a castclass instruction to wrap the init instruction:
 			// this is needed, for example, for inherited record types used on .NET runtimes (e.g., .NET 4.x),
 			// where covariant return types are not supported.
@@ -106,6 +111,19 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						blockKind = BlockKind.WithInitializer;
 						break;
 					}
+					// A C# 11 'with' on a non-record value type compiles to a plain copy of the
+					// source value into a local, followed by init-only setter calls on that local.
+					// Recover it into a 'with' expression so the init-only members are not assigned
+					// outside an initializer (CS8852).
+					if (context.Settings.WithExpressions && typeDef?.IsReferenceType == false
+						&& (initInst is LdLoc || initInst is LdObj)
+						&& TypeContainsInitOnlyOrRequiredMembers(typeDef, includeRequiredMembers: false))
+					{
+						instType = v.Type;
+						blockKind = BlockKind.WithInitializer;
+						requireInitOnlyForValueTypeWith = true;
+						break;
+					}
 					return;
 			}
 			if (targetType != null)
@@ -148,6 +166,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			}
 			// The initializer would be empty, there's nothing to do here.
 			if (initializerItemsCount <= 0)
+				return;
+			// A non-record value-type copy is only folded into a 'with' expression when it
+			// actually sets an init-only member; otherwise it is an ordinary mutable-struct
+			// copy that must remain a sequence of separate assignments.
+			if (requireInitOnlyForValueTypeWith && !initializerContainsInitOnlyItems)
 				return;
 			context.Step("CollectionOrObjectInitializer", inst);
 			// Create a new block and final slot (initializer target variable)
