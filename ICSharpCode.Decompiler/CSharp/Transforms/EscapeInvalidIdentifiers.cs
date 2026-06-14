@@ -171,6 +171,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			"System.Runtime.CompilerServices.RefSafetyRulesAttribute",
 			"System.Runtime.CompilerServices.ScopedRefAttribute",
 			"System.Runtime.CompilerServices.RequiresLocationAttribute",
+			"System.Runtime.CompilerServices.ExtensionMarkerAttribute",
 			"Microsoft.CodeAnalysis.EmbeddedAttribute",
 		};
 

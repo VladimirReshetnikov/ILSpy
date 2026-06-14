@@ -532,6 +532,26 @@
   } // end of method IsReadOnlyAttribute::.ctor
 
 } // end of class System.Runtime.CompilerServices.IsReadOnlyAttribute
+
+.class private auto ansi sealed beforefieldinit System.Runtime.CompilerServices.ExtensionMarkerAttribute
+       extends [CORE_ASSEMBLY]System.Attribute
+{
+  .custom instance void [CORE_ASSEMBLY]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = (
+  	01 00 00 00
+  )
+  .custom instance void Microsoft.CodeAnalysis.EmbeddedAttribute::.ctor() = (
+  	01 00 00 00
+  )
+  .method public hidebysig specialname rtspecialname
+          instance void .ctor () cil managed
+  {
+        .maxstack 1
+        ldarg.0
+        call instance void [CORE_ASSEMBLY]System.Attribute::.ctor()
+        ret
+  } // end of method ExtensionMarkerAttribute::.ctor
+
+} // end of class System.Runtime.CompilerServices.ExtensionMarkerAttribute
 #endif
 
 .class private auto ansi sealed beforefieldinit ExtraUnsafeTests
