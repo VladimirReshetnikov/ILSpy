@@ -730,7 +730,16 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (function.DeclarationScope == null)
 				function.DeclarationScope = closureVar.CaptureScope;
 			else if (!IsInNestedLocalFunction(function.DeclarationScope, closureVar.CaptureScope.Ancestors.OfType<ILFunction>().First()))
-				function.DeclarationScope = FindCommonAncestorInstruction<BlockContainer>(function.DeclarationScope, closureVar.CaptureScope);
+			{
+				var common = FindCommonAncestorInstruction<BlockContainer>(function.DeclarationScope, closureVar.CaptureScope);
+				// A local function must be declared where all of its captured closures are visible.
+				// When the capture scopes are nested (e.g. a closure created inside a lambda vs. one
+				// created in the enclosing method), the deeper scope is the only valid declaration site:
+				// it can still see the outer scope's variables, but not vice versa. Fall back to the
+				// common ancestor only when the scopes are in unrelated branches.
+				if (common != closureVar.CaptureScope)
+					function.DeclarationScope = (common == function.DeclarationScope) ? closureVar.CaptureScope : common;
+			}
 			return true;
 
 			ILInstruction GetClosureInitializer(ILVariable variable)
