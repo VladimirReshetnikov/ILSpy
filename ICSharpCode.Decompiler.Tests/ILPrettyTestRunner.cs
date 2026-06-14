@@ -292,6 +292,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ConstructorInitializerAfterLeadingStatements()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task FSharpLoops_Debug()
 		{
 			CopyFSharpCoreDll();

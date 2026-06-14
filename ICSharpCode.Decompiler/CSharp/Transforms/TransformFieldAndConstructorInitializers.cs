@@ -333,15 +333,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					}
 					else
 					{
-						// find this-ctor call
-						var stmt = ctor.Body.Statements.FirstOrDefault();
-						var m = ctorMethod.DeclaringType.Kind == TypeKind.Struct
-							? ThisCallStructPattern.Match(stmt)
-							: ThisCallClassPattern.Match(stmt);
+						// find this-ctor call; it is usually the first statement, but may be
+						// preceded by field initializers, guard clauses, or inlinable temporaries.
+						bool isStruct = ctorMethod.DeclaringType.Kind == TypeKind.Struct;
+						var stmt = FindConstructorInitializerCall(ctor.Body, isStruct, out var m);
 
 						allCtors.Add(ctor);
 
-						if (m.Success && m.Get<Expression>("target").Single() is ThisReferenceExpression)
+						if (stmt != null && m.Get<Expression>("target").Single() is ThisReferenceExpression)
 							continue;
 
 						constructorsNotChainedWithThis.Add(ctor);
@@ -466,27 +465,35 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 			public bool MoveConstructorInitializer(ConstructorDeclaration constructorDeclaration, IMethod ctorMethod)
 			{
-				Statement stmt = constructorDeclaration.Body.Statements.FirstOrDefault()!;
 				var isValueType = ctorMethod.DeclaringType.Kind == TypeKind.Struct;
 
 				// value types may omit the constructor initializer completely
-				if (stmt == null && isValueType)
+				if (constructorDeclaration.Body.Statements.FirstOrDefault() == null && isValueType)
 				{
 					return true;
 				}
 
-				var m = isValueType
-					? ThisCallStructPattern.Match(stmt)
-					: ThisCallClassPattern.Match(stmt);
+				// The chained this-/base-ctor call is normally the first body statement, but a few
+				// IL shapes (e.g. obfuscator output) emit field initializers, guard clauses, or an
+				// inlinable temporary before it. Look past such leading statements so the call is
+				// still recognized; leaving it behind would print an uncompilable 'base..ctor(...)'.
+				Statement? stmt = FindConstructorInitializerCall(constructorDeclaration.Body, isValueType, out var m);
 
-				if (!m.Success)
+				if (stmt == null)
 					return isValueType;
-
-				Debug.Assert(stmt != null); // because m.Success
 
 				AstNode invocation = m.Get<AstNode>("invocation").Single();
 				if (invocation.GetSymbol() is not IMethod { IsConstructor: true } ctor)
 					return false;
+
+				// Any local read inside the call arguments is illegal once the call becomes an
+				// initializer (the initializer runs before the body that declares the local), so
+				// fold its declaration into the arguments. Bail if that cannot be done safely.
+				if (stmt != constructorDeclaration.Body.Statements.FirstOrDefault()
+					&& !TryFoldLeadingTemporariesIntoConstructorCall(constructorDeclaration.Body, stmt, invocation))
+				{
+					return false;
+				}
 
 				ConstructorInitializerType type = ctor.DeclaringTypeDefinition == ctorMethod.DeclaringTypeDefinition
 					? ConstructorInitializerType.This
@@ -504,6 +511,124 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				stmt.Remove();
 
 				return true;
+			}
+
+			/// <summary>
+			/// Finds the chained this-/base-constructor call statement in a constructor body.
+			/// The call is normally the first statement, but may be preceded by field initializers,
+			/// guard clauses, or inlinable temporaries; the first statement matching the chained-call
+			/// pattern is returned together with its match. Returns <c>null</c> if there is none.
+			/// </summary>
+			private static Statement? FindConstructorInitializerCall(BlockStatement body, bool isValueType, out Match m)
+			{
+				for (Statement? stmt = body.Statements.FirstOrDefault(); stmt != null; stmt = stmt.GetNextStatement())
+				{
+					m = isValueType
+						? ThisCallStructPattern.Match(stmt)
+						: ThisCallClassPattern.Match(stmt);
+					if (m.Success)
+						return stmt;
+				}
+				m = default;
+				return null;
+			}
+
+			/// <summary>
+			/// Folds the declarations of single-use (or side-effect-free) local temporaries that the
+			/// chained-constructor call reads into the call's arguments and removes those declarations,
+			/// so the arguments only reference parameters and fields once the call becomes an initializer.
+			/// Returns <c>false</c> (bail) if a referenced local cannot be folded safely.
+			/// </summary>
+			private static bool TryFoldLeadingTemporariesIntoConstructorCall(BlockStatement body, Statement callStatement, AstNode invocation)
+			{
+				// Collect the local variables referenced inside the call arguments.
+				var argumentUses = new Dictionary<ILVariable, List<IdentifierExpression>>();
+				foreach (var argument in invocation.GetChildrenByRole(Roles.Argument))
+				{
+					foreach (var identifier in argument.DescendantsAndSelf.OfType<IdentifierExpression>())
+					{
+						var variable = identifier.GetILVariable();
+						if (variable == null || variable.Kind == VariableKind.Parameter)
+							continue;
+						if (!argumentUses.TryGetValue(variable, out var uses))
+						{
+							uses = [];
+							argumentUses[variable] = uses;
+						}
+						uses.Add(identifier);
+					}
+				}
+
+				if (argumentUses.Count == 0)
+				{
+					// The call reads no locals; any preceding statements (field initializers, guard
+					// clauses) keep running in the body and the call lifts to an initializer unchanged.
+					return true;
+				}
+
+				foreach (var (variable, uses) in argumentUses)
+				{
+					// The declaration of a foldable temporary must precede the call.
+					if (FindSingleDeclaratorDeclaration(body, callStatement, variable) is not { } declaration)
+						return false;
+
+					var initializer = declaration.Variables.Single().Initializer;
+					if (initializer.IsNull)
+						return false;
+
+					// The initializer becomes part of the constructor initializer, which runs before
+					// the body. It may therefore only reference parameters and fields, never another
+					// body local that would be declared later.
+					if (initializer.DescendantsAndSelf.OfType<IdentifierExpression>()
+						.Any(id => id.GetILVariable() is { Kind: not VariableKind.Parameter }))
+					{
+						return false;
+					}
+
+					// The temporary may only be read by the call arguments; any other read would be
+					// left referencing an undeclared local after the declaration is removed.
+					int totalUses = body.DescendantsAndSelf
+						.OfType<IdentifierExpression>()
+						.Count(id => id.GetILVariable() == variable);
+					if (totalUses != uses.Count)
+						return false;
+
+					// Duplicating the initializer into more than one argument use is only sound when it
+					// has no side effects and does not depend on state mutated before the call.
+					if (uses.Count > 1 && !IsSideEffectFreeInitializer(initializer))
+						return false;
+
+					foreach (var use in uses)
+					{
+						use.ReplaceWith(initializer.Clone());
+					}
+					declaration.Remove();
+				}
+
+				return true;
+			}
+
+			/// <summary>
+			/// Finds a single-declarator local <see cref="VariableDeclarationStatement"/> for the given
+			/// variable among the statements preceding <paramref name="callStatement"/>.
+			/// </summary>
+			private static VariableDeclarationStatement? FindSingleDeclaratorDeclaration(BlockStatement body, Statement callStatement, ILVariable variable)
+			{
+				for (Statement? stmt = body.Statements.FirstOrDefault(); stmt != null && stmt != callStatement; stmt = stmt.GetNextStatement())
+				{
+					if (stmt is VariableDeclarationStatement { Variables: { Count: 1 } } vds
+						&& vds.Variables.Single().GetILVariable() == variable)
+					{
+						return vds;
+					}
+				}
+				return null;
+			}
+
+			private static bool IsSideEffectFreeInitializer(Expression initializer)
+			{
+				var inst = initializer.Annotation<ILInstruction>();
+				return inst != null && SemanticHelper.IsPure(inst.Flags);
 			}
 
 			public bool MoveFieldInitializersToDeclarations(InitializerSequence sequence, InitializerKind kind)
