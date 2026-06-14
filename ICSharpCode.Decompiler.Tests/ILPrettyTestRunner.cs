@@ -58,6 +58,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task FieldKeywordCollision()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task Issue646()
 		{
 			await Run();

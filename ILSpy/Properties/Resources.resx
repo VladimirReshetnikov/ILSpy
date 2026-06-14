@@ -540,6 +540,9 @@ Are you sure you want to continue?</value>
   <data name="DecompilerSettings.UseExtensionMethodSyntax" xml:space="preserve">
     <value>Use extension method syntax</value>
   </data>
+  <data name="DecompilerSettings.UseFieldKeyword" xml:space="preserve">
+    <value>Use 'field' keyword in semi-auto-properties</value>
+  </data>
   <data name="DecompilerSettings.UseImplicitConversionsBetweenTupleTypes" xml:space="preserve">
     <value>Use implicit conversions between tuple types</value>
   </data>

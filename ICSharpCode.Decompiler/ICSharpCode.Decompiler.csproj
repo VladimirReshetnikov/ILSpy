@@ -341,6 +341,7 @@
     <Compile Include="CSharp\Transforms\CombineQueryExpressions.cs" />
     <Compile Include="CSharp\Transforms\FlattenSwitchBlocks.cs" />
     <Compile Include="CSharp\Transforms\IntroduceExtensionMethods.cs" />
+    <Compile Include="CSharp\Transforms\IntroduceFieldKeyword.cs" />
     <Compile Include="CSharp\Transforms\IntroduceQueryExpressions.cs" />
     <Compile Include="CSharp\Transforms\NormalizeBlockStatements.cs" />
     <Compile Include="CSharp\Transforms\PrettifyAssignments.cs" />

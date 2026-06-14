@@ -176,6 +176,7 @@ namespace ICSharpCode.Decompiler
 			{
 				extensionMembers = false;
 				firstClassSpanTypes = false;
+				useFieldKeyword = false;
 			}
 			if (languageVersion < CSharp.LanguageVersion.CSharp15_0)
 			{
@@ -187,7 +188,7 @@ namespace ICSharpCode.Decompiler
 		{
 			if (runtimeAsync)
 				return CSharp.LanguageVersion.CSharp15_0;
-			if (extensionMembers || firstClassSpanTypes)
+			if (extensionMembers || firstClassSpanTypes || useFieldKeyword)
 				return CSharp.LanguageVersion.CSharp14_0;
 			if (paramsCollections)
 				return CSharp.LanguageVersion.CSharp13_0;
@@ -2203,6 +2204,25 @@ namespace ICSharpCode.Decompiler
 				if (extensionMembers != value)
 				{
 					extensionMembers = value;
+					OnPropertyChanged();
+				}
+			}
+		}
+
+		bool useFieldKeyword = true;
+
+		/// <summary>
+		/// Gets/Sets whether C# 14.0 semi-auto-properties using the 'field' contextual keyword
+		/// should be reconstructed (replacing the explicit compiler-generated backing field).
+		/// </summary>
+		[Category("C# 14.0 / VS 2026")]
+		[Description("DecompilerSettings.UseFieldKeyword")]
+		public bool UseFieldKeyword {
+			get { return useFieldKeyword; }
+			set {
+				if (useFieldKeyword != value)
+				{
+					useFieldKeyword = value;
 					OnPropertyChanged();
 				}
 			}
