@@ -7,7 +7,7 @@ using Microsoft.VisualBasic.CompilerServices;
 namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 {
 	[StandardModule]
-	internal sealed class Issue646
+	internal static class Issue646
 	{
 		[STAThread]
 		public static void Main()

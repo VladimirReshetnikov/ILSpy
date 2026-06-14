@@ -17,7 +17,7 @@ using Microsoft.VisualBasic.CompilerServices;
 namespace Issue1325
 {
 	[StandardModule]
-	internal sealed class Program
+	internal static class Program
 	{
 		[STAThread]
 		public static void Main(string[] args)

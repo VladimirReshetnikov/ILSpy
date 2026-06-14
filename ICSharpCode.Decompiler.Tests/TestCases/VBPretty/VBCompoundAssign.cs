@@ -2,7 +2,7 @@ using Microsoft.VisualBasic;
 using Microsoft.VisualBasic.CompilerServices;
 
 [StandardModule]
-internal sealed class VBCompoundAssign
+internal static class VBCompoundAssign
 {
 	public static double[] Sum3(int[] v)
 	{

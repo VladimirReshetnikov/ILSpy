@@ -3,7 +3,7 @@ using System;
 using Microsoft.VisualBasic.CompilerServices;
 
 [StandardModule]
-internal sealed class Program
+internal static class Program
 {
 	public static void SelectOnString()
 	{

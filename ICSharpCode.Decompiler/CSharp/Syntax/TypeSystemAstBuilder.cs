@@ -1827,6 +1827,26 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return ext;
 		}
 
+		// A Visual Basic Module compiles to a sealed (but not abstract) class carrying
+		// StandardModuleAttribute and holding only static members. The C# equivalent is a static
+		// class; rendering it as a plain sealed class leaves any extension methods it declares in a
+		// non-static class, which does not compile (CS1106).
+		static bool IsVisualBasicModule(ITypeDefinition typeDefinition)
+		{
+			if (typeDefinition.Kind != TypeKind.Class || typeDefinition.IsAbstract || !typeDefinition.IsSealed)
+				return false;
+			foreach (var attribute in typeDefinition.GetAttributes())
+			{
+				var attributeType = attribute.AttributeType;
+				if (attributeType.Name == "StandardModuleAttribute"
+					&& attributeType.Namespace == "Microsoft.VisualBasic.CompilerServices")
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
 		EntityDeclaration ConvertTypeDefinition(ITypeDefinition typeDefinition)
 		{
 			Modifiers modifiers = Modifiers.None;
@@ -1836,7 +1856,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			}
 			if (this.ShowModifiers)
 			{
-				if (typeDefinition.IsStatic)
+				if (typeDefinition.IsStatic || IsVisualBasicModule(typeDefinition))
 				{
 					modifiers |= Modifiers.Static;
 				}
