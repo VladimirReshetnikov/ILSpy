@@ -235,7 +235,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 								variableMapping[v] = name;
 						}
 						string nameWithoutNumber = SplitName(name, out int newIndex);
-						if (!parentScope.IsReservedVariableName(nameWithoutNumber, out _))
+						// A local function's parameter legitimately shadows an outer local of the same name,
+						// and the call sites label their named arguments from the (never-renamed) parameter
+						// of the local-function method. Renaming the parameter here would make the declaration
+						// and the call-site named arguments disagree (CS1739), so keep its name.
+						if (function.Kind == ILFunctionKind.LocalFunction
+							|| !parentScope.IsReservedVariableName(nameWithoutNumber, out _))
 						{
 							AddExistingName(reservedVariableNames, name);
 							if (variables.TryGetValue(i, out var v))
