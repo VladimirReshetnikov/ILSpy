@@ -977,27 +977,139 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 			analyzer.RemoveImplicitConstructor();
 
-			if (analyzer.BackingFieldToPrimaryConstructorParameterVariableMap == null)
+			if (analyzer.BackingFieldToPrimaryConstructorParameterVariableMap != null)
 			{
-				return false;
+				foreach (Identifier identifier in node.Descendants.OfType<Identifier>())
+				{
+					if (identifier.Parent?.GetSymbol() is not IField field)
+					{
+						continue;
+					}
+					if (!analyzer.BackingFieldToPrimaryConstructorParameterVariableMap.TryGetValue((IField)field.MemberDefinition, out var v))
+					{
+						continue;
+					}
+					identifier.Parent.RemoveAnnotations<MemberResolveResult>();
+					identifier.Parent.AddAnnotation(new ILVariableResolveResult(v));
+					identifier.ReplaceWith(Identifier.Create(v.Name));
+				}
 			}
 
-			foreach (Identifier identifier in node.Descendants.OfType<Identifier>())
-			{
-				if (identifier.Parent?.GetSymbol() is not IField field)
-				{
-					continue;
-				}
-				if (!analyzer.BackingFieldToPrimaryConstructorParameterVariableMap.TryGetValue((IField)field.MemberDefinition, out var v))
-				{
-					continue;
-				}
-				identifier.Parent.RemoveAnnotations<MemberResolveResult>();
-				identifier.Parent.AddAnnotation(new ILVariableResolveResult(v));
-				identifier.ReplaceWith(Identifier.Create(v.Name));
-			}
+			RenderLeftoverBackingFields(currentTypeDefinition, node, analyzer);
 
 			return true;
+		}
+
+		/// <summary>
+		/// Primary-constructor parameter backing fields (named <c>&lt;name&gt;P</c>) are hidden from the
+		/// member list on the assumption they will be folded into a primary constructor. When that
+		/// transform does not apply (e.g. the constructor also contains a field initializer the
+		/// compiler lowered to statements, so it cannot become a primary constructor), the fields
+		/// remain referenced but undeclared. Emit them as ordinary fields with a de-mangled name and
+		/// rewrite their accesses to be explicitly qualified, so the references resolve.
+		/// </summary>
+		private void RenderLeftoverBackingFields(ITypeDefinition currentTypeDefinition, AstNode node, ConstructorInitializerAnalyzer analyzer)
+		{
+			List<IField>? leftoverFields = null;
+			foreach (var field in currentTypeDefinition.Fields)
+			{
+				if (!IsGeneratedPrimaryConstructorBackingField(field))
+					continue;
+				if (analyzer.BackingFieldToPrimaryConstructorParameterVariableMap?.ContainsKey(field) == true)
+					continue;
+				leftoverFields ??= [];
+				leftoverFields.Add(field);
+			}
+
+			if (leftoverFields == null)
+				return;
+
+			// In primary-constructor codegen the captures and field initializers run before the
+			// base constructor call, so an un-promoted constructor ends with a trailing base call
+			// instead of starting with it. MoveConstructorInitializer only inspects the first
+			// statement, so a trailing default 'base()' is left behind as invalid 'base..ctor();'.
+			// Drop it here; it has no observable effect.
+			foreach (var ctor in node.Children.OfType<ConstructorDeclaration>())
+			{
+				var lastStatement = ctor.Body.Statements.LastOrDefault();
+				if (lastStatement == null)
+					continue;
+				var m = ThisCallClassPattern.Match(lastStatement);
+				if (!m.Success)
+					continue;
+				if (m.Get<Expression>("target").Single() is not BaseReferenceExpression)
+					continue;
+				var invocation = m.Get<AstNode>("invocation").Single();
+				if (invocation.GetSymbol() is not IMethod { IsConstructor: true })
+					continue;
+				if (invocation.GetChildrenByRole(Roles.Argument).Any())
+					continue;
+				lastStatement.Remove();
+			}
+
+			// strip the leading '<' and trailing '>P' of '<name>P' to recover the parameter name
+			static string DemangleName(IField field) => field.Name.Substring(1, field.Name.Length - 3);
+
+			foreach (var field in leftoverFields)
+			{
+				string name = DemangleName(field);
+				var fieldDecl = (FieldDeclaration)context.TypeSystemAstBuilder.ConvertEntity(field);
+				fieldDecl.Variables.Single().Name = name;
+				// the synthesized field is an ordinary field now, so drop attributes that only
+				// make sense on the hidden compiler-generated backing field
+				foreach (var section in fieldDecl.Attributes.ToArray())
+				{
+					foreach (var attr in section.Attributes.ToArray())
+					{
+						if (PatternStatementTransform.attributeTypesToRemoveFromAutoProperties.Contains(attr.Type.GetSymbol() is ITypeDefinition td ? td.FullTypeName.ToString() : null))
+						{
+							attr.Remove();
+						}
+					}
+					if (section.Attributes.Count == 0)
+						section.Remove();
+				}
+				if (node is TypeDeclaration typeDeclaration)
+				{
+					var lastField = typeDeclaration.Members.OfType<FieldDeclaration>().LastOrDefault();
+					var firstMember = typeDeclaration.Members.FirstOrDefault();
+					if (lastField != null)
+						typeDeclaration.Members.InsertAfter(lastField, fieldDecl);
+					else if (firstMember != null)
+						typeDeclaration.Members.InsertBefore(firstMember, fieldDecl);
+					else
+						typeDeclaration.Members.Add(fieldDecl);
+				}
+			}
+
+			foreach (Identifier identifier in node.Descendants.OfType<Identifier>().ToArray())
+			{
+				if (identifier.Parent?.GetSymbol() is not IField accessedField)
+					continue;
+				var fieldDefinition = (IField)accessedField.MemberDefinition;
+				if (!leftoverFields.Contains(fieldDefinition))
+					continue;
+				string name = DemangleName(fieldDefinition);
+				if (identifier.Parent is IdentifierExpression identifierExpression)
+				{
+					// unqualified access may collide with a same-named parameter or local,
+					// so qualify it explicitly with 'this'
+					var mrr = identifierExpression.Annotation<MemberResolveResult>();
+					var replacement = new MemberReferenceExpression(new ThisReferenceExpression(), name)
+						.CopyAnnotationsFrom(identifierExpression);
+					if (mrr != null)
+					{
+						replacement.RemoveAnnotations<MemberResolveResult>();
+						replacement.AddAnnotation(new MemberResolveResult(
+							new ResolveResult(currentTypeDefinition), fieldDefinition));
+					}
+					identifierExpression.ReplaceWith(replacement);
+				}
+				else
+				{
+					identifier.ReplaceWith(Identifier.Create(name));
+				}
+			}
 		}
 	}
 }
