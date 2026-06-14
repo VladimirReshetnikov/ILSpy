@@ -108,7 +108,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			};
 
 			[AllowNull]
-			public List<(Statement Statement, IMember Member, Expression Initializer, bool DependsOnConstructorBody)> Statements;
+			public List<(Statement Statement, IMember Member, Expression Initializer, bool DependsOnConstructorBody, bool ReferencesInstanceMember)> Statements;
 
 			public Dictionary<Statement, List<Statement>>? StatementToOtherCtorsMap;
 
@@ -150,6 +150,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						sequence.HasDuplicateAssignments = true;
 
 					bool dependsOnBody = false;
+					bool referencesInstanceMember = false;
 
 					foreach (var instruction in initializer.Annotations.OfType<ILInstruction>())
 					{
@@ -159,11 +160,18 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 								&& v.Function == function && v.Kind == VariableKind.Parameter)
 							{
 								dependsOnBody = true;
+								// 'this' is modeled as a parameter with a negative index. An initializer that
+								// reads 'this' (i.e. another instance field/property/method of the same type)
+								// cannot be turned into a field initializer (CS0236), even for a primary
+								// constructor, where references to the primary constructor's own parameters
+								// (index >= 0) are otherwise permitted.
+								if (v.Index < 0)
+									referencesInstanceMember = true;
 							}
 						}
 					}
 
-					sequence.Statements.Add((stmt, member, initializer, dependsOnBody));
+					sequence.Statements.Add((stmt, member, initializer, dependsOnBody, referencesInstanceMember));
 				}
 
 				if (!skippedStmts)
@@ -202,7 +210,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			{
 				var stmts = ctor.Body.Statements;
 				var otherStmt = stmts.FirstOrDefault();
-				foreach (var (stmt, member, initializer, _) in Statements)
+				foreach (var (stmt, member, initializer, _, _) in Statements)
 				{
 					var m = memberInitializerPattern.Match(otherStmt);
 					if (!m.Success)
@@ -363,7 +371,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							transformToPrimaryConstructor = false;
 						}
 
-						foreach (var (stmt, member, expr, dependsOnBody) in initializer.Statements)
+						// An initializer that reads another instance member (e.g. 'field2 = field1.Length;')
+						// cannot be expressed as a field initializer, so the constructor body must be kept.
+						// Converting such a constructor to a primary constructor would emit field initializers
+						// that reference 'this', producing non-compilable C# (CS0236).
+						if (initializer.Statements.Any(s => s.ReferencesInstanceMember))
+						{
+							transformToPrimaryConstructor = false;
+						}
+
+						foreach (var (stmt, member, expr, dependsOnBody, referencesInstanceMember) in initializer.Statements)
 						{
 							if (member is IField f && IsGeneratedPrimaryConstructorBackingField(f))
 							{
@@ -491,9 +508,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 			public bool MoveFieldInitializersToDeclarations(InitializerSequence sequence, InitializerKind kind)
 			{
-				foreach (var (stmt, member, initializer, dependsOnBody) in sequence.Statements)
+				foreach (var (stmt, member, initializer, dependsOnBody, referencesInstanceMember) in sequence.Statements)
 				{
 					Debug.Assert(!dependsOnBody || kind is InitializerKind.Primary);
+					Debug.Assert(!referencesInstanceMember);
 
 					if (!MemberToDeclaringSyntaxNodeMap.TryGetValue(member, out var declaringSyntaxNode))
 					{

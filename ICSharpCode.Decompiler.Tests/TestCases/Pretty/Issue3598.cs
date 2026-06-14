@@ -165,6 +165,22 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.Playstation
 		public int Leet = (int)Math.Min(dummy1, dummy2);
 	}
 
+	// The second field is initialized from the first field, not from a parameter.
+	// A field initializer cannot reference another instance member (CS0236), so this
+	// must keep an explicit constructor body and must not become a primary constructor.
+	public struct FromInstanceField
+	{
+		private readonly int myFirst;
+
+		private readonly int mySecond;
+
+		public FromInstanceField(int dummy)
+		{
+			myFirst = dummy;
+			mySecond = myFirst + 1;
+		}
+	}
+
 	public record NamedParameter(string name, object? value, bool encode = true) : Parameter(Ensure.NotEmptyString(name, "name"), value, encode);
 
 	[DebuggerDisplay("{DebuggerDisplay()}")]
