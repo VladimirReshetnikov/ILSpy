@@ -345,6 +345,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				}
 				// use the existing name and update index appended to future conflicts
 				string nameWithoutNumber = SplitName(newName, out int newIndex);
+				if (nameWithoutNumber == "field" && IsInPropertyAccessor(function)
+					&& !IsReservedVariableName(nameWithoutNumber, out _))
+				{
+					// Reserve the bare 'field' so the conflict resolver below appends a number
+					// (e.g. 'field2'), keeping the local out of the contextual keyword's way.
+					ReserveVariableName(nameWithoutNumber, 1);
+				}
 				if (IsReservedVariableName(nameWithoutNumber, out int lastUsedIndex))
 				{
 					if (v.Type.IsKnownType(KnownTypeCode.Int32) && IsLoopCounter(v))
@@ -962,6 +969,26 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			return reservedVariableNames;
 		}
 
+		// 'field' is a contextual keyword inside a property or indexer accessor (C# 14): a bare
+		// 'field' there binds to the accessor's backing field, so a local or foreach variable of
+		// that name would not compile. Steer such generated names away from the bare keyword.
+		static bool IsInPropertyAccessor(ILFunction function)
+		{
+			foreach (var f in function.Ancestors.OfType<ILFunction>())
+			{
+				if (f.Method is { IsAccessor: true, AccessorOwner: IProperty })
+					return true;
+			}
+			return false;
+		}
+
+		static string AvoidFieldKeyword(string name, ILFunction function)
+		{
+			if (name == "field" && IsInPropertyAccessor(function))
+				return "field2";
+			return name;
+		}
+
 		internal static string GenerateForeachVariableName(ILFunction function, ILInstruction valueContext, UsingScope usingScope,
 			ILVariable existingVariable = null, bool mustResolveConflicts = false)
 		{
@@ -969,7 +996,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				throw new ArgumentNullException(nameof(function));
 			if (existingVariable != null && !existingVariable.HasGeneratedName)
 			{
-				return existingVariable.Name;
+				return AvoidFieldKeyword(existingVariable.Name, function);
 			}
 			var reservedVariableNames = CollectReservedVariableNames(function, existingVariable, mustResolveConflicts, usingScope);
 
@@ -1004,6 +1031,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 			// remove any numbers from the proposed name
 			proposedName = SplitName(proposedName, out int number);
+
+			if (proposedName == "field" && IsInPropertyAccessor(function)
+				&& !reservedVariableNames.ContainsKey(proposedName))
+			{
+				// Reserve the bare 'field' so a number is appended below (e.g. 'field2'),
+				// keeping the variable out of the contextual keyword's way.
+				reservedVariableNames.Add(proposedName, 1);
+			}
 
 			if (!reservedVariableNames.ContainsKey(proposedName))
 			{
@@ -1057,6 +1092,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 			// remove any numbers from the proposed name
 			proposedName = SplitName(proposedName, out int number);
+
+			if (proposedName == "field" && IsInPropertyAccessor(function)
+				&& !reservedVariableNames.ContainsKey(proposedName))
+			{
+				// Reserve the bare 'field' so a number is appended below (e.g. 'field2'),
+				// keeping the variable out of the contextual keyword's way.
+				reservedVariableNames.Add(proposedName, 1);
+			}
 
 			if (!reservedVariableNames.ContainsKey(proposedName))
 			{
