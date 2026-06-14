@@ -526,7 +526,8 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		protected internal override TranslatedStatement VisitUsingInstruction(UsingInstruction inst)
 		{
-			var resource = exprBuilder.Translate(inst.ResourceExpression).Expression;
+			var translatedResource = exprBuilder.Translate(inst.ResourceExpression);
+			var resource = translatedResource.Expression;
 			var transformed = TransformToForeach(inst, resource);
 			if (transformed != null)
 				return transformed.WithILInstruction(inst);
@@ -560,8 +561,12 @@ namespace ICSharpCode.Decompiler.CSharp
 				{
 					disposeInvocation = new UnaryOperatorExpression { Expression = disposeInvocation, Operator = UnaryOperatorType.Await };
 				}
+				// The holder variable is typed after the dispose interface, but the resource
+				// expression may be more weakly typed (e.g. 'object' when ILSpy lost the precise
+				// type at a merge point). Convert it so the assignment compiles.
+				var resourceForAssignment = translatedResource.ConvertTo(var.Type, exprBuilder).Expression;
 				return new BlockStatement {
-					new ExpressionStatement(new AssignmentExpression(exprBuilder.ConvertVariable(var).Expression, resource.Detach())),
+					new ExpressionStatement(new AssignmentExpression(exprBuilder.ConvertVariable(var).Expression, resourceForAssignment)),
 					new TryCatchStatement {
 						TryBlock = ConvertAsBlock(inst.Body),
 						FinallyBlock = new BlockStatement() {
@@ -596,7 +601,27 @@ namespace ICSharpCode.Decompiler.CSharp
 					return true;
 				if (inst.IsRefStruct)
 					return true;
-				return NullableType.GetUnderlyingType(var.Type).GetAllBaseTypes().Any(b => b.IsKnownType(code));
+				if (!NullableType.GetUnderlyingType(var.Type).GetAllBaseTypes().Any(b => b.IsKnownType(code)))
+					return false;
+				// The resource expression itself is what appears in 'using (...)', so its static
+				// type must implement the dispose interface as well. When the original code stored
+				// the resource in an intermediate variable whose type ILSpy widened (e.g. a boxed
+				// value type merged with null collapses to 'object'), the using-local type can still
+				// be IDisposable while the rendered expression loads a variable typed 'object'; a real
+				// using statement over it would fail to compile (CS1674), so fall back to manual
+				// disposal. Only divert when the resource is a plain variable load with a fully
+				// resolved type that provably lacks the interface, to avoid regressing cases where
+				// the resource type cannot be inferred precisely.
+				if (inst.ResourceExpression is LdLoc ldloc)
+				{
+					IType resourceType = NullableType.GetUnderlyingType(ldloc.Variable.Type);
+					if (resourceType.Kind != TypeKind.Unknown
+						&& !resourceType.GetAllBaseTypes().Any(b => b.IsKnownType(code)))
+					{
+						return false;
+					}
+				}
+				return true;
 			}
 		}
 
