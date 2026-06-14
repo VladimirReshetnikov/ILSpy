@@ -226,5 +226,34 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			NamedTupleIn(in tuple);
 			NamedTupleRef(ref tuple);
 		}
+
+		private static IReadOnlyList<(int offset, int shift)> NamedTupleSource()
+		{
+			return new List<(int, int)>();
+		}
+
+		public int LocalTupleNameFromNamedReturn()
+		{
+			// The local's tuple type has no element names in the IL (locals never carry
+			// TupleElementNamesAttribute), but it is assigned from a method whose return type names
+			// the elements. The local declaration must therefore carry those names, so that the query
+			// range variable derived from it can be accessed by name.
+			IReadOnlyList<(int offset, int shift)> readOnlyList = NamedTupleSource();
+			return (from x in readOnlyList.TakeWhile(((int offset, int shift) x) => x.offset <= 0)
+					select x.shift).Sum() + readOnlyList.Count;
+		}
+
+		public int LocalTupleNameInLambdaCall()
+		{
+			// The names recovered onto the local also flow into the explicit delegate-typed lambda
+			// argument, so accessing 'x.variance' inside the lambda compiles.
+			IReadOnlyList<(int value, int variance)> readOnlyList = NamedTupleSource2();
+			return readOnlyList.Count(((int value, int variance) x) => x.variance != 0) + readOnlyList.Count;
+		}
+
+		private static IReadOnlyList<(int value, int variance)> NamedTupleSource2()
+		{
+			return new List<(int, int)>();
+		}
 	}
 }

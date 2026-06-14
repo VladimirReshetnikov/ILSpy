@@ -168,6 +168,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				new RemoveRedundantReturn(),
 				new IntroduceDynamicTypeOnLocals(),
 				new IntroduceNativeIntTypeOnLocals(),
+				new IntroduceTupleElementNamesOnLocals(),
 				new AssignVariableNames(),
 				new AssignDefaultToUnassignedOutParameters(),
 			};
