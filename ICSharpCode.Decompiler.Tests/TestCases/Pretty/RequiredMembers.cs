@@ -13,6 +13,25 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 		}
 
+		private static Data CreateThenReassign(int x, string y)
+		{
+#if OPT
+			Data obj = new Data {
+				X = x,
+				Y = y
+			};
+			obj.X = x;
+			return obj;
+#else
+			Data data = new Data {
+				X = x,
+				Y = y
+			};
+			data.X = x;
+			return data;
+#endif
+		}
+
 		private static Data Create()
 		{
 #if OPT

@@ -322,7 +322,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						return false;
 					if (blockKind != BlockKind.ObjectInitializer && blockKind != BlockKind.WithInitializer)
 						blockKind = BlockKind.ObjectInitializer;
-					initializerContainsInitOnlyItems |= lastElement.Member is IProperty { Setter.IsInitOnly: true };
+					// A required member, like an init-only setter, must be set inside the object
+					// initializer. Treat it the same so the "incompatible usage" bail-out below does not
+					// abandon the initializer and emit the assignment as a standalone statement (which
+					// would not satisfy the required-member rule). Gated on the setting, because when
+					// 'required' is not emitted the loose assignment is legal and folding is optional.
+					initializerContainsInitOnlyItems |= lastElement.Member is IProperty { Setter.IsInitOnly: true }
+						|| (context.Settings.RequiredMembers
+							&& lastElement.Member.HasAttribute(KnownAttribute.Required, inherit: false));
 					MarkUsedIndices();
 					return true;
 				default:
