@@ -542,9 +542,16 @@ namespace ICSharpCode.Decompiler.CSharp
 				}
 				return convertedResult;
 			}
-			else if (rr.IsError && targetType.IsReferenceType == true && type.IsReferenceType == true)
+			else if (rr.IsError && targetType.IsReferenceType != false && type.IsReferenceType != false
+				&& ((targetType.IsReferenceType == true && type.IsReferenceType == true)
+					|| targetType.Kind == TypeKind.TypeParameter || type.Kind == TypeKind.TypeParameter))
 			{
-				// Conversion between two reference types, but no direct cast allowed? cast via object
+				// No direct cast allowed, but neither side is a known value type? cast via object.
+				// This covers casts between two reference types, and casts between unconstrained
+				// type parameters (whose IsReferenceType is unknown/null): a direct (TTo)x cast
+				// between unconstrained type parameters is illegal (CS0030), only (TTo)(object)x is.
+				// Requiring a type parameter on at least one side (when not both reference types) keeps
+				// this from rewriting conversions whose source type is merely unknown, such as a lambda.
 				// Just make sure we avoid infinite recursion even if the resolver falsely claims we can't cast directly:
 				if (!(targetType.IsKnownType(KnownTypeCode.Object) || type.IsKnownType(KnownTypeCode.Object)))
 				{
