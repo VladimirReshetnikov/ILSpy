@@ -114,6 +114,18 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					parameters.Add(v, (type, name));
 					continue;
 				}
+				// De-inlined multi-statement shape: the lambda's body and parameter array are hoisted into
+				// separate single-definition locals between the parameter assignment and the lambda call.
+				// This sits before the generic descent, because such a tree is not reachable from a single
+				// statement. The framework re-invokes Run at every position, so sibling trees are handled by
+				// their own invocation; here we convert at most one and stop.
+				if (TryConvertDeinlinedExpressionTree(block, i))
+				{
+					foreach (var inst in instructionsToRemove)
+						block.Instructions.Remove(inst);
+					instructionsToRemove.Clear();
+					break;
+				}
 				if (TryConvertExpressionTree(block.Instructions[i], block.Instructions[i]))
 				{
 					foreach (var inst in instructionsToRemove)
@@ -122,6 +134,264 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				}
 				break;
 			}
+		}
+
+		/// <summary>
+		/// Handles the de-inlined multi-statement shape some compilers emit for an expression tree, where the
+		/// lambda's body and its ParameterExpression array are hoisted into separate locals instead of being
+		/// passed inline to Expression.Lambda, e.g.
+		/// <code>
+		///   ParameterExpression p = Expression.Parameter(typeof(TKey), "x");
+		///   MemberExpression body = Expression.Field(p, ...);
+		///   ParameterExpression[] parameters = new[] { p };
+		///   ... Expression.Lambda&lt;Func&lt;TKey, T&gt;&gt;(body, parameters) ...
+		/// </code>
+		/// MightBeExpressionTree only matches when the parameter array is inline, so such a lambda is not
+		/// reachable from a single statement. The intermediate body and parameter-array locals are re-inlined
+		/// into the Expression.Lambda call so the existing matcher can convert the lambda; only the precise,
+		/// fully-validated shape is touched, and any deviation leaves the block unchanged.
+		/// </summary>
+		bool TryConvertDeinlinedExpressionTree(Block block, int pos)
+		{
+			// block.Instructions[pos] is the first statement after the registered parameter assignments that
+			// is not itself a parameter assignment. For the de-inlined shape it is the hoisted body local
+			// (e.g. body = Expression.Field(p, ...)); scan forward over the intermediate statements until the
+			// one that contains Expression.Lambda(ldloc body, ldloc parameterArray).
+			int lambdaIndex = -1;
+			CallInstruction lambdaCall = null;
+			for (int i = pos; i < block.Instructions.Count; i++)
+			{
+				lambdaCall = FindDeinlinedLambda(block.Instructions[i]);
+				if (lambdaCall != null)
+				{
+					lambdaIndex = i;
+					break;
+				}
+				// Until the lambda is reached, every statement must be one of the intermediate statements
+				// that build the lambda's body and parameter array.
+				if (!IsDeinlinedIntermediateStatement(block.Instructions[i]))
+					return false;
+			}
+			if (lambdaCall == null)
+				return false;
+
+			// arg0 = ldloc body (single-definition, single-use, expression-tree local).
+			if (!lambdaCall.Arguments[0].MatchLdLoc(out var bodyVar))
+				return false;
+			if (!TryGetDeinlinedLocalDefinition(bodyVar, lambdaCall.Arguments[0], out var bodyStore))
+				return false;
+			int bodyIndex = FindStatementIndex(block, bodyStore);
+			if (bodyIndex < pos || bodyIndex >= lambdaIndex)
+				return false;
+
+			// arg1 = ldloc parameterArray, a single-definition single-use local whose store defines the
+			// ParameterExpression array. Build the inline array initializer the existing matcher expects.
+			if (!lambdaCall.Arguments[1].MatchLdLoc(out var arrayVar))
+				return false;
+			int arrayIndex = FindStatementIndex(block, (ILInstruction)arrayVar.StoreInstructions.FirstOrDefault());
+			if (arrayIndex < pos || arrayIndex >= lambdaIndex)
+				return false;
+			var absorbedStores = new List<ILInstruction>();
+			if (!TryBuildDeinlinedParameterArray(arrayVar, lambdaCall.Arguments[1], block, pos, lambdaIndex, absorbedStores, out var arrayInitializer))
+				return false;
+
+			// Re-inline the body and the reconstructed parameter array into the Expression.Lambda call. The
+			// body value is moved out of its defining store; on rollback it is moved back so the block is
+			// byte-for-byte unchanged. The absorbed stores are removed only on commit.
+			var bodyValue = bodyStore.Value;
+			var bodyArgument = lambdaCall.Arguments[0];
+			var arrayArgument = lambdaCall.Arguments[1];
+			bodyArgument.ReplaceWith(bodyValue);
+			arrayArgument.ReplaceWith(arrayInitializer);
+
+			var (lambda, _) = ConvertLambda(lambdaCall);
+			if (lambda == null)
+			{
+				// Roll back the in-place inlining so the block is byte-for-byte unchanged: restore the moved
+				// body value to its store and put the original loads back as the lambda arguments.
+				lambdaCall.Arguments[0].ReplaceWith(bodyArgument);
+				lambdaCall.Arguments[1].ReplaceWith(arrayArgument);
+				bodyStore.Value = bodyValue;
+				instructionsToRemove.Clear();
+				return false;
+			}
+			context.Step("Convert de-inlined Expression Tree", lambdaCall);
+			var newLambda = (ILFunction)lambda();
+			SetExpressionTreeFlag(newLambda, lambdaCall);
+			lambdaCall.ReplaceWith(newLambda);
+
+			// The absorbed body store, array store, and element stores are now dead. ConvertLambda already
+			// scheduled the parameter assignments for removal via ReadParameters.
+			instructionsToRemove.Add(bodyStore);
+			instructionsToRemove.AddRange(absorbedStores);
+			return true;
+		}
+
+		/// <summary>
+		/// Reconstructs the inline ParameterExpression[] array initializer feeding an Expression.Lambda from
+		/// its de-inlined form. The array temp <paramref name="arrayVar"/> may already be collapsed into an
+		/// ArrayInitializer block, or it may still be a raw newarr with one StObj element store per parameter.
+		/// All consumed statements are added to <paramref name="absorbedStores"/>. Every array element must be
+		/// a registered expression-tree parameter; otherwise this returns false and nothing is committed.
+		/// </summary>
+		bool TryBuildDeinlinedParameterArray(ILVariable arrayVar, ILInstruction lambdaArrayArgument, Block block, int pos, int lambdaIndex, List<ILInstruction> absorbedStores, out Block arrayInitializer)
+		{
+			arrayInitializer = null;
+			if (!arrayVar.IsSingleDefinition || arrayVar.AddressCount != 0)
+				return false;
+			if (!(arrayVar.StoreInstructions[0] is StLoc arrayStore))
+				return false;
+			absorbedStores.Add(arrayStore);
+
+			// Already-collapsed form: the store value is the ArrayInitializer block itself. Clone it for the
+			// lambda so the original store stays intact if the conversion is rolled back; the store is removed
+			// on commit anyway.
+			if (arrayStore.Value is Block collapsed && collapsed.Kind == BlockKind.ArrayInitializer)
+			{
+				if (arrayVar.LoadCount != 1 || arrayVar.LoadInstructions[0] != lambdaArrayArgument)
+					return false;
+				foreach (var stobj in collapsed.Instructions.OfType<StObj>())
+				{
+					if (!stobj.Value.MatchLdLoc(out var paramVar) || !parameters.ContainsKey(paramVar))
+						return false;
+				}
+				arrayInitializer = (Block)collapsed.Clone();
+				return true;
+			}
+
+			// Raw form: stloc array = newarr ParameterExpression; stobj(ldelema(ldloc array, i), ldloc param).
+			if (!arrayStore.Value.MatchNewArr(out var elementType) || elementType.FullName != "System.Linq.Expressions.ParameterExpression")
+				return false;
+			var elementStores = new List<StObj>();
+			var parameterLoads = new List<ILVariable>();
+			foreach (var load in arrayVar.LoadInstructions)
+			{
+				if (load == lambdaArrayArgument)
+					continue;
+				if (!(load.Parent is LdElema ldelema && ldelema.Array == load && ldelema.Parent is StObj elementStore && elementStore.Target == ldelema))
+					return false;
+				if (!elementStore.Value.MatchLdLoc(out var paramVar) || !parameters.ContainsKey(paramVar))
+					return false;
+				int elementStatement = FindStatementIndex(block, elementStore);
+				if (elementStatement < pos || elementStatement >= lambdaIndex)
+					return false;
+				elementStores.Add(elementStore);
+				parameterLoads.Add(paramVar);
+			}
+			if (parameterLoads.Count == 0)
+				return false;
+
+			var orderedLoads = new ILVariable[parameterLoads.Count];
+			for (int k = 0; k < elementStores.Count; k++)
+			{
+				var ldelema = (LdElema)elementStores[k].Target;
+				if (ldelema.Indices.Count != 1 || !ldelema.Indices[0].MatchLdcI4(out int index))
+					return false;
+				if (index < 0 || index >= orderedLoads.Length || orderedLoads[index] != null)
+					return false;
+				orderedLoads[index] = parameterLoads[k];
+			}
+			if (orderedLoads.Any(v => v == null))
+				return false;
+
+			var arrayType = new TypeSystem.ArrayType(context.TypeSystem, elementType);
+			var arrayTemp = context.Function.RegisterVariable(VariableKind.InitializerTarget, arrayType);
+			arrayInitializer = new Block(BlockKind.ArrayInitializer);
+			arrayInitializer.Instructions.Add(new StLoc(arrayTemp, new NewArr(elementType, new LdcI4(orderedLoads.Length))));
+			for (int k = 0; k < orderedLoads.Length; k++)
+			{
+				arrayInitializer.Instructions.Add(new StObj(
+					new LdElema(elementType, new LdLoc(arrayTemp), new LdcI4(k)) { DelayExceptions = true },
+					new LdLoc(orderedLoads[k]), elementType));
+			}
+			arrayInitializer.FinalInstruction = new LdLoc(arrayTemp);
+			absorbedStores.AddRange(elementStores);
+			return true;
+		}
+
+		/// <summary>
+		/// Returns the Expression.Lambda call inside <paramref name="stmt"/> whose body and parameter array
+		/// are supplied as separate locals, or null if this statement does not contain such a lambda.
+		/// </summary>
+		static CallInstruction FindDeinlinedLambda(ILInstruction stmt)
+		{
+			foreach (var descendant in stmt.Descendants)
+			{
+				// The de-inlined lambda takes both its body and its parameter array as separate locals,
+				// so MightBeExpressionTree (which expects an inline parameter array) does not match here.
+				if (descendant is CallInstruction call
+					&& call.Method.FullNameIs("System.Linq.Expressions.Expression", "Lambda")
+					&& call.Arguments.Count == 2
+					&& call.Arguments[0].MatchLdLoc(out _)
+					&& call.Arguments[1].MatchLdLoc(out _))
+				{
+					return call;
+				}
+			}
+			return null;
+		}
+
+		/// <summary>
+		/// A statement between the registered parameters and the lambda must be one of the de-inlined
+		/// building blocks: a single-definition assignment of the hoisted body (an Expression factory call or
+		/// already-collapsed ArrayInitializer block) / the parameter array temp (a newarr), or an element
+		/// store into that array (stobj(ldelema(ldloc array, i), value)). Anything else stops the scan so an
+		/// unrelated statement sequence is never absorbed.
+		/// </summary>
+		static bool IsDeinlinedIntermediateStatement(ILInstruction stmt)
+		{
+			switch (stmt)
+			{
+				case StLoc store:
+					if (!store.Variable.IsSingleDefinition)
+						return false;
+					if (store.Variable.Kind != VariableKind.Local && store.Variable.Kind != VariableKind.StackSlot)
+						return false;
+					switch (store.Value)
+					{
+						case CallInstruction call:
+							return call.Method.DeclaringType.FullName == "System.Linq.Expressions.Expression";
+						case NewArr:
+							return true;
+						case Block initializerBlock:
+							return initializerBlock.Kind == BlockKind.ArrayInitializer;
+						default:
+							return false;
+					}
+				case StObj stobj:
+					return stobj.Target is LdElema ldelema && ldelema.Array is LdLoc;
+				default:
+					return false;
+			}
+		}
+
+		/// <summary>
+		/// Verifies <paramref name="variable"/> is single-definition and its only load is <paramref name="onlyUse"/>,
+		/// then returns its defining store.
+		/// </summary>
+		static bool TryGetDeinlinedLocalDefinition(ILVariable variable, ILInstruction onlyUse, out StLoc store)
+		{
+			store = null;
+			if (!variable.IsSingleDefinition)
+				return false;
+			if (variable.LoadCount != 1 || variable.AddressCount != 0)
+				return false;
+			if (variable.LoadInstructions[0] != onlyUse)
+				return false;
+			if (!(variable.StoreInstructions[0] is StLoc s))
+				return false;
+			store = s;
+			return true;
+		}
+
+		static int FindStatementIndex(Block block, ILInstruction inst)
+		{
+			var current = inst;
+			while (current != null && current.Parent != block)
+				current = current.Parent;
+			if (current == null)
+				return -1;
+			return block.Instructions.IndexOf(current);
 		}
 
 		bool TryConvertExpressionTree(ILInstruction instruction, ILInstruction statement)

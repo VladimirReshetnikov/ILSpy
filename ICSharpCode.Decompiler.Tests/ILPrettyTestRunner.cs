@@ -378,6 +378,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ExpressionTreeDeinlinedInArrayInitializer()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task MonoFixed()
 		{
 			await Run();
