@@ -606,11 +606,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (totalUses != uses.Count)
 						return false;
 
-					// Duplicating the initializer into more than one argument use is only sound when it
-					// has no side effects and does not depend on state mutated before the call.
-					if (uses.Count > 1 && !IsSideEffectFreeInitializer(initializer))
-						return false;
-
+					// A temporary read by more than one argument is inlined into each use even though
+					// that re-evaluates the initializer. A constructor initializer cannot be preceded
+					// by a local declaration, so once the call lifts there is no place to keep a single
+					// evaluation; leaving the call in the body instead would emit an uncompilable
+					// explicit '.ctor' invocation. This matches the source such IL typically comes from,
+					// where the same expression was written in each argument position.
 					foreach (var use in uses)
 					{
 						use.ReplaceWith(initializer.Clone());
@@ -636,12 +637,6 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					}
 				}
 				return null;
-			}
-
-			private static bool IsSideEffectFreeInitializer(Expression initializer)
-			{
-				var inst = initializer.Annotation<ILInstruction>();
-				return inst != null && SemanticHelper.IsPure(inst.Flags);
 			}
 
 			public bool MoveFieldInitializersToDeclarations(InitializerSequence sequence, InitializerKind kind)

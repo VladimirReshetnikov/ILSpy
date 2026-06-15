@@ -298,6 +298,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task HoistedBaseCtorArg()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task ConstantBlobs()
 		{
 			await Run();
