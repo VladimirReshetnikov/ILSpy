@@ -17,6 +17,8 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
@@ -109,6 +111,20 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		private static void InlineVarDecl<T>(out T v, T init)
 		{
 			v = init;
+		}
+
+		private void AnonymousTypeAccumulatorLambda(IEnumerable<int> source)
+		{
+			var anon = source.Aggregate(new {
+				Count = 0,
+				Sum = 0
+			}, (acc, item) => new {
+				Count = acc.Count + 1,
+				Sum = acc.Sum + item
+			});
+
+			Console.WriteLine(anon.Count);
+			Console.WriteLine(anon.Sum);
 		}
 	}
 }

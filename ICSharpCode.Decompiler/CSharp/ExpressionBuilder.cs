@@ -2468,6 +2468,14 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				// if there is an anonymous type involved, we are forced to use a lambda expression.
 				isLambda = true;
+				// C# requires lambda parameters to be either all explicitly typed or all implicitly
+				// typed (CS0748). Because an anonymous type is unspeakable, at least one parameter is
+				// already implicit, so drop the declared type from the remaining parameters. The lambda
+				// is wrapped in a cast to the target delegate type, so the parameter types are recoverable.
+				foreach (var p in ame.Parameters)
+				{
+					p.Type = null;
+				}
 			}
 			else if (attributeSections.Count > 0 || ame.Parameters.Any(p => p.Attributes.Any()))
 			{
