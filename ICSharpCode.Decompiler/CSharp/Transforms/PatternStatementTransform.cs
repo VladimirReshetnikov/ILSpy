@@ -91,7 +91,107 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			AstNode result = TransformForeachOnArray(forStatement);
 			if (result != null)
 				return result;
+			AstNode whileLoop = ConvertForWithBodyScopedIteratorVariableToWhile(forStatement);
+			if (whileLoop != null)
+				return whileLoop;
 			return base.VisitForStatement(forStatement);
+		}
+
+		/// <summary>
+		/// A for-loop's iterator (increment) expressions run in the same scope as the loop header,
+		/// so they may only reference variables declared in the for-initializer or in an enclosing
+		/// scope. When an iterator references a variable that is declared inside the loop body
+		/// (for example a pattern variable introduced by an 'is'-pattern, or an out-variable), the
+		/// for-loop would not compile because that variable is out of scope in the increment.
+		///
+		/// Such a loop can already exist as a ForStatement in the AST before this transform runs,
+		/// because HighLevelLoopTransform forms the for-loop at the IL level, before the body-scoped
+		/// variable is inlined into the increment. This converts the for-loop back into an equivalent
+		/// while-loop, which is always valid: the initializers are emitted as statements in front of
+		/// the loop, the condition is kept, and the iterators are appended to the end of the body.
+		/// </summary>
+		AstNode ConvertForWithBodyScopedIteratorVariableToWhile(ForStatement forStatement)
+		{
+			var body = forStatement.EmbeddedStatement;
+			if (body.IsNull)
+				return null;
+			if (!IteratorReferencesVariableDeclaredInsideBody(forStatement, body))
+				return null;
+			// A 'continue' inside the body would jump to the iterators in a for-loop, but to the
+			// condition in a while-loop. Moving the iterators to the end of the body preserves this
+			// only when there is no 'continue' that would skip them.
+			if (body.DescendantNodes(DescendIntoStatement).OfType<Statement>().Any(s => s is ContinueStatement))
+				return null;
+
+			var blockStatement = body as BlockStatement;
+			if (blockStatement == null)
+			{
+				blockStatement = new BlockStatement();
+				body.ReplaceWith(blockStatement);
+				blockStatement.Add(body);
+			}
+
+			var replacement = new BlockStatement();
+			foreach (var initializer in forStatement.Initializers.ToArray())
+			{
+				replacement.Statements.Add(initializer.Detach());
+			}
+
+			var whileLoop = new WhileStatement();
+			whileLoop.CopyAnnotationsFrom(forStatement);
+			whileLoop.Condition = forStatement.Condition.IsNull
+				? new PrimitiveExpression(true)
+				: forStatement.Condition.Detach();
+			foreach (var iterator in forStatement.Iterators.ToArray())
+			{
+				blockStatement.Add(iterator.Detach());
+			}
+			blockStatement.Detach();
+			whileLoop.EmbeddedStatement = blockStatement;
+			replacement.Statements.Add(whileLoop);
+
+			forStatement.ReplaceWith(replacement);
+			return replacement;
+		}
+
+		bool IteratorReferencesVariableDeclaredInsideBody(ForStatement forStatement, Statement body)
+		{
+			foreach (var iterator in forStatement.Iterators)
+			{
+				foreach (var id in iterator.DescendantsAndSelf.OfType<IdentifierExpression>())
+				{
+					var variable = id.GetILVariable();
+					if (variable == null)
+						continue;
+					if (IsVariableDeclaredInside(variable, body, forStatement))
+						return true;
+				}
+			}
+			return false;
+		}
+
+		/// <summary>
+		/// Determines whether the only declaration of <paramref name="variable"/> within
+		/// <paramref name="forStatement"/> is a declaring occurrence located inside <paramref name="body"/>.
+		/// A declaring occurrence is a variable designation (pattern/out variables) or a variable
+		/// initializer (local declarations); plain identifier uses are not declarations.
+		/// </summary>
+		static bool IsVariableDeclaredInside(IL.ILVariable variable, Statement body, ForStatement forStatement)
+		{
+			bool declaredInsideBody = false;
+			foreach (var node in forStatement.DescendantsAndSelf)
+			{
+				var rr = node.GetResolveResult() as ILVariableResolveResult;
+				if (rr == null || rr.Variable != variable)
+					continue;
+				if (!IsDeclaringOccurrence(node))
+					continue;
+				if (node.Ancestors.Contains(body))
+					declaredInsideBody = true;
+				else
+					return false; // also declared outside the body, so it is in scope for the iterator
+			}
+			return declaredInsideBody;
 		}
 
 		public override AstNode VisitIfElseStatement(IfElseStatement ifElseStatement)
@@ -240,15 +340,50 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		bool IteratorVariablesDeclaredInsideLoopBody(Statement iteratorStatement)
 		{
+			var loopBody = iteratorStatement.Parent;
 			foreach (var id in iteratorStatement.DescendantsAndSelf.OfType<IdentifierExpression>())
 			{
 				var v = id.GetILVariable();
-				if (v == null || !DeclareVariables.VariableNeedsDeclaration(v.Kind))
+				if (v == null)
 					continue;
-				if (declareVariables.GetDeclarationPoint(v).Parent == iteratorStatement.Parent)
+				if (DeclareVariables.VariableNeedsDeclaration(v.Kind))
+				{
+					if (declareVariables.GetDeclarationPoint(v).Parent == loopBody)
+						return true;
+				}
+				else if (VariableDeclaredInsideStatement(v, loopBody))
+				{
+					// Pattern/out variables are not tracked by DeclareVariables: they are introduced
+					// in-place by their designation. If that designation is inside the loop body, the
+					// variable is out of scope in the for-iterator.
+					return true;
+				}
+			}
+			return false;
+		}
+
+		/// <summary>
+		/// Determines whether <paramref name="variable"/> has a declaring occurrence
+		/// (a variable designation or a variable initializer) anywhere inside <paramref name="statement"/>.
+		/// Plain identifier uses do not count as declarations.
+		/// </summary>
+		static bool VariableDeclaredInsideStatement(IL.ILVariable variable, AstNode statement)
+		{
+			foreach (var node in statement.DescendantsAndSelf)
+			{
+				if (!IsDeclaringOccurrence(node))
+					continue;
+				var rr = node.GetResolveResult() as ILVariableResolveResult;
+				if (rr != null && rr.Variable == variable)
 					return true;
 			}
 			return false;
+		}
+
+		static bool IsDeclaringOccurrence(AstNode node)
+		{
+			return node is SingleVariableDesignation
+				|| node is VariableInitializer;
 		}
 		#endregion
 

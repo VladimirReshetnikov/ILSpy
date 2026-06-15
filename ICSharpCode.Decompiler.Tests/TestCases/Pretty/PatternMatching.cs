@@ -33,6 +33,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public object Obj { get; set; }
 		}
 
+		public interface IQualifier
+		{
+		}
+
+		public interface IQualifiableReference : IQualifier
+		{
+			IQualifier GetQualifier();
+		}
+
 		public void SimpleTypePattern(object x)
 		{
 			if (x is string value)
@@ -779,6 +788,25 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		private void Use(bool x)
 		{
+		}
+
+		// The increment of this loop is 'qualifier = qualifiableReference.GetQualifier()', where
+		// 'qualifiableReference' is a pattern variable introduced inside the loop body. Such a loop
+		// must stay a while-loop: turning it into a for-loop would move the increment into the loop
+		// header, where 'qualifiableReference' is out of scope (CS0103).
+		public bool IteratorUsesPatternVariableFromBody(IQualifiableReference reference)
+		{
+			IQualifier qualifier = reference.GetQualifier();
+			while (qualifier != null)
+			{
+				Console.WriteLine(qualifier);
+				if (!(qualifier is IQualifiableReference qualifiableReference))
+				{
+					break;
+				}
+				qualifier = qualifiableReference.GetQualifier();
+			}
+			return false;
 		}
 	}
 }
