@@ -242,25 +242,18 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 			if (sw == null)
 				return;
 
-			IMethod?[] exceptionCtorTable = new IMethod?[2];
-
-			exceptionCtorTable[0] = FindConstructor("System.InvalidOperationException");
-			exceptionCtorTable[1] = FindConstructor("System.Runtime.CompilerServices.SwitchExpressionException", typeof(object));
-
-			if (exceptionCtorTable[0] == null && exceptionCtorTable[1] == null)
+			if (!FindThrowHelperExceptionConstructors(context, out var exceptionCtorTable))
 				return;
 
 			if (sw.GetDefaultSection() is not { Body: Branch { TargetBlock: Block defaultBlock } } defaultSection)
 				return;
 			if (defaultBlock is { Instructions: [var call, Branch or Leave] })
 			{
-				if (!MatchThrowHelperCall(call, out IMethod? exceptionCtor, out ILInstruction? value))
+				if (!MatchThrowHelperCall(exceptionCtorTable, call, out IMethod? exceptionCtor, out ILInstruction? value))
 					return;
 				context.Step("SwitchExpressionDefaultCaseTransform", block.Instructions[0]);
-				var newObj = new NewObj(exceptionCtor);
-				if (value != null)
-					newObj.Arguments.Add(value);
-				defaultBlock.Instructions[0] = new Throw(newObj).WithILRange(defaultBlock.Instructions[0]).WithILRange(defaultBlock.Instructions[1]);
+				defaultBlock.Instructions[0] = BuildThrow(exceptionCtor, value)
+					.WithILRange(defaultBlock.Instructions[0]).WithILRange(defaultBlock.Instructions[1]);
 				defaultBlock.Instructions.RemoveAt(1);
 				defaultSection.IsCompilerGeneratedDefaultSection = true;
 			}
@@ -273,40 +266,105 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 			{
 				return;
 			}
-
-			bool MatchThrowHelperCall(ILInstruction inst, [NotNullWhen(true)] out IMethod? exceptionCtor, out ILInstruction? value)
-			{
-				exceptionCtor = null;
-				if (!MatchSwitchExpressionThrowHelperCall(inst, out value))
-					return false;
-				exceptionCtor = value == null ? exceptionCtorTable[0] : exceptionCtorTable[1];
-				return exceptionCtor != null;
-			}
-
-			IMethod? FindConstructor(string fullTypeName, params Type[] argumentTypes)
-			{
-				IType exceptionType = context.TypeSystem.FindType(new FullTypeName(fullTypeName));
-				var types = argumentTypes.SelectArray(context.TypeSystem.FindType);
-
-				foreach (var ctor in exceptionType.GetConstructors(m => !m.IsStatic && m.Parameters.Count == argumentTypes.Length))
-				{
-					bool found = true;
-					foreach (var pair in ctor.Parameters.Select(p => p.Type).Zip(types))
-					{
-						if (!NormalizeTypeVisitor.IgnoreNullability.EquivalentTypes(pair.Item1, pair.Item2))
-						{
-							found = false;
-							break;
-						}
-					}
-					if (found)
-						return ctor;
-				}
-
-				return null;
-			}
 #nullable restore
 		}
+
+#nullable enable
+		/// <summary>
+		/// Reconstructs the implicit default case of a type-pattern switch expression whose
+		/// chain of isinst/brtrue tests is not recognized as a <see cref="SwitchInstruction"/>
+		/// (so <see cref="InlineSwitchExpressionDefaultCaseThrowHelper"/> never sees it).
+		///
+		/// The compiler-generated throw helper on &lt;PrivateImplementationDetails&gt; is marked
+		/// [DoesNotReturn], so the call appears as a true tail of its block - either directly
+		/// followed by the unreachable branch/leave to the end of the expression, or by an
+		/// inlined "result = default; return result;". The call is replaced by the throw it
+		/// stands for so the un-nameable helper type never leaks into the output.
+		/// </summary>
+		internal static void InlineSwitchExpressionDefaultCaseThrowHelperWithoutSwitch(Block block, ILTransformContext context)
+		{
+			// The SwitchInstruction-based form is handled by InlineSwitchExpressionDefaultCaseThrowHelper.
+			if (block.Instructions.LastOrDefault() is SwitchInstruction)
+				return;
+
+			// Match a throw-helper call that is a true tail of the block:
+			//   call ThrowHelper(...); (stloc result(default))?; branch/leave
+			int last = block.Instructions.Count - 1;
+			if (last < 1 || block.Instructions[last] is not (Branch or Leave))
+				return;
+			int callIndex = block.Instructions[last - 1] is StLoc ? last - 2 : last - 1;
+			if (callIndex < 0)
+				return;
+			if (!MatchSwitchExpressionThrowHelperCall(block.Instructions[callIndex], out var value))
+				return;
+
+			if (!FindThrowHelperExceptionConstructors(context, out var exceptionCtorTable))
+				return;
+			if (!MatchThrowHelperCall(exceptionCtorTable, block.Instructions[callIndex], out var exceptionCtor, out value))
+				return;
+
+			context.Step("SwitchExpressionDefaultCaseTransform (no switch instruction)", block.Instructions[callIndex]);
+			var throwInst = BuildThrow(exceptionCtor, value).WithILRange(block.Instructions[callIndex]);
+			// Everything after the [DoesNotReturn] helper call is unreachable continuation.
+			for (int i = block.Instructions.Count - 1; i > callIndex; i--)
+				block.Instructions.RemoveAt(i);
+			block.Instructions[callIndex] = throwInst;
+		}
+
+		static bool MatchThrowHelperCall(IMethod?[] exceptionCtorTable, ILInstruction inst,
+			[NotNullWhen(true)] out IMethod? exceptionCtor, out ILInstruction? value)
+		{
+			exceptionCtor = null;
+			if (!MatchSwitchExpressionThrowHelperCall(inst, out value))
+				return false;
+			exceptionCtor = value == null ? exceptionCtorTable[0] : exceptionCtorTable[1];
+			return exceptionCtor != null;
+		}
+
+		static Throw BuildThrow(IMethod exceptionCtor, ILInstruction? value)
+		{
+			var newObj = new NewObj(exceptionCtor);
+			if (value != null)
+				newObj.Arguments.Add(value);
+			return new Throw(newObj);
+		}
+
+		/// <summary>
+		/// Resolves the constructors of the exceptions thrown by the switch-expression throw
+		/// helpers: <see cref="InvalidOperationException"/> (the parameterless helper) at index 0
+		/// and SwitchExpressionException(object) at index 1. Returns false when neither exists.
+		/// </summary>
+		static bool FindThrowHelperExceptionConstructors(ILTransformContext context, out IMethod?[] exceptionCtorTable)
+		{
+			exceptionCtorTable = new IMethod?[2];
+			exceptionCtorTable[0] = FindConstructor(context, "System.InvalidOperationException");
+			exceptionCtorTable[1] = FindConstructor(context, "System.Runtime.CompilerServices.SwitchExpressionException", typeof(object));
+			return exceptionCtorTable[0] != null || exceptionCtorTable[1] != null;
+		}
+
+		static IMethod? FindConstructor(ILTransformContext context, string fullTypeName, params Type[] argumentTypes)
+		{
+			IType exceptionType = context.TypeSystem.FindType(new FullTypeName(fullTypeName));
+			var types = argumentTypes.SelectArray(context.TypeSystem.FindType);
+
+			foreach (var ctor in exceptionType.GetConstructors(m => !m.IsStatic && m.Parameters.Count == argumentTypes.Length))
+			{
+				bool found = true;
+				foreach (var pair in ctor.Parameters.Select(p => p.Type).Zip(types))
+				{
+					if (!NormalizeTypeVisitor.IgnoreNullability.EquivalentTypes(pair.Item1, pair.Item2))
+					{
+						found = false;
+						break;
+					}
+				}
+				if (found)
+					return ctor;
+			}
+
+			return null;
+		}
+#nullable restore
 
 #nullable enable
 		/// <summary>
@@ -696,6 +754,29 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 		{
 			foreach (var n in nodes)
 				n.Visited = false;
+		}
+	}
+
+	/// <summary>
+	/// Reconstructs the implicit default case of a type-pattern switch expression whose chain
+	/// of isinst/brtrue tests never becomes a <see cref="SwitchInstruction"/>, so the integer-,
+	/// string- and nullable-switch transforms leave the compiler-generated throw-helper call to
+	/// &lt;PrivateImplementationDetails&gt; in place. This runs after those transforms so it only
+	/// touches helper calls none of them claimed; otherwise it would consume the default-throw
+	/// block before a switch could be recognized.
+	/// </summary>
+	public class SwitchExpressionDefaultCaseTransform : IILTransform
+	{
+		public void Run(ILFunction function, ILTransformContext context)
+		{
+			if (!context.Settings.SwitchExpressions)
+				return;
+
+			foreach (var block in function.Descendants.OfType<Block>())
+			{
+				context.CancellationToken.ThrowIfCancellationRequested();
+				SwitchDetection.InlineSwitchExpressionDefaultCaseThrowHelperWithoutSwitch(block, context);
+			}
 		}
 	}
 }
