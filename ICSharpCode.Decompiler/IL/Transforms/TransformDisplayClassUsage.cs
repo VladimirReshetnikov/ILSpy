@@ -311,16 +311,77 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					displayClass.VariablesToDeclare[(IField)f.MemberDefinition] = variable;
 				}
 
-				foreach (var v in displayClass.VariablesToDeclare.Values)
+				foreach (var (field, v) in displayClass.VariablesToDeclare)
 				{
 					if (v.CanPropagate)
 					{
 						var variableToPropagate = v.GetOrDeclare();
+						// A field that aliases "this" but is assigned more than once is seeded
+						// from "this" and later overwritten (e.g. "dc.f = this; dc.f = dc.f.Parent;").
+						// Propagating it would turn the reassignments into stores to the read-only
+						// "this" parameter. Declare a fresh local seeded from "this" instead.
+						// Other parameters and locals are assignable, so a second store is harmless.
+						if (variableToPropagate.IsThis() && CountDisplayClassFieldStores(function, displayClass, field) > 1)
+						{
+							v.Propagate(null);
+							continue;
+						}
 						if (variableToPropagate.Kind != VariableKind.Parameter && !displayClasses.ContainsKey(variableToPropagate))
 							v.Propagate(null);
 					}
 				}
 			}
+		}
+
+		/// <summary>
+		/// Counts how many StObj instructions in <paramref name="function"/> write
+		/// <paramref name="field"/> of the given display class. The store target is resolved
+		/// through the field-propagation chain, so writes reached via a nested display class'
+		/// pointer to its parent (e.g. "ldflda field(ldfld parentPtr(ldloc innerDisplayClass))")
+		/// are attributed to the display class that owns the field.
+		/// </summary>
+		int CountDisplayClassFieldStores(ILFunction function, DisplayClass displayClass, IField field)
+		{
+			var fieldDefinition = (IField)field.MemberDefinition;
+			int count = 0;
+			foreach (var stobj in function.Descendants.OfType<StObj>())
+			{
+				if (stobj.Target is LdFlda ldflda
+					&& ldflda.Field.MemberDefinition == fieldDefinition
+					&& ResolveStoreTargetDisplayClass(ldflda.Target) == displayClass)
+				{
+					count++;
+				}
+			}
+			return count;
+		}
+
+		/// <summary>
+		/// Resolves the instruction that loads a display-class instance (the target of an
+		/// "ldflda field(...)") to the <see cref="DisplayClass"/> it refers to, following
+		/// propagatable fields that point from a nested display class to an enclosing one.
+		/// Returns null if the target does not resolve to a known display class.
+		/// </summary>
+		DisplayClass ResolveStoreTargetDisplayClass(ILInstruction target)
+		{
+			DisplayClass currentDisplayClass = null;
+			foreach (var item in target.Descendants)
+			{
+				if (IsDisplayClassLoad(item, out var v))
+				{
+					if (!displayClasses.TryGetValue(v, out currentDisplayClass))
+						return null;
+				}
+				if (currentDisplayClass == null)
+					return null;
+				if (item is LdFlda ldf && currentDisplayClass.VariablesToDeclare.TryGetValue((IField)ldf.Field.MemberDefinition, out var vd))
+				{
+					if (!vd.CanPropagate || !displayClasses.TryGetValue(vd.GetOrDeclare(), out var nested))
+						return null;
+					currentDisplayClass = nested;
+				}
+			}
+			return currentDisplayClass;
 		}
 
 		bool ValidateDisplayClassUses(ILVariable v, DisplayClass displayClass)
