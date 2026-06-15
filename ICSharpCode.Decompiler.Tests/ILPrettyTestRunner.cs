@@ -148,6 +148,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ExplicitInterfacePropertyOverride()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task EvalOrder()
 		{
 			await Run();

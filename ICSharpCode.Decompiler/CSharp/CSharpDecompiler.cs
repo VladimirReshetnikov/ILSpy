@@ -1908,6 +1908,30 @@ namespace ICSharpCode.Decompiler.CSharp
 						{
 							return;
 						}
+						if (TryGetExplicitInterfaceAccessorMember(method, out var fakeMember, out var primaryAccessor))
+						{
+							// An explicit interface implementation whose .override targets a property/event
+							// accessor but which has no property/event metadata row of its own. The accessor
+							// group is emitted once, as a reconstructed property/event declaration, keyed on
+							// the method that owns the emission.
+							if (!method.Equals(primaryAccessor))
+							{
+								return;
+							}
+							entityDecl = fakeMember switch {
+								IProperty p => DoDecompile(p, decompileRun, decompilationContext.WithCurrentMember(p), null),
+								IEvent e => DoDecompile(e, decompileRun, decompilationContext.WithCurrentMember(e)),
+								_ => throw new InvalidOperationException()
+							};
+							// The implementing accessor methods carry SpecialName because they are
+							// classified as plain methods; the reconstructed accessors must not show it.
+							foreach (var accessor in entityDecl.Children.OfType<Accessor>())
+							{
+								RemoveAttribute(accessor, KnownAttribute.SpecialName);
+							}
+							entityMap.Add(method, entityDecl);
+							break;
+						}
 						entityDecl = DoDecompile(method, decompileRun, decompilationContext.WithCurrentMember(method), null);
 						entityMap.Add(method, entityDecl);
 						foreach (var helper in AddInterfaceImplHelpers(entityDecl, method, typeSystemAstBuilder))
@@ -2593,6 +2617,118 @@ namespace ICSharpCode.Decompiler.CSharp
 				watch.Stop();
 				Instrumentation.DecompilerEventSource.Log.DoDecompileEvent(ev.FullName, watch.ElapsedMilliseconds);
 			}
+		}
+
+		/// <summary>
+		/// Detects an explicit interface implementation whose <c>.override</c> targets a property or
+		/// event accessor, but for which the implementing type carries no property/event metadata row.
+		/// Such a method is classified as <see cref="SymbolKind.Method"/> and would otherwise be emitted
+		/// as a dotted-name method (e.g. <c>IFoo.get_Token()</c>), which does not compile.
+		/// When detected, a reconstructed property/event is returned via <paramref name="fakeMember"/>,
+		/// gathering all sibling accessors that implement the same interface member, and
+		/// <paramref name="primaryAccessor"/> identifies the single accessor that owns the emission.
+		/// </summary>
+		bool TryGetExplicitInterfaceAccessorMember(IMethod method, out IMember fakeMember, out IMethod primaryAccessor)
+		{
+			fakeMember = null;
+			primaryAccessor = null;
+			if (method.SymbolKind != SymbolKind.Method || !method.IsExplicitInterfaceImplementation)
+				return false;
+			if (method.ExplicitlyImplementedInterfaceMembers.FirstOrDefault() is not IMethod interfaceAccessor)
+				return false;
+			if (!interfaceAccessor.IsAccessor)
+				return false;
+			IMember interfaceMember = interfaceAccessor.AccessorOwner;
+			if (interfaceMember is not (IProperty or IEvent))
+				return false;
+
+			// Gather the implementing accessor methods of this type that explicitly implement an
+			// accessor of the same interface property/event. Drive the accessor roles off the
+			// interface accessor's semantic kind, not the raw 'get_'/'set_' name string.
+			IMethod getter = null, setter = null, adder = null, remover = null;
+			foreach (var sibling in method.DeclaringTypeDefinition.Methods)
+			{
+				if (sibling.SymbolKind != SymbolKind.Method || !sibling.IsExplicitInterfaceImplementation)
+					continue;
+				if (sibling.ExplicitlyImplementedInterfaceMembers.FirstOrDefault() is not IMethod siblingInterfaceAccessor)
+					continue;
+				if (!siblingInterfaceAccessor.IsAccessor || !interfaceMember.Equals(siblingInterfaceAccessor.AccessorOwner))
+					continue;
+				switch (siblingInterfaceAccessor.AccessorKind)
+				{
+					case System.Reflection.MethodSemanticsAttributes.Getter:
+						getter = sibling;
+						break;
+					case System.Reflection.MethodSemanticsAttributes.Setter:
+						setter = sibling;
+						break;
+					case System.Reflection.MethodSemanticsAttributes.Adder:
+						adder = sibling;
+						break;
+					case System.Reflection.MethodSemanticsAttributes.Remover:
+						remover = sibling;
+						break;
+				}
+			}
+
+			string explicitName = GetExplicitInterfaceMemberName(method.Name, interfaceMember.Name);
+			if (interfaceMember is IProperty interfaceProperty)
+			{
+				if (getter == null && setter == null)
+					return false;
+				IMethod valueAccessor = getter ?? setter;
+				var fakeProperty = new ICSharpCode.Decompiler.TypeSystem.Implementation.FakeProperty(typeSystem) {
+					Name = explicitName,
+					DeclaringType = method.DeclaringType,
+					IsStatic = method.IsStatic,
+					Accessibility = valueAccessor.Accessibility,
+					IsExplicitInterfaceImplementation = true,
+					ExplicitlyImplementedInterfaceMembers = new[] { interfaceMember },
+					ReturnType = getter != null ? getter.ReturnType : setter.Parameters.Last().Type,
+					ReturnTypeIsRefReadOnly = getter != null && getter.ReturnTypeIsRefReadOnly,
+					Getter = getter,
+					Setter = setter,
+					IsIndexer = interfaceProperty.IsIndexer,
+					Parameters = valueAccessor.Parameters
+						.Take(getter != null ? getter.Parameters.Count : setter.Parameters.Count - 1)
+						.ToArray(),
+				};
+				fakeMember = fakeProperty;
+				primaryAccessor = valueAccessor;
+				return true;
+			}
+			else
+			{
+				if (adder == null && remover == null)
+					return false;
+				IMethod valueAccessor = adder ?? remover;
+				var fakeEvent = new ICSharpCode.Decompiler.TypeSystem.Implementation.FakeEvent(typeSystem) {
+					Name = explicitName,
+					DeclaringType = method.DeclaringType,
+					IsStatic = method.IsStatic,
+					Accessibility = valueAccessor.Accessibility,
+					IsExplicitInterfaceImplementation = true,
+					ExplicitlyImplementedInterfaceMembers = new[] { interfaceMember },
+					ReturnType = valueAccessor.Parameters.Last().Type,
+					AddAccessor = adder,
+					RemoveAccessor = remover,
+				};
+				fakeMember = fakeEvent;
+				primaryAccessor = valueAccessor;
+				return true;
+			}
+		}
+
+		/// <summary>
+		/// Builds the explicit-interface member name (e.g. <c>IFoo.Token</c>) from the implementing
+		/// accessor method's name (e.g. <c>IFoo.get_Token</c>) and the interface member's short name.
+		/// </summary>
+		static string GetExplicitInterfaceMemberName(string accessorMethodName, string interfaceMemberName)
+		{
+			int lastDot = accessorMethodName.LastIndexOf('.');
+			if (lastDot < 0)
+				return interfaceMemberName;
+			return accessorMethodName.Substring(0, lastDot + 1) + interfaceMemberName;
 		}
 
 		#region Sequence Points

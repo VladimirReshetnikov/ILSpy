@@ -41,9 +41,13 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		public IType ReturnType { get; set; } = SpecialType.UnknownType;
 
-		IEnumerable<IMember> IMember.ExplicitlyImplementedInterfaceMembers => EmptyList<IMember>.Instance;
+		public IEnumerable<IMember> ExplicitlyImplementedInterfaceMembers { get; set; } = EmptyList<IMember>.Instance;
 
-		bool IMember.IsExplicitInterfaceImplementation => false;
+		IEnumerable<IMember> IMember.ExplicitlyImplementedInterfaceMembers => ExplicitlyImplementedInterfaceMembers;
+
+		public bool IsExplicitInterfaceImplementation { get; set; }
+
+		bool IMember.IsExplicitInterfaceImplementation => IsExplicitInterfaceImplementation;
 
 		bool IMember.IsVirtual => false;
 		bool IMember.IsOverride => false;
@@ -198,7 +202,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		public IMethod Getter { get; set; }
 		public IMethod Setter { get; set; }
 		public bool IsIndexer { get; set; }
-		public bool ReturnTypeIsRefReadOnly => false;
+		public bool ReturnTypeIsRefReadOnly { get; set; }
 		public IReadOnlyList<IParameter> Parameters { get; set; }
 
 		public override string ToString() =>
