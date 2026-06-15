@@ -152,23 +152,36 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					bool dependsOnBody = false;
 					bool referencesInstanceMember = false;
 
+					// 'this' is modeled as a parameter with a negative index. An initializer that reads
+					// 'this' (i.e. another instance field/property/method of the same type) cannot be
+					// turned into a field initializer (CS0236), even for a primary constructor, where
+					// references to the primary constructor's own parameters (index >= 0) are otherwise
+					// permitted.
+					void InspectVariable(ILVariable v)
+					{
+						if (v.Function == function && v.Kind == VariableKind.Parameter)
+						{
+							dependsOnBody = true;
+							if (v.Index < 0)
+								referencesInstanceMember = true;
+						}
+					}
+
 					foreach (var instruction in initializer.Annotations.OfType<ILInstruction>())
 					{
 						foreach (var inst in instruction.Descendants)
 						{
-							if (inst is IInstructionWithVariableOperand { Variable: var v }
-								&& v.Function == function && v.Kind == VariableKind.Parameter)
-							{
-								dependsOnBody = true;
-								// 'this' is modeled as a parameter with a negative index. An initializer that
-								// reads 'this' (i.e. another instance field/property/method of the same type)
-								// cannot be turned into a field initializer (CS0236), even for a primary
-								// constructor, where references to the primary constructor's own parameters
-								// (index >= 0) are otherwise permitted.
-								if (v.Index < 0)
-									referencesInstanceMember = true;
-							}
+							if (inst is IInstructionWithVariableOperand { Variable: var v })
+								InspectVariable(v);
 						}
+					}
+					// The initializer expression may have been rebuilt without IL-instruction annotations
+					// (for example a constructor-parameter reference reduced to an identifier that carries
+					// only a resolve result), so also scan the syntax tree for parameter references.
+					foreach (var astNode in initializer.DescendantsAndSelf)
+					{
+						if (astNode.GetResolveResult() is ILVariableResolveResult { Variable: var av })
+							InspectVariable(av);
 					}
 
 					sequence.Statements.Add((stmt, member, initializer, dependsOnBody, referencesInstanceMember));
