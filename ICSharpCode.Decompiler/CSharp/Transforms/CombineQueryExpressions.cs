@@ -171,13 +171,18 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				RemoveTransparentIdentifierReferences(child, fromOrLetIdentifiers);
 			}
 			if (node is MemberReferenceExpression mre && mre.Target is IdentifierExpression ident
-				&& CSharpDecompiler.IsTransparentIdentifier(ident.Identifier))
+				&& CSharpDecompiler.IsTransparentIdentifier(ident.Identifier)
+				&& fromOrLetIdentifiers.TryGetValue(mre.MemberName, out var annotation))
 			{
+				// Only strip the transparent-identifier qualifier from a member that was actually
+				// introduced as a range or let variable. A member of a transparent identifier that
+				// survives as an active range variable (its access was not unfolded into scope) must
+				// keep its qualifier, otherwise it becomes an undefined name.
 				IdentifierExpression newIdent = new IdentifierExpression(mre.MemberName);
 				mre.TypeArguments.MoveTo(newIdent.TypeArguments);
 				newIdent.CopyAnnotationsFrom(mre);
 				newIdent.RemoveAnnotations<Semantics.MemberResolveResult>(); // remove the reference to the property of the anonymous type
-				if (fromOrLetIdentifiers.TryGetValue(mre.MemberName, out var annotation))
+				if (annotation != null)
 					newIdent.AddAnnotation(annotation);
 				mre.ReplaceWith(newIdent);
 				return;
