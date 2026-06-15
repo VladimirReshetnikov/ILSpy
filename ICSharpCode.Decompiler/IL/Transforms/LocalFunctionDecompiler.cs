@@ -176,6 +176,22 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						localFunction.DeclarationScope = (BlockContainer)context.Function.Body;
 					}
 
+					// A switch block-container is rendered directly as a C# switch statement, and the
+					// statement builder only emits local-function declarations for containers that turn
+					// into block scopes (the function body and loop bodies). A local function whose
+					// inferred declaration scope is a switch container would therefore be silently
+					// dropped, leaving its call-sites referencing an undefined name. This happens when
+					// all use-sites share a switch container as their closest common ancestor (e.g.
+					// calls spread across several case arms). Lift the declaration to the nearest
+					// enclosing non-switch container, which still encloses every use-site.
+					while (localFunction.DeclarationScope.Kind == ContainerKind.Switch)
+					{
+						var enclosing = BlockContainer.FindClosestContainer(localFunction.DeclarationScope.Parent);
+						localFunction.DeclarationScope = enclosing ?? (BlockContainer)context.Function.Body;
+						if (enclosing == null)
+							break;
+					}
+
 					ILFunction declaringFunction = GetDeclaringFunction(localFunction);
 					if (declaringFunction != context.Function)
 					{

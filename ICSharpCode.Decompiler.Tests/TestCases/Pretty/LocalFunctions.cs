@@ -326,6 +326,40 @@ namespace LocalFunctions
 #endif
 		}
 
+		public class LocalFunctionUsedOnlyInSwitchCases
+		{
+			public int Result;
+
+			// All use-sites of the local function live in distinct switch case arms, so their
+			// closest common ancestor is the switch container. In a constructor that container
+			// would be picked as the declaration scope; because a switch is not a block scope
+			// that hosts local-function declarations, the function must be lifted to the
+			// enclosing block so it is still emitted and visible from every case arm.
+			public LocalFunctionUsedOnlyInSwitchCases(string kind, int a, int b)
+			{
+				switch (kind)
+				{
+					case "add":
+						Result = Combine(a, b);
+						break;
+					case "mul":
+						Result = Combine(a, b) * 2;
+						break;
+					case "sub":
+						Result = Combine(a, -b);
+						break;
+				}
+#if CS80
+				static int Combine(int x, int y)
+#else
+				int Combine(int x, int y)
+#endif
+				{
+					return x + y;
+				}
+			}
+		}
+
 		private int field;
 
 		private Lazy<object> nonCapturinglocalFunctionInLambda = new Lazy<object>(delegate {
