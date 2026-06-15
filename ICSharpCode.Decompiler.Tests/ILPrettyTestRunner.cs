@@ -64,6 +64,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task InitializerConditionalValue()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task Issue646()
 		{
 			await Run();

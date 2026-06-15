@@ -725,18 +725,29 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					}
 					break;
 			}
-			// decide based on the top-level target instruction into which we are inlining:
-			switch (next.OpCode)
+			while (parent.MatchLogicNot(out _))
 			{
-				case OpCode.IfInstruction:
-					while (parent.MatchLogicNot(out _))
-					{
-						parent = parent.Parent;
-					}
-					return parent == next;
-				default:
-					return false;
+				parent = parent.Parent;
 			}
+			if (parent is IfInstruction conditionalIf)
+			{
+				// Inlining into the condition of an if-instruction: the condition is the first
+				// thing evaluated, so this never reorders side effects.
+				if (conditionalIf == next)
+				{
+					// The if-instruction is the whole statement.
+					return true;
+				}
+				if (conditionalIf.ResultType != StackType.Void)
+				{
+					// The if-instruction yields a value (a conditional expression / ternary).
+					// Folding the single-use temporary into the ternary lets an enclosing object
+					// initializer absorb a following setter instead of leaving a stand-alone
+					// assignment, which would be invalid for an init-only setter.
+					return true;
+				}
+			}
+			return false;
 		}
 
 		/// <summary>
