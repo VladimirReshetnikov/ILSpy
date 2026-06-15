@@ -560,6 +560,19 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				var node = cfg.GetNode(found);
 				if (!targetBlockNode.Dominates(node))
 					return false;
+				// Condition detection only pulls a block into the 'if' by inlining a chain of
+				// branch targets that each have a single incoming edge (see
+				// ConditionDetection.CanInline). If any block on the path from the true-block
+				// down to the use's block is a multi-predecessor join, that join stays outside
+				// the 'if', and the blocks reached through it - including the use - go with it.
+				// Promoting the variable into a pattern local would then leak it past the
+				// pattern's scope, so decline the pattern; the variable stays an ordinary local
+				// with a hoisted declaration instead.
+				for (var current = node; current != targetBlockNode; current = current.ImmediateDominator)
+				{
+					if (((Block)current.UserData).IncomingEdgeCount > 1)
+						return false;
+				}
 			}
 			return true;
 		}
