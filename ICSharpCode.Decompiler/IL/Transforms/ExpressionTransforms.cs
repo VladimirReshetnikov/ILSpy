@@ -574,10 +574,16 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		{
 			// if (cond) stloc A(V1) else stloc A(V2) --> stloc A(if (cond) V1 else V2)
 			Block trueInst = inst.TrueInst as Block;
-			if (trueInst == null || trueInst.Instructions.Count != 1)
+			if (trueInst == null)
+				return inst;
+			NormalizeConditionalBranch(trueInst);
+			if (trueInst.Instructions.Count != 1)
 				return inst;
 			Block falseInst = inst.FalseInst as Block;
-			if (falseInst == null || falseInst.Instructions.Count != 1)
+			if (falseInst == null)
+				return inst;
+			NormalizeConditionalBranch(falseInst);
+			if (falseInst.Instructions.Count != 1)
 				return inst;
 			ILVariable v;
 			ILInstruction value1, value2;
@@ -591,6 +597,35 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return newIf;
 			}
 			return inst;
+		}
+
+		/// <summary>
+		/// Reduces a conditional branch of the form [stloc tmp(initializerBlock); stloc v(ldloc tmp)]
+		/// to [stloc v(initializerBlock)] by inlining a single-use temporary. The array-initializer
+		/// transform leaves an array/collection/object initializer computed into such a temp, giving
+		/// the branch two instructions, which would stop <see cref="HandleConditionalOperator"/> from
+		/// collapsing the conditional (and the value would not fold into an object initializer).
+		/// Inlining the single-definition, single-use temporary is always sound. This is restricted
+		/// to initializer-block values: collapsing arbitrary conditionals can change the inferred
+		/// type of the resulting ternary (e.g. 'cond ? null : (object)x' widening to object), which
+		/// is harmless as a statement but can break a type-sensitive context such as a using resource.
+		/// </summary>
+		static void NormalizeConditionalBranch(Block block)
+		{
+			if (block.Instructions.Count != 2)
+				return;
+			if (block.Instructions[0] is not StLoc { Variable: { Kind: VariableKind.StackSlot or VariableKind.Local } tmp } tmpStore)
+				return;
+			if (tmpStore.Value is not Block { Kind: BlockKind.ArrayInitializer or BlockKind.CollectionInitializer or BlockKind.ObjectInitializer or BlockKind.StackAllocInitializer })
+				return;
+			if (!tmp.IsSingleDefinition || tmp.LoadCount != 1)
+				return;
+			if (block.Instructions[1] is not StLoc resultStore)
+				return;
+			if (resultStore.Value is not LdLoc ldloc || ldloc.Variable != tmp)
+				return;
+			resultStore.Value = tmpStore.Value;
+			block.Instructions.RemoveAt(0);
 		}
 
 		private void HandleSwitchExpression(BlockContainer container, SwitchInstruction switchInst)

@@ -258,6 +258,28 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.InitializerTests
 			}
 		}
 
+		private class InitOnlyConditionalCollectionTest
+		{
+			private class Data
+			{
+				public int X { get; }
+
+				public string[] Names { get; init; }
+
+				public Data(int x)
+				{
+					X = x;
+				}
+			}
+
+			private static Data MakeWithConditionalCollection(bool cond, string s)
+			{
+				return new Data(1) {
+					Names = (cond ? Array.Empty<string>() : new string[1] { s })
+				};
+			}
+		}
+
 		private class StructInitPropertiesTest
 		{
 			private class TypeA
