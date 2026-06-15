@@ -4925,6 +4925,21 @@ namespace ICSharpCode.Decompiler.CSharp
 							.WithILInstruction(matchInstruction);
 					}
 				case Comp comp:
+					// A negated constant sub-pattern (e.g. `not "Hello"`, `not 3.141m`) is encoded by
+					// PatternMatchingTransform as Comp.LogicNot(innerPattern), i.e. Comp(Equality,
+					// innerPattern, ldc.i4 0). The genuine constant lives inside innerPattern (a string
+					// or decimal op_Equality call, or another comparison pattern); comp.Right is only the
+					// synthetic ldc.i4 0. Rendering comp.Right here would emit `0` typed as the member,
+					// producing e.g. `{ ShortName: 0 }` for a string member. Render the inner pattern and
+					// wrap it in `not` instead. A plain `{ X: 0 }` sub-pattern also matches LogicNot, but
+					// its inner operand is a bare getter that IsPatternMatch rejects, so it falls through.
+					if (comp.MatchLogicNot(out var negatedPattern)
+						&& MatchInstruction.IsPatternMatch(negatedPattern, out _, settings))
+					{
+						return new UnaryOperatorExpression(UnaryOperatorType.PatternNot,
+								TranslatePattern(negatedPattern, leftHandType))
+							.WithILInstruction(comp);
+					}
 					var constantValue = Translate(comp.Right, leftHandType);
 					switch (comp.Kind)
 					{

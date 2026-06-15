@@ -390,6 +390,30 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
+		public void RecursivePattern_NegatedStringConstant(object obj)
+		{
+			if (obj is X { Text: not "Hello" } x)
+			{
+				Console.WriteLine("Test " + x);
+			}
+			else
+			{
+				Console.WriteLine("not Test");
+			}
+		}
+
+		public void RecursivePattern_NegatedDecimalConstant(object obj)
+		{
+			if (obj is S2 { D: not 3.141m } s)
+			{
+				Console.WriteLine("Test " + s);
+			}
+			else
+			{
+				Console.WriteLine("not Test");
+			}
+		}
+
 		public void RecursivePattern_MultipleConstants(object obj)
 		{
 			if (obj is X { I: 42, Text: "Hello" } x)
