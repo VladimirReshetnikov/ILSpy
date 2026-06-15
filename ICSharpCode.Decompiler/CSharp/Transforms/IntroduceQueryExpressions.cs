@@ -122,7 +122,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			if (invocation == null)
 				return null;
 			MemberReferenceExpression mre = invocation.Target as MemberReferenceExpression;
-			if (mre == null || IsNullConditional(mre.Target))
+			if (mre == null || ReceiverChainHasNullConditional(mre.Target))
 				return null;
 			switch (mre.MemberName)
 			{
@@ -347,6 +347,36 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		bool IsNullConditional(Expression target)
 		{
 			return target is UnaryOperatorExpression uoe && uoe.Operator == UnaryOperatorType.NullConditional;
+		}
+
+		/// <summary>
+		/// Determines whether a null-conditional access ('?.') appears anywhere in the receiver chain
+		/// of <paramref name="expression"/>. A query expression cannot host a '?.'-rooted source: the
+		/// '?.' makes the whole method-call chain nullable, but moving the source into a 'from' clause
+		/// leaves the query result (and anything applied to it outside the query) non-nullable, which
+		/// does not compile (e.g. a following '?? fallback' on a now non-nullable result, CS0019).
+		/// </summary>
+		static bool ReceiverChainHasNullConditional(Expression expression)
+		{
+			while (true)
+			{
+				switch (expression)
+				{
+					case UnaryOperatorExpression { Operator: UnaryOperatorType.NullConditional }:
+						return true;
+					case MemberReferenceExpression mre:
+						expression = mre.Target;
+						break;
+					case InvocationExpression ie:
+						expression = ie.Target;
+						break;
+					case IndexerExpression ix:
+						expression = ix.Target;
+						break;
+					default:
+						return false;
+				}
+			}
 		}
 
 		/// <summary>
