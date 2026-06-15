@@ -148,13 +148,19 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 							{
 								localFunction.DeclarationScope = BlockContainer.FindClosestContainer(useSite);
 							}
-							else if (GetDeclaringFunction(localFunction) == context.Function)
+							else if (GetDeclaringFunction(localFunction) == context.Function || IsNonCapturing(localFunction))
 							{
-								// Broaden the declaration scope to cover this use-site, but only while the
-								// scope still lives directly in the constructor body. Once closure analysis
-								// has placed the function inside a nested local function (e.g. its closure
-								// arrives via a forwarded by-ref display-class struct), pulling the scope up
-								// to a common ancestor with a use-site would move it out of that function and
+								// Broaden the declaration scope to cover this use-site. A non-capturing
+								// (static) local function captures nothing, so closure analysis never anchors
+								// it to a particular scope; its scope comes only from FindClosestContainer at
+								// the first use-site, which lands it inside whichever lambda happens to call it
+								// first. Sibling use-sites in other lambdas would then see only an undefined
+								// member reference, so the scope must be widened to their common ancestor in
+								// the constructor body. For a capturing function, broadening is limited to
+								// while the scope still lives directly in the constructor body: once closure
+								// analysis has placed it inside a nested local function (e.g. its closure
+								// arrives via a forwarded by-ref display-class struct), pulling the scope up to
+								// a common ancestor with a use-site would move it out of that function and
 								// leave the captured display-class fields without a declaration.
 								localFunction.DeclarationScope = FindCommonAncestorInstruction<BlockContainer>(useSite, localFunction.DeclarationScope);
 								if (localFunction.DeclarationScope == null)
@@ -381,6 +387,22 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				inst = inst.Parent;
 			}
 			return null;
+		}
+
+		// A static local function with no display-class parameters captures nothing. Closure analysis
+		// therefore never assigns it a declaration scope, so its only scope is the one FindClosestContainer
+		// pins to the first use-site; broadening that scope to a use-site's common ancestor is always safe
+		// and never overrides a deeper placement chosen to reach a forwarded display class.
+		private bool IsNonCapturing(ILFunction localFunction)
+		{
+			if (!localFunction.Method.IsStatic)
+				return false;
+			foreach (var parameter in localFunction.Method.Parameters)
+			{
+				if (IsClosureParameter(parameter, resolveContext))
+					return false;
+			}
+			return true;
 		}
 
 		bool TryValidateSkipCount(LocalFunctionInfo info, out int skipCount)
