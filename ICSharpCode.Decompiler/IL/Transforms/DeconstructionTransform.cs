@@ -359,6 +359,22 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				if (index <= previousIndex)
 					return false;
 				AddMissingAssignmentsForConversions(index, ref delayedActions);
+				// The designations produced for the pattern map positionally to the assignments:
+				// a result becomes a designator exactly when it is loaded somewhere, and only
+				// designators consume an assignment. (Every result is addressed once by the
+				// Deconstruct call itself, so address uses do not distinguish a discard.) If a
+				// loaded result between the previous assignment and this one has no assignment of
+				// its own (its store lives elsewhere, e.g. into a display-class field for a captured
+				// variable, or is separated by an intervening nested deconstruction), the
+				// assignments no longer line up with the designators and the two counts diverge.
+				// Discards (unloaded results) are fine in a gap, as they produce '_' and consume no
+				// assignment. Bail out for a loaded gap result and keep the plain statements.
+				for (int gap = previousIndex + 1; gap < index; gap++)
+				{
+					var gapResult = deconstructionResults[gap];
+					if (gapResult != null && gapResult.LoadCount > 0)
+						return false;
+				}
 				if (!(valueInst.MatchLdLoc(out var resultVariable)
 					&& conversions.TryGetValue(resultVariable, out var conversionInfo)))
 				{
