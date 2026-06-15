@@ -16,6 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -78,10 +79,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			TypeDeclaration typeDeclaration = propertyDeclaration.Ancestors.OfType<TypeDeclaration>().FirstOrDefault();
 			if (typeDeclaration == null)
 				return;
-			// Collect every reference to the backing field anywhere in the declaring type. All of them
-			// must live inside this property's own accessor bodies; a reference anywhere else disqualifies
-			// the property.
+			// Collect every reference to the backing field anywhere in the declaring type. The 'field'
+			// keyword can only stand in for references that live inside this property's own accessor
+			// bodies; a reference anywhere else (another method, a nested type, or a constructor
+			// assignment that was not turned into a field initializer) is unnameable as 'field'.
 			var accessorReferences = new List<Expression>();
+			var externalReferences = new List<Expression>();
 			foreach (AstNode node in typeDeclaration.Descendants)
 			{
 				if (node is not (IdentifierExpression or MemberReferenceExpression))
@@ -91,7 +94,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				if (IsInsideOwnAccessor(node, propertyDeclaration))
 					accessorReferences.Add((Expression)node);
 				else
-					return;
+					externalReferences.Add((Expression)node);
+			}
+			if (externalReferences.Count > 0)
+			{
+				// The 'field' keyword does not apply. If the explicit backing field is hidden but its
+				// references survive, they would dangle; re-materialize it as an ordinary field.
+				RematerializeHiddenBackingField(typeDeclaration, field, accessorReferences.Concat(externalReferences));
+				return;
 			}
 			if (accessorReferences.Count == 0)
 				return;
@@ -131,6 +141,68 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					propertyDeclaration.Attributes.Add(section.Detach());
 				}
 				fieldDeclaration.Remove();
+			}
+		}
+
+		/// <summary>
+		/// A compiler-generated property backing field is hidden from the member list on the assumption
+		/// that an absorbing transform (the auto-property fold or the 'field' keyword) will remove its
+		/// references. When neither applies - the accessor carries custom logic and the field is also
+		/// written from outside the accessors - the references remain but the field is never declared.
+		/// Emit it as an ordinary field with a de-mangled name and strip the attributes that only make
+		/// sense on a hidden backing field. The de-mangled name equals the property name and therefore
+		/// collides with it; FixNameCollisions renames the private field afterwards.
+		/// </summary>
+		void RematerializeHiddenBackingField(TypeDeclaration typeDeclaration, IField field, IEnumerable<Expression> references)
+		{
+			// If the field already has an explicit declaration, its references resolve; nothing to do.
+			bool alreadyDeclared = typeDeclaration.Members.OfType<FieldDeclaration>()
+				.Any(fd => fd.Variables.Count == 1 && field.MetadataToken == (fd.GetSymbol() as IField)?.MetadataToken);
+			if (alreadyDeclared)
+				return;
+
+			// strip the leading '<' and trailing '>k__BackingField' of '<name>k__BackingField'
+			const string suffix = ">k__BackingField";
+			if (!field.Name.StartsWith("<", StringComparison.Ordinal) || !field.Name.EndsWith(suffix, StringComparison.Ordinal))
+				return;
+			string name = field.Name.Substring(1, field.Name.Length - 1 - suffix.Length);
+
+			var fieldDecl = (FieldDeclaration)context.TypeSystemAstBuilder.ConvertEntity(field);
+			fieldDecl.Variables.Single().Name = name;
+			// the synthesized field is an ordinary field now, so drop attributes that only
+			// make sense on the hidden compiler-generated backing field
+			CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.CompilerGenerated);
+			CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.DebuggerBrowsable);
+
+			var lastField = typeDeclaration.Members.OfType<FieldDeclaration>().LastOrDefault();
+			var firstMember = typeDeclaration.Members.FirstOrDefault();
+			if (lastField != null)
+				typeDeclaration.Members.InsertAfter(lastField, fieldDecl);
+			else if (firstMember != null)
+				typeDeclaration.Members.InsertBefore(firstMember, fieldDecl);
+			else
+				typeDeclaration.Members.Add(fieldDecl);
+
+			foreach (Expression reference in references)
+			{
+				var mrr = reference.Annotation<MemberResolveResult>();
+				if (reference is IdentifierExpression && !field.IsStatic)
+				{
+					// an unqualified instance backing-field access may collide with a same-named
+					// parameter or local, so qualify it explicitly with 'this'
+					var replacement = new MemberReferenceExpression(new ThisReferenceExpression(), name)
+						.CopyAnnotationsFrom(reference);
+					if (mrr != null)
+					{
+						replacement.RemoveAnnotations<MemberResolveResult>();
+						replacement.AddAnnotation(new MemberResolveResult(new ThisResolveResult(field.DeclaringType), field));
+					}
+					reference.ReplaceWith(replacement);
+				}
+				else
+				{
+					reference.GetChildByRole(Roles.Identifier).Name = name;
+				}
 			}
 		}
 
