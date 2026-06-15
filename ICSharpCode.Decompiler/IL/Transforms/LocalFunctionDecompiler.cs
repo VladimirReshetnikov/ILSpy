@@ -769,6 +769,19 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			}
 			if (closureVar.Kind == VariableKind.NamedArgument)
 				return false;
+			if (closureVar.Kind == VariableKind.Parameter)
+			{
+				// The closure arrives only as a by-ref display-struct parameter of an enclosing
+				// local function, which forwards its own closure into this one. Such a parameter
+				// has no initializer of its own; follow it to the struct local it was forwarded
+				// from so the capture scope is taken from the function that actually owns the
+				// display class. Without this, the function defaults to the top-level body and
+				// the SROA'd display-class local ends up out of scope at its field accesses.
+				var forwardedLocal = ResolveForwardedClosureParameter(closureVar);
+				if (forwardedLocal == null)
+					return false;
+				closureVar = forwardedLocal;
+			}
 			var initializer = GetClosureInitializer(closureVar);
 			if (initializer == null)
 				return false;
@@ -830,6 +843,52 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				else
 					return (StLoc)variable.StoreInstructions[0];
 			}
+		}
+
+		/// <summary>
+		/// A nested local function may receive its closure only through a by-ref display-struct
+		/// parameter of an enclosing local function, which forwards its own closure into it.
+		/// Such a parameter has no initializer, so the originating display-class local cannot be
+		/// found from it directly. This walks back to that local: the display-class struct local,
+		/// living in an enclosing local function, whose capture scope was already determined from
+		/// its own direct use-sites. The result lets the nested function inherit that capture scope
+		/// instead of defaulting to the top-level body (which would leave the SROA'd local out of
+		/// scope at the nested function's field accesses).
+		///
+		/// Only locals owned by another local function qualify. When the originating local instead
+		/// lives in a lambda, the nested function is already nested inside the forwarding function
+		/// through the lambda's own scope handling, and rerouting it here would hoist it out of that
+		/// scope. Returns null in that case, or when no such local exists yet (e.g. it has not been
+		/// processed) or is ambiguous, so the caller keeps the conservative default.
+		/// </summary>
+		ILVariable ResolveForwardedClosureParameter(ILVariable parameter)
+		{
+			var structType = parameter.Type.UnwrapByRef().GetDefinition();
+			if (structType == null || structType.Kind != TypeKind.Struct)
+				return null;
+			ILVariable result = null;
+			foreach (var f in context.Function.Descendants.OfType<ILFunction>())
+			{
+				if (f.Kind != ILFunctionKind.LocalFunction)
+					continue;
+				foreach (var v in f.Variables)
+				{
+					if (v.Kind == VariableKind.Parameter)
+						continue;
+					if (v.CaptureScope == null)
+						continue;
+					if (v.Type.UnwrapByRef().GetDefinition() != structType)
+						continue;
+					if (result != null && result != v)
+					{
+						// Ambiguous: more than one originating local shares the struct type.
+						// Bail rather than pick the wrong capture scope.
+						return null;
+					}
+					result = v;
+				}
+			}
+			return result;
 		}
 
 		bool IsInNestedLocalFunction(BlockContainer declarationScope, ILFunction function)

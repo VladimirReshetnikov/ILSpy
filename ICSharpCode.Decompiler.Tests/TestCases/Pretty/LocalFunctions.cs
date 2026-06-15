@@ -884,5 +884,41 @@ namespace LocalFunctions
 			static extern int EnumWindows(long hWnd, long lParam);
 		}
 #endif
+
+		public int ForwardedClosureParameter()
+		{
+			return Outer(5);
+#if CS80
+			static int Outer(int start)
+#else
+			int Outer(int start)
+#endif
+			{
+				List<int> list = new List<int>();
+				int total = 0;
+				Collect(start);
+				Drain();
+				return total;
+				void Add(int v)
+				{
+					total += v;
+				}
+				void Collect(int n)
+				{
+					if (n > 0)
+					{
+						list.Add(n);
+						Collect(n - 1);
+					}
+				}
+				void Drain()
+				{
+					foreach (int item in list)
+					{
+						Add(item);
+					}
+				}
+			}
+		}
 	}
 }
