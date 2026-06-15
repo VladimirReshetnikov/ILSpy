@@ -590,6 +590,13 @@ namespace ICSharpCode.Decompiler.CSharp
 					return this;
 				}
 			}
+			if (expressionBuilder.settings.AnonymousTypes && targetType.ContainsAnonymousType())
+			{
+				// An anonymous type cannot be named, so it cannot appear in an explicit cast.
+				// The only legal conversions whose target involves an anonymous type are
+				// identity/implicit ones, so dropping the cast leaves the expression valid.
+				return this;
+			}
 			// BaseReferenceExpression must not be used with CastExpressions
 			expr = Expression is BaseReferenceExpression
 				? new ThisReferenceExpression().WithILInstruction(this.ILInstructions)
