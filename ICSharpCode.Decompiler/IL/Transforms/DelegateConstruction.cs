@@ -16,6 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection.Metadata;
@@ -205,6 +206,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 			var nestedContext = new ILTransformContext(context, function);
 			function.RunTransforms(CSharpDecompiler.GetILTransforms().TakeWhile(t => !(t is DelegateConstruction)).Concat(GetTransforms()), nestedContext);
+			InlineVBLambdaRelay(function, targetMethod, nestedContext);
 			nestedContext.Step("DelegateConstruction (ReplaceDelegateTargetVisitor)", function);
 			function.AcceptVisitor(new ReplaceDelegateTargetVisitor(target, function.Variables.SingleOrDefault(VariableKindExtensions.IsThis)));
 			// handle nested lambdas
@@ -216,6 +218,132 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (value is Call call)
 				function.AddILRange(call.Arguments[1]);
 			return function;
+		}
+
+		/// <summary>
+		/// The VB compiler emits a "delegate relaxation" stub for a lambda whose own signature does
+		/// not match the target delegate (for example a value-returning lambda assigned to an Action,
+		/// or a lambda with fewer parameters than the delegate). The stub is a sibling method on the
+		/// same closure/display class: it ignores its own parameters, calls the real lambda body on
+		/// the same instance, and discards the result. Both methods are named '_Lambda$__...'.
+		///
+		/// Decompiling the stub verbatim leaves the closure variable as the target of the inner
+		/// '_Lambda$__N()' invocation, which blocks scalar replacement of the display class in
+		/// <see cref="TransformDisplayClassUsage"/>. Inlining the real lambda body into the stub
+		/// removes that invocation so the display class can be scalarized away.
+		/// </summary>
+		private void InlineVBLambdaRelay(ILFunction function, IMethod relayMethod, ILTransformContext context)
+		{
+			if (relayMethod.DeclaringTypeDefinition == null)
+				return;
+			// Locate the single call to a sibling lambda body whose only argument loads the stub's 'this'.
+			ILVariable thisVariable = function.Variables.SingleOrDefault(VariableKindExtensions.IsThis);
+			if (thisVariable == null)
+				return;
+			Call relayCall = null;
+			foreach (var call in function.Descendants.OfType<Call>())
+			{
+				if (!IsVBLambdaRelayTargetCall(call, relayMethod, thisVariable))
+					continue;
+				if (relayCall != null)
+					return; // not a strict single-forward relay
+				relayCall = call;
+			}
+			if (relayCall == null)
+				return;
+			IMethod lambdaMethod = relayCall.Method;
+			if (lambdaMethod.MetadataToken.IsNil)
+				return;
+			var handle = (MethodDefinitionHandle)lambdaMethod.MetadataToken;
+			if (activeMethods.Contains(handle))
+				return;
+			var methodDefinition = context.PEFile.Metadata.GetMethodDefinition(handle);
+			if (!methodDefinition.HasBody())
+				return;
+			var genericContext = GenericContextFromTypeArguments(lambdaMethod.Substitution);
+			if (genericContext == null)
+				return;
+			activeMethods.Push(handle);
+			try
+			{
+				var ilReader = context.CreateILReader();
+				var body = context.PEFile.GetMethodBody(methodDefinition.RelativeVirtualAddress);
+				var lambdaFunction = ilReader.ReadIL(handle, body, genericContext.Value,
+					ILFunctionKind.Delegate, context.CancellationToken);
+				var lambdaContext = new ILTransformContext(context, lambdaFunction);
+				lambdaFunction.RunTransforms(CSharpDecompiler.GetILTransforms()
+					.TakeWhile(t => !(t is DelegateConstruction)).Concat(GetTransforms()), lambdaContext);
+				// The real lambda body must reduce to a single 'return <expr>;' so that the call can be
+				// replaced by <expr> in-place, preserving the stub's surrounding value/void context.
+				if (!(lambdaFunction.Body is BlockContainer container && container.Blocks.Count == 1))
+					return;
+				var lambdaThis = lambdaFunction.Variables.SingleOrDefault(VariableKindExtensions.IsThis);
+				var block = container.Blocks[0];
+				if (block.Instructions.Count != 1 || !block.Instructions[0].MatchLeave(container, out var returnValue))
+					return;
+				if (returnValue.MatchNop())
+					return;
+				// The stub forwards no arguments, so the inlined expression may reference only the closure's
+				// 'this'; any other variable would be orphaned once the rest of the lambda body is dropped.
+				foreach (var inlinedInst in returnValue.Descendants.Prepend(returnValue))
+				{
+					if (inlinedInst is IInstructionWithVariableOperand varInst && varInst.Variable != lambdaThis)
+						return;
+				}
+				context.Step("Inline VB lambda relay body of " + lambdaMethod.Name, relayCall);
+				// Clone so the moved expression is not still owned by the discarded lambda function, then
+				// rebind references to the lambda's 'this' onto the stub's closure instance.
+				ILInstruction inlinedExpression = returnValue.Clone();
+				if (lambdaThis != null)
+				{
+					if (inlinedExpression is LdLoc rootLoad && rootLoad.Variable == lambdaThis)
+					{
+						inlinedExpression = new LdLoc(thisVariable).WithILRange(rootLoad);
+					}
+					else
+					{
+						foreach (var load in inlinedExpression.Descendants.ToArray())
+						{
+							if (load is LdLoc ldloc && ldloc.Variable == lambdaThis)
+								ldloc.ReplaceWith(new LdLoc(thisVariable).WithILRange(ldloc));
+						}
+					}
+				}
+				inlinedExpression.AddILRange(relayCall);
+				relayCall.ReplaceWith(inlinedExpression);
+			}
+			finally
+			{
+				activeMethods.Pop();
+			}
+		}
+
+		/// <summary>
+		/// Matches a call inside a VB delegate-relaxation stub to the sibling lambda body it forwards to:
+		/// an instance call on the same compiler-generated closure type whose single argument is the
+		/// stub's own 'this'.
+		/// </summary>
+		private static bool IsVBLambdaRelayTargetCall(Call call, IMethod relayMethod, ILVariable thisVariable)
+		{
+			IMethod lambdaMethod = call.Method;
+			if (lambdaMethod.IsStatic || lambdaMethod.IsConstructor)
+				return false;
+			if (!lambdaMethod.Name.StartsWith("_Lambda$__", StringComparison.Ordinal))
+				return false;
+			if (!relayMethod.Name.StartsWith("_Lambda$__", StringComparison.Ordinal))
+				return false;
+			if (lambdaMethod.MetadataToken.IsNil || lambdaMethod.MetadataToken.Kind != HandleKind.MethodDefinition)
+				return false;
+			if (lambdaMethod.MetadataToken == relayMethod.MetadataToken)
+				return false;
+			if (!Equals(lambdaMethod.DeclaringTypeDefinition, relayMethod.DeclaringTypeDefinition))
+				return false;
+			if (!lambdaMethod.IsCompilerGeneratedOrIsInCompilerGeneratedClass())
+				return false;
+			// The stub forwards no arguments: the only call argument is the load of the stub's 'this'.
+			if (call.Arguments.Count != 1)
+				return false;
+			return call.Arguments[0].MatchLdLoc(thisVariable);
 		}
 
 		private static bool ValidateDelegateTarget(ILInstruction inst)
