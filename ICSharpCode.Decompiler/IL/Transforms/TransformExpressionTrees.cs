@@ -139,8 +139,15 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				}
 				return false;
 			}
-			if (instruction is Block block && block.Kind == BlockKind.ControlFlow)
-				return false;  // don't look into nested blocks
+			// A nested BlockContainer represents a separate statement-level control-flow
+			// construct (an inner loop/switch/if body). Its expression trees, if any, are
+			// reached when the statement transform visits that container directly, so we
+			// stop here both to avoid converting them out of order and to keep traversal
+			// shallow on deeply nested block structures (see #1193). The top-level
+			// statement itself may be a BlockContainer (e.g. a switch whose dispatch value
+			// is an expression tree); that one is descended into so its value is reached.
+			if (instruction is BlockContainer && instruction != statement)
+				return false;
 			foreach (var child in instruction.Children)
 			{
 				if (TryConvertExpressionTree(child, statement))
