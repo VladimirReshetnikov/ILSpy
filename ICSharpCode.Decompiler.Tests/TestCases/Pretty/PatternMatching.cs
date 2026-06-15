@@ -753,6 +753,20 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 #endif
+		public object NullableValueTypeIsNotATypePattern(object value)
+		{
+			if (value is bool)
+			{
+				return !(bool)value;
+			}
+			bool? flag = value as bool?;
+			if (flag.HasValue)
+			{
+				return !flag.Value;
+			}
+			return null;
+		}
+
 		private bool F()
 		{
 			return true;

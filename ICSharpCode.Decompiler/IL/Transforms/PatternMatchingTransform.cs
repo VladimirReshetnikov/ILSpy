@@ -601,6 +601,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				return false;
 			}
+			// A type pattern's type may not itself be a nullable value type (CS8116). Leave the
+			// isinst/unbox.any over Nullable<T> for ExpressionBuilder to render as an `as` expression.
+			if (type.IsKnownType(KnownTypeCode.NullableOfT))
+			{
+				return false;
+			}
 			StLoc? tempStore = block.Instructions.ElementAtOrDefault(block.Instructions.Count - 3) as StLoc;
 			if (tempStore == null || !tempStore.Value.MatchLdLoc(testedVariable))
 			{
