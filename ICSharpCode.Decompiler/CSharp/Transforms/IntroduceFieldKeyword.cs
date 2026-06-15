@@ -89,7 +89,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			{
 				if (node is not (IdentifierExpression or MemberReferenceExpression))
 					continue;
-				if (node.GetSymbol() is not IField referenced || referenced.MetadataToken != field.MetadataToken)
+				// Match by metadata token plus declaring module. A token alone is only a per-module row
+				// index, so an unrelated field in another assembly can share it and be mistaken for this
+				// backing field, rewriting a cross-assembly reference to the wrong member. Comparing the
+				// token (rather than IField identity) keeps a reference through a generic instantiation,
+				// which is a specialized member distinct from the field definition, matching too.
+				if (node.GetSymbol() is not IField referenced
+					|| referenced.MetadataToken != field.MetadataToken
+					|| referenced.ParentModule != field.ParentModule)
 					continue;
 				if (IsInsideOwnAccessor(node, propertyDeclaration))
 					accessorReferences.Add((Expression)node);
@@ -127,7 +134,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				CSharpDecompiler.RemoveAttribute(propertyDeclaration.Setter, KnownAttribute.CompilerGenerated);
 
 			FieldDeclaration fieldDeclaration = typeDeclaration.Members.OfType<FieldDeclaration>()
-				.FirstOrDefault(fd => fd.Variables.Count == 1 && field.MetadataToken == (fd.GetSymbol() as IField)?.MetadataToken);
+				.FirstOrDefault(fd => fd.Variables.Count == 1 && fd.GetSymbol() is IField f
+					&& f.MetadataToken == field.MetadataToken && f.ParentModule == field.ParentModule);
 			if (fieldDeclaration != null)
 			{
 				VariableInitializer variable = fieldDeclaration.Variables.First();
@@ -157,7 +165,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		{
 			// If the field already has an explicit declaration, its references resolve; nothing to do.
 			bool alreadyDeclared = typeDeclaration.Members.OfType<FieldDeclaration>()
-				.Any(fd => fd.Variables.Count == 1 && field.MetadataToken == (fd.GetSymbol() as IField)?.MetadataToken);
+				.Any(fd => fd.Variables.Count == 1 && fd.GetSymbol() is IField f
+					&& f.MetadataToken == field.MetadataToken && f.ParentModule == field.ParentModule);
 			if (alreadyDeclared)
 				return;
 
