@@ -301,6 +301,17 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			RefReassignment(ref reference.GetHashCode() == 4 ? ref reference : ref s);
 		}
 
+		public bool RefConditionalAssignmentTarget(bool[] flags)
+		{
+			bool result = false;
+			bool flag = false;
+			for (int i = 0; i < flags.Length; i++)
+			{
+				(flags[i] ? ref result : ref flag) = true;
+			}
+			return result;
+		}
+
 		public static void Main(string[] args)
 		{
 			DoubleNumber(ref args.Length == 1 ? ref numbers[0] : ref DefaultInt);
