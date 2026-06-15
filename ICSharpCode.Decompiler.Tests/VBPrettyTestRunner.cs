@@ -170,6 +170,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task VBAnonymousType([ValueSource(nameof(defaultOptions))] CompilerOptions options)
+		{
+			await Run(options: options | CompilerOptions.Library);
+		}
+
+		[Test]
 		public async Task YieldReturn([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			await Run(options: options | CompilerOptions.Library);
