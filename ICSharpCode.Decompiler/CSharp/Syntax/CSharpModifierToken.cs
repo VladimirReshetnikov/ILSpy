@@ -64,6 +64,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		// This table is sorted in the order that modifiers should be output when generating code.
 		public static ImmutableArray<Modifiers> AllModifiers { get; } = ImmutableArray.Create(
 			Modifiers.Public, Modifiers.Private, Modifiers.Protected, Modifiers.Internal,
+			Modifiers.File,
 			Modifiers.New,
 			Modifiers.Unsafe,
 			Modifiers.Static, Modifiers.Abstract, Modifiers.Virtual, Modifiers.Sealed, Modifiers.Override,
@@ -121,6 +122,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					return "ref";
 				case Modifiers.Required:
 					return "required";
+				case Modifiers.File:
+					return "file";
 				case Modifiers.Any:
 					// even though it's used for pattern matching only, 'any' needs to be in this list to be usable in the AST
 					return "any";
@@ -176,6 +179,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					return Modifiers.Ref;
 				case "required":
 					return Modifiers.Required;
+				case "file":
+					return Modifiers.File;
 				case "any":
 					// even though it's used for pattern matching only, 'any' needs to be in this list to be usable in the AST
 					return Modifiers.Any;

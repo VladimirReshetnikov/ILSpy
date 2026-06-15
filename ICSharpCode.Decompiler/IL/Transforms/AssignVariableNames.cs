@@ -832,16 +832,22 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				type = NullableType.GetUnderlyingType(((TypeWithElementType)type).ElementType);
 			}
 
+			// A C# 11 file-local type has a mangled metadata name; derive variable names from its
+			// demangled source name instead.
+			string typeName = ReflectionHelper.TryGetFileLocalTypeName(type.Name, out string sourceName)
+				? sourceName
+				: type.Name;
+
 			string name;
 			if (type.IsAnonymousType())
 			{
 				name = "anon";
 			}
-			else if (type.Name.EndsWith("Exception", StringComparison.Ordinal))
+			else if (typeName.EndsWith("Exception", StringComparison.Ordinal))
 			{
 				name = "ex";
 			}
-			else if (type.Name.EndsWith("EventArgs", StringComparison.Ordinal))
+			else if (typeName.EndsWith("EventArgs", StringComparison.Ordinal))
 			{
 				name = "e";
 			}
@@ -861,7 +867,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					TypeKind.Tuple => "tuple",
 					TypeKind.NInt => "num",
 					TypeKind.NUInt => "num",
-					_ => type.Name
+					_ => typeName
 				};
 				// remove the 'I' for interfaces
 				if (name.Length >= 3 && name[0] == 'I' && char.IsUpper(name[1]) && char.IsLower(name[2]))
