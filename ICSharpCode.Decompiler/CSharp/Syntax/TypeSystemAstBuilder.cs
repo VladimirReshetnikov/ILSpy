@@ -533,7 +533,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					if (!trr.IsError && TypeMatches(trr.Type, typeDef, typeArguments))
 					{
 						// We can use the short type name
-						SimpleType shortResult = MakeSimpleType(GetTypeName(typeDef));
+						SimpleType shortResult = MakeSimpleType(typeDef.Name);
 						AddTypeArguments(shortResult, typeDef.TypeParameters, typeArguments, outerTypeParameterCount, typeDef.TypeParameterCount);
 						return shortResult;
 					}
@@ -542,7 +542,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 			if (AlwaysUseShortTypeNames || (typeDef == null && genericType.DeclaringType == null))
 			{
-				var shortResult = MakeSimpleType(GetTypeName(genericType));
+				var shortResult = MakeSimpleType(genericType.Name);
 				AddTypeArguments(shortResult, genericType.TypeParameters, typeArguments, outerTypeParameterCount, genericType.TypeParameterCount);
 				return shortResult;
 			}
@@ -573,7 +573,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 						out _, AlwaysUseGlobal || genericType.Namespace == genericType.Name);
 				}
 			}
-			result.MemberName = GetTypeName(genericType);
+			result.MemberName = genericType.Name;
 			AddTypeArguments(result, genericType.TypeParameters, typeArguments, outerTypeParameterCount, genericType.TypeParameterCount);
 			return result;
 		}
@@ -760,17 +760,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			if (name == "_")
 				return new MemberType(target, "@_");
 			return new MemberType(target, name);
-		}
-
-		/// <summary>
-		/// Returns the simple name to render for a type, demangling the metadata name of a
-		/// C# 11 file-local type (declared with the <c>file</c> modifier) back to its source name.
-		/// </summary>
-		static string GetTypeName(IType type)
-		{
-			if (ReflectionHelper.TryGetFileLocalTypeName(type.Name, out string sourceName))
-				return sourceName;
-			return type.Name;
 		}
 		#endregion
 
@@ -1861,14 +1850,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		EntityDeclaration ConvertTypeDefinition(ITypeDefinition typeDefinition)
 		{
 			Modifiers modifiers = Modifiers.None;
-			// A C# 11 file-local type carries the 'file' modifier in place of an accessibility keyword;
-			// the compiler emits it as 'internal' in metadata under a mangled name.
-			bool isFileLocalType = ReflectionHelper.TryGetFileLocalTypeName(typeDefinition.Name, out string fileLocalTypeName);
-			if (isFileLocalType)
-			{
-				modifiers |= Modifiers.File;
-			}
-			else if (this.ShowAccessibility)
+			if (this.ShowAccessibility)
 			{
 				modifiers |= ModifierFromAccessibility(typeDefinition.Accessibility, UsePrivateProtectedAccessibility);
 			}
@@ -1949,10 +1931,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				decl.AddAnnotation(new TypeResolveResult(typeDefinition));
 			}
-			if (isFileLocalType)
-				decl.Name = fileLocalTypeName;
-			else
-				decl.Name = typeDefinition.Name == "_" ? "@_" : typeDefinition.Name;
+			decl.Name = typeDefinition.Name == "_" ? "@_" : typeDefinition.Name;
 
 			int outerTypeParameterCount = (typeDefinition.DeclaringTypeDefinition == null) ? 0 : typeDefinition.DeclaringTypeDefinition.TypeParameterCount;
 
@@ -2033,7 +2012,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				ct.HasReadOnlySpecifier = true;
 			}
-			decl.Name = GetTypeName(d);
+			decl.Name = d.Name;
 
 			int outerTypeParameterCount = (d.DeclaringTypeDefinition == null) ? 0 : d.DeclaringTypeDefinition.TypeParameterCount;
 

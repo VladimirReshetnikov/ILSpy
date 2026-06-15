@@ -56,7 +56,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		Async = 0x10000,
 		Ref = 0x20000,
 		Required = 0x40000,
-		File = 0x80000,
 
 		VisibilityMask = Private | Internal | Protected | Public,
 

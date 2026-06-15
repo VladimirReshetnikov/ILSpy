@@ -99,39 +99,6 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 		#endregion
 
-		#region File-local type names
-		/// <summary>
-		/// Detects the metadata name the compiler gives a C# 11 file-local type (declared with the
-		/// <c>file</c> modifier): <c>&lt;FileName&gt;F&lt;hash&gt;__SourceName</c>, where
-		/// <c>&lt;hash&gt;</c> is a run of hexadecimal digits derived from the source file.
-		/// Returns the demangled <c>SourceName</c> when the name matches this exact shape.
-		/// </summary>
-		public static bool TryGetFileLocalTypeName(string metadataName, out string sourceName)
-		{
-			sourceName = null;
-			if (metadataName == null || metadataName.Length == 0 || metadataName[0] != '<')
-				return false;
-			int closing = metadataName.IndexOf('>');
-			// The file-name part is non-empty and is followed by the 'F' discriminator.
-			if (closing <= 1 || closing + 1 >= metadataName.Length || metadataName[closing + 1] != 'F')
-				return false;
-			int hashStart = closing + 2;
-			int i = hashStart;
-			while (i < metadataName.Length && IsHexDigit(metadataName[i]))
-				i++;
-			// Require at least one hash digit followed by the "__" separator.
-			if (i == hashStart || i + 2 >= metadataName.Length || metadataName[i] != '_' || metadataName[i + 1] != '_')
-				return false;
-			sourceName = metadataName.Substring(i + 2);
-			return sourceName.Length > 0;
-		}
-
-		static bool IsHexDigit(char c)
-		{
-			return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
-		}
-		#endregion
-
 		#region TypeCode support
 		/// <summary>
 		/// Retrieves a built-in type using the specified type code.
