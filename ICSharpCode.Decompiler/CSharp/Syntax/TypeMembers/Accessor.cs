@@ -24,95 +24,52 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
+	public enum AccessorKind
+	{
+		Any,
+		Getter,
+		Setter,
+		Init,
+		Adder,
+		Remover
+	}
+
 	/// <summary>
 	/// get/set/init/add/remove
 	/// </summary>
-	public class Accessor : EntityDeclaration
+	[DecompilerAstNode]
+	public sealed partial class Accessor : EntityDeclaration
 	{
-		public static readonly new Accessor Null = new NullAccessor();
-		sealed class NullAccessor : Accessor
-		{
-			public override bool IsNull {
-				get {
-					return true;
-				}
-			}
-
-			public override void AcceptVisitor(IAstVisitor visitor)
-			{
-				visitor.VisitNullNode(this);
-			}
-
-			public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-			{
-				return visitor.VisitNullNode(this);
-			}
-
-			public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-			{
-				return visitor.VisitNullNode(this, data);
-			}
-
-			protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-			{
-				return other == null || other.IsNull;
-			}
-		}
-
-		public override NodeType NodeType {
-			get { return NodeType.Unknown; }
-		}
-
 		public override SymbolKind SymbolKind {
 			get { return SymbolKind.Method; }
 		}
 
-		/// <summary>
-		/// Gets the 'get'/'set'/'init'/'add'/'remove' keyword
-		/// </summary>
-		public CSharpTokenNode Keyword {
-			get {
-				for (AstNode child = this.FirstChild; child != null; child = child.NextSibling)
-				{
-					if (child.Role == PropertyDeclaration.GetKeywordRole || child.Role == PropertyDeclaration.SetKeywordRole
-						|| child.Role == PropertyDeclaration.InitKeywordRole
-						|| child.Role == CustomEventDeclaration.AddKeywordRole || child.Role == CustomEventDeclaration.RemoveKeywordRole)
-					{
-						return (CSharpTokenNode)child;
-					}
-				}
-				return CSharpTokenNode.Null;
-			}
+		public AccessorKind Kind { get; set; }
+
+		// An accessor is printed as its keyword (get/set/init/add/remove), never an identifier, so it
+		// carries no name. The contract members are overridden to no-ops: shared decompiler code sets a
+		// name on every method-like entity (e.g. explicit interface implementations), which is irrelevant
+		// here and must not throw.
+		public override string Name {
+			get { return string.Empty; }
+			set { }
 		}
 
-		public BlockStatement Body {
-			get { return GetChildByRole(Roles.Body); }
-			set { SetChildByRole(Roles.Body, value); }
+		public override Identifier NameToken {
+			get { return null!; }
+			set { }
 		}
 
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitAccessor(this);
-		}
+		[Slot("AttributeSection")]
+		public override partial AstNodeCollection<AttributeSection> Attributes { get; }
 
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitAccessor(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitAccessor(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			Accessor o = other as Accessor;
-			return o != null && !o.IsNull && this.MatchAttributesAndModifiers(o, match) && this.Body.DoMatch(o.Body, match);
-		}
+		[Slot("Body")]
+		public partial BlockStatement? Body { get; set; }
 	}
 }

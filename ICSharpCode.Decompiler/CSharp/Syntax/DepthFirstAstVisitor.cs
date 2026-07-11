@@ -24,6 +24,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
@@ -33,22 +35,12 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	{
 		protected virtual void VisitChildren(AstNode node)
 		{
-			AstNode next;
-			for (var child = node.FirstChild; child != null; child = next)
+			// Children enumerates in document order and tolerates the visitor removing or replacing
+			// the current child (its enumerator captures the successor before yielding).
+			foreach (var child in node.Children)
 			{
-				// Store next to allow the loop to continue
-				// if the visitor removes/replaces child.
-				next = child.NextSibling;
 				child.AcceptVisitor(this);
 			}
-		}
-
-		public virtual void VisitNullNode(AstNode nullNode)
-		{
-			// Should we call VisitChildren here?
-			// We usually want to ignore null nodes.
-			// Older NR versions (before VisitNullNode was introduced) didn't call VisitChildren() with null nodes;
-			// so changing this might break VisitChildren() overrides that expect the node to be part of the AST.
 		}
 
 		public virtual void VisitSyntaxTree(SyntaxTree syntaxTree)
@@ -76,10 +68,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			VisitChildren(identifier);
 		}
 
-		public virtual void VisitCSharpTokenNode(CSharpTokenNode token)
-		{
-			VisitChildren(token);
-		}
 
 		public virtual void VisitPrimitiveType(PrimitiveType primitiveType)
 		{
@@ -719,24 +707,15 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	{
 		protected virtual T VisitChildren(AstNode node)
 		{
-			AstNode next;
-			for (var child = node.FirstChild; child != null; child = next)
+			// Children enumerates in document order and tolerates the visitor removing or replacing
+			// the current child (its enumerator captures the successor before yielding).
+			foreach (var child in node.Children)
 			{
-				// Store next to allow the loop to continue
-				// if the visitor removes/replaces child.
-				next = child.NextSibling;
 				child.AcceptVisitor(this);
 			}
-			return default(T);
-		}
-
-		public virtual T VisitNullNode(AstNode nullNode)
-		{
-			// Should we call VisitChildren here?
-			// We usually want to ignore null nodes.
-			// Older NR versions (before VisitNullNode was introduced) didn't call VisitChildren() with null nodes;
-			// so changing this might break VisitChildren() overrides that expect the node to be part of the AST.
-			return default(T);
+			// Unconstrained T: the default-returning visitor methods are the no-op base behavior
+			// for node kinds a derived visitor does not override.
+			return default(T)!;
 		}
 
 		public virtual T VisitSyntaxTree(SyntaxTree unit)
@@ -764,10 +743,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return VisitChildren(identifier);
 		}
 
-		public virtual T VisitCSharpTokenNode(CSharpTokenNode token)
-		{
-			return VisitChildren(token);
-		}
 
 		public virtual T VisitPrimitiveType(PrimitiveType primitiveType)
 		{
@@ -1407,24 +1382,15 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	{
 		protected virtual S VisitChildren(AstNode node, T data)
 		{
-			AstNode next;
-			for (var child = node.FirstChild; child != null; child = next)
+			// Children enumerates in document order and tolerates the visitor removing or replacing
+			// the current child (its enumerator captures the successor before yielding).
+			foreach (var child in node.Children)
 			{
-				// Store next to allow the loop to continue
-				// if the visitor removes/replaces child.
-				next = child.NextSibling;
 				child.AcceptVisitor(this, data);
 			}
-			return default(S);
-		}
-
-		public virtual S VisitNullNode(AstNode nullNode, T data)
-		{
-			// Should we call VisitChildren here?
-			// We usually want to ignore null nodes.
-			// Older NR versions (before VisitNullNode was introduced) didn't call VisitChildren() with null nodes;
-			// so changing this might break VisitChildren() overrides that expect the node to be part of the AST.
-			return default(S);
+			// Unconstrained S: the default-returning visitor methods are the no-op base behavior
+			// for node kinds a derived visitor does not override.
+			return default(S)!;
 		}
 
 		public virtual S VisitSyntaxTree(SyntaxTree unit, T data)
@@ -1452,10 +1418,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return VisitChildren(identifier, data);
 		}
 
-		public virtual S VisitCSharpTokenNode(CSharpTokenNode token, T data)
-		{
-			return VisitChildren(token, data);
-		}
 
 		public virtual S VisitPrimitiveType(PrimitiveType primitiveType, T data)
 		{

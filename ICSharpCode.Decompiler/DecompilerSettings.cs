@@ -178,16 +178,10 @@ namespace ICSharpCode.Decompiler
 				firstClassSpanTypes = false;
 				useFieldKeyword = false;
 			}
-			if (languageVersion < CSharp.LanguageVersion.CSharp15_0)
-			{
-				runtimeAsync = false;
-			}
 		}
 
 		public CSharp.LanguageVersion GetMinimumRequiredVersion()
 		{
-			if (runtimeAsync)
-				return CSharp.LanguageVersion.CSharp15_0;
 			if (extensionMembers || firstClassSpanTypes || useFieldKeyword)
 				return CSharp.LanguageVersion.CSharp14_0;
 			if (paramsCollections)
@@ -1358,6 +1352,20 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		bool expandXmlDocumentationComments = false;
+
+		[Browsable(false)]
+		public bool ExpandXmlDocumentationComments {
+			get { return expandXmlDocumentationComments; }
+			set {
+				if (expandXmlDocumentationComments != value)
+				{
+					expandXmlDocumentationComments = value;
+					OnPropertyChanged();
+				}
+			}
+		}
+
 		bool expandMemberDefinitions = false;
 
 		[Browsable(false)]
@@ -2241,24 +2249,6 @@ namespace ICSharpCode.Decompiler
 				if (firstClassSpanTypes != value)
 				{
 					firstClassSpanTypes = value;
-					OnPropertyChanged();
-				}
-			}
-		}
-
-		bool runtimeAsync = true;
-
-		/// <summary>
-		/// Gets/Sets whether runtime async should be used.
-		/// </summary>
-		[Category("C# 15.0 / VS 202x.yy")]
-		[Description("DecompilerSettings.RuntimeAsync")]
-		public bool RuntimeAsync {
-			get { return runtimeAsync; }
-			set {
-				if (runtimeAsync != value)
-				{
-					runtimeAsync = value;
 					OnPropertyChanged();
 				}
 			}

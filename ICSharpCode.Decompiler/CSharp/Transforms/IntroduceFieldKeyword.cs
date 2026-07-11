@@ -128,9 +128,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					fieldKeyword.AddAnnotation(mrr);
 				reference.ReplaceWith(fieldKeyword);
 			}
-			if (!propertyDeclaration.Getter.IsNull)
+			if (propertyDeclaration.Getter is not null)
 				CSharpDecompiler.RemoveAttribute(propertyDeclaration.Getter, KnownAttribute.CompilerGenerated);
-			if (!propertyDeclaration.Setter.IsNull)
+			if (propertyDeclaration.Setter is not null)
 				CSharpDecompiler.RemoveAttribute(propertyDeclaration.Setter, KnownAttribute.CompilerGenerated);
 
 			FieldDeclaration fieldDeclaration = typeDeclaration.Members.OfType<FieldDeclaration>()
@@ -139,7 +139,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			if (fieldDeclaration != null)
 			{
 				VariableInitializer variable = fieldDeclaration.Variables.First();
-				if (!variable.Initializer.IsNull)
+				if (variable.Initializer is not null)
 					propertyDeclaration.Initializer = variable.Initializer.Detach();
 				CSharpDecompiler.RemoveAttribute(fieldDeclaration, KnownAttribute.CompilerGenerated);
 				CSharpDecompiler.RemoveAttribute(fieldDeclaration, KnownAttribute.DebuggerBrowsable);
@@ -210,7 +210,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 				else
 				{
-					reference.GetChildByRole(Roles.Identifier).Name = name;
+					reference.GetChild(Slots.Identifier)!.Name = name;
 				}
 			}
 		}
@@ -246,9 +246,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		// which would be safe) because such collisions are rare and bailing only forgoes a reconstruction.
 		static bool AccessorReferencesFieldName(PropertyDeclaration property)
 		{
-			foreach (Accessor accessor in new[] { property.Getter, property.Setter })
+			foreach (var accessor in new[] { property.Getter, property.Setter })
 			{
-				if (accessor.IsNull)
+				if (accessor is null)
 					continue;
 				foreach (Identifier id in accessor.Descendants.OfType<Identifier>())
 				{

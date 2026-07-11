@@ -110,7 +110,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			[AllowNull]
 			public List<(Statement Statement, IMember Member, Expression Initializer, bool DependsOnConstructorBody, bool ReferencesInstanceMember)> Statements;
 
-			public Dictionary<Statement, List<Statement>>? StatementToOtherCtorsMap;
+			public Dictionary<Statement, List<(Statement Statement, Expression Initializer)>>? StatementToOtherCtorsMap;
 
 			public bool HasDuplicateAssignments { get; private set; }
 			public bool IsUnsafe { get; private set; }
@@ -131,7 +131,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				bool skippedStmts = false;
 
 				Statement? stmt;
-				for (stmt = ctor.Body.Statements.FirstOrDefault(); stmt != null; stmt = stmt.GetNextStatement())
+				for (stmt = ctor.Body?.Statements.FirstOrDefault(); stmt != null; stmt = stmt.GetNextStatement())
 				{
 					var m = memberInitializerPattern.Match(stmt);
 					if (!m.Success)
@@ -221,6 +221,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 			public bool IsMatch(ConstructorDeclaration ctor)
 			{
+				if (ctor.Body is null)
+					return false;
 				var stmts = ctor.Body.Statements;
 				var otherStmt = stmts.FirstOrDefault();
 				foreach (var (stmt, member, initializer, _, _) in Statements)
@@ -242,7 +244,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						list = [];
 						StatementToOtherCtorsMap[stmt] = list;
 					}
-					list.Add(otherStmt);
+					list.Add((otherStmt, otherInitializer));
 					otherStmt = otherStmt.GetNextStatement();
 				}
 				return true;
@@ -303,7 +305,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				MemberToDeclaringSyntaxNodeMap = members
 					.Select(m => (symbol: m.GetSymbol(), entity: (EntityDeclaration)m))
 					.Where(_ => _.symbol is IMember)
-					.ToDictionary(_ => (IMember)_.symbol, _ => _.entity);
+					.ToDictionary(_ => (IMember)_.symbol!, _ => _.entity);
 
 				List<ConstructorDeclaration> constructorsNotChainedWithThis = [];
 				List<ConstructorDeclaration> allCtors = [];
@@ -317,7 +319,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 				foreach (var ctor in members.OfType<ConstructorDeclaration>())
 				{
-					var ctorMethod = (IMethod)ctor.GetSymbol();
+					var ctorMethod = (IMethod)ctor.GetSymbol()!;
 					Debug.Assert(ctorMethod.IsConstructor);
 					Debug.Assert(ctorMethod.MetadataToken.IsNil == false);
 
@@ -369,7 +371,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 					// this constructor could be converted to a primary constructor
 					var ctor = constructorsNotChainedWithThis[0];
-					var ctorMethod = (IMethod)constructorsNotChainedWithThis[0].GetSymbol();
+					var ctorMethod = (IMethod)constructorsNotChainedWithThis[0].GetSymbol()!;
 
 					var initializer = InitializerSequence.Analyze(this, ctor, ctorMethod);
 
@@ -452,18 +454,32 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						bool isPrimaryCtor = constructorsNotChainedWithThis[0] == PrimaryConstructorDecl;
 						var sequence = isPrimaryCtor
 							? PrimaryConstructorInitializers
-							: InitializerSequence.Analyze(this, constructorsNotChainedWithThis[0], (IMethod)constructorsNotChainedWithThis[0].GetSymbol());
+							: InitializerSequence.Analyze(this, constructorsNotChainedWithThis[0], (IMethod)constructorsNotChainedWithThis[0].GetSymbol()!);
 
 						if (sequence == null)
 							return false;
 
+						bool sequenceMatchesAllCtors = true;
 						for (int i = 1; i < constructorsNotChainedWithThis.Count; i++)
 						{
 							if (!sequence.IsMatch(constructorsNotChainedWithThis[i]))
-								return false;
+							{
+								sequenceMatchesAllCtors = false;
+								break;
+							}
 						}
 
-						if (!isPrimaryCtor)
+						if (!sequenceMatchesAllCtors)
+						{
+							// The non-this-chained constructors disagree on their leading field
+							// assignments, so there is no shared field-initializer sequence to extract.
+							// A primary constructor must extract its initializers (its parameters drive
+							// them), so bail; otherwise keep the assignments in the bodies but continue,
+							// so the this(...)/base(...) chains still get lifted to initializers.
+							if (isPrimaryCtor)
+								return false;
+						}
+						else if (!isPrimaryCtor)
 						{
 							if (!sequence.Statements.Any(s => s.DependsOnConstructorBody))
 								InstanceInitializers = sequence;
@@ -478,6 +494,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 			public bool MoveConstructorInitializer(ConstructorDeclaration constructorDeclaration, IMethod ctorMethod)
 			{
+				if (constructorDeclaration.Body is null)
+					return false;
 				var isValueType = ctorMethod.DeclaringType.Kind == TypeKind.Struct;
 
 				// value types may omit the constructor initializer completely
@@ -514,14 +532,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 				var ci = new ConstructorInitializer { ConstructorInitializerType = type };
 
+				context.Step("Move constructor call to initializer", stmt);
 				// Move arguments from invocation to initializer:
-				invocation.GetChildrenByRole(Roles.Argument).MoveTo(ci.Arguments);
+				invocation.GetChildren(Slots.Argument).MoveTo(ci.Arguments);
 				// Add the initializer: (unless it is the default 'base()')
 				if (!(ci.ConstructorInitializerType == ConstructorInitializerType.Base && ci.Arguments.Count == 0))
 					constructorDeclaration.Initializer = ci.CopyAnnotationsFrom(invocation);
 
 				// Remove the statement
 				stmt.Remove();
+				context.EndStep(constructorDeclaration.Initializer);
 
 				return true;
 			}
@@ -532,9 +552,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			/// guard clauses, or inlinable temporaries; the first statement matching the chained-call
 			/// pattern is returned together with its match. Returns <c>null</c> if there is none.
 			/// </summary>
-			private static Statement? FindConstructorInitializerCall(BlockStatement body, bool isValueType, out Match m)
+			private static Statement? FindConstructorInitializerCall(BlockStatement? body, bool isValueType, out Match m)
 			{
-				for (Statement? stmt = body.Statements.FirstOrDefault(); stmt != null; stmt = stmt.GetNextStatement())
+				for (Statement? stmt = body?.Statements.FirstOrDefault(); stmt != null; stmt = stmt.GetNextStatement())
 				{
 					m = isValueType
 						? ThisCallStructPattern.Match(stmt)
@@ -556,7 +576,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			{
 				// Collect the local variables referenced inside the call arguments.
 				var argumentUses = new Dictionary<ILVariable, List<IdentifierExpression>>();
-				foreach (var argument in invocation.GetChildrenByRole(Roles.Argument))
+				foreach (var argument in invocation.GetChildren(Slots.Argument))
 				{
 					foreach (var identifier in argument.DescendantsAndSelf.OfType<IdentifierExpression>())
 					{
@@ -586,7 +606,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						return false;
 
 					var initializer = declaration.Variables.Single().Initializer;
-					if (initializer.IsNull)
+					if (initializer is null)
 						return false;
 
 					// The initializer becomes part of the constructor initializer, which runs before
@@ -648,8 +668,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 					if (!MemberToDeclaringSyntaxNodeMap.TryGetValue(member, out var declaringSyntaxNode))
 					{
-						Debug.Assert(kind is InitializerKind.Primary);
-						stmt.Remove();
+						// A primary-constructor parameter assignment whose backing member has no separate
+						// declaration is redundant and dropped. For static/instance initializers a missing
+						// declaration instead means the member is not part of this (partial) syntax tree --
+						// e.g. when a single static constructor is decompiled in isolation -- so the
+						// assignment must remain in the constructor body.
+						if (kind is InitializerKind.Primary)
+						{
+							context.Step("Remove redundant primary constructor assignment", stmt);
+							stmt.Remove();
+						}
 						continue;
 					}
 
@@ -658,9 +686,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					{
 						case FieldDeclaration fd:
 							v = fd.Variables.Single();
-							if (v.Initializer.IsNull)
+							if (v.Initializer is null)
 							{
-								v.Initializer = initializer.Detach();
+								context.Step("Move assignment to field initializer", stmt);
+								var movedInitializer = initializer.Detach();
+								v.Initializer = movedInitializer;
+								context.EndStep(movedInitializer);
 							}
 							else if (kind == InitializerKind.Static)
 							{
@@ -688,9 +719,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							break;
 						case PropertyDeclaration pd:
 							Debug.Assert(pd.IsAutomaticProperty);
-							if (pd.Initializer.IsNull)
+							if (pd.Initializer is null)
 							{
-								pd.Initializer = initializer.Detach();
+								context.Step("Move assignment to property initializer", stmt);
+								var movedInitializer = initializer.Detach();
+								pd.Initializer = movedInitializer;
+								context.EndStep(movedInitializer);
 							}
 							else
 							{
@@ -700,9 +734,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							break;
 						case EventDeclaration ev:
 							v = ev.Variables.Single();
-							if (v.Initializer.IsNull)
+							if (v.Initializer is null)
 							{
-								v.Initializer = initializer.Detach();
+								context.Step("Move assignment to event initializer", stmt);
+								var movedInitializer = initializer.Detach();
+								v.Initializer = movedInitializer;
+								context.EndStep(movedInitializer);
 							}
 							else
 							{
@@ -718,16 +755,25 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					stmt.Remove();
 
 					if (sequence.StatementToOtherCtorsMap != null &&
-						sequence.StatementToOtherCtorsMap.TryGetValue(stmt, out var otherStmts))
+						sequence.StatementToOtherCtorsMap.TryGetValue(stmt, out var otherCtors))
 					{
-						foreach (var otherStmt in otherStmts)
+						var otherInitializers = new List<Expression>(otherCtors.Count);
+						foreach (var (otherStmt, otherInitializer) in otherCtors)
 						{
 							otherStmt.Remove();
+							otherInitializers.Add(otherInitializer);
+						}
+						// Preserve the discarded copies so the breakpoint for this initializer can be
+						// emitted in every constructor that runs it, not just the one it was lifted from.
+						if (otherInitializers.Count > 0)
+						{
+							initializer.AddAnnotation(new MemberInitializerInOtherConstructorsAnnotation(otherInitializers));
 						}
 					}
 
 					if (sequence.IsUnsafe && IntroduceUnsafeModifier.IsUnsafe(initializer))
 					{
+						context.Step("Add unsafe modifier to initialized member", declaringSyntaxNode);
 						declaringSyntaxNode.Modifiers |= Modifiers.Unsafe;
 					}
 				}
@@ -749,10 +795,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					Debug.Assert(PrimaryConstructorDecl != null);
 
 					this.TypeDeclaration.HasPrimaryConstructor = PrimaryConstructor.Parameters.Any()
-						|| !PrimaryConstructorDecl.Initializer.IsNull
+						|| PrimaryConstructorDecl.Initializer is not null
 						|| TypeDefinition.Kind == TypeKind.Struct;
 
-					// HACK: because our current AST model doesn't allow specifying an explicit order of roles,
+					// HACK: because our current AST model doesn't allow specifying an explicit ordering across slots,
 					// we have to explicitly insert the primary constructor parameters,
 					// MoveTo would just append the parameters to the list of children
 					if (PrimaryConstructorDecl.Parameters.Count > 0)
@@ -760,8 +806,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						var insertionPoint = (AstNode?)this.TypeDeclaration.TypeParameters.LastOrDefault() ?? this.TypeDeclaration.NameToken;
 						foreach (var param in PrimaryConstructorDecl.Parameters)
 						{
+							context.Step("Move primary constructor parameter to type", param);
 							param.Remove();
-							this.TypeDeclaration.InsertChildAfter(insertionPoint, param, Roles.Parameter);
+							this.TypeDeclaration.InsertChildAfter(insertionPoint, param, Slots.Parameter);
 							insertionPoint = param;
 						}
 					}
@@ -814,20 +861,24 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 					if (PrimaryConstructorDecl.HasModifier(Modifiers.Unsafe))
 					{
+						context.Step("Move unsafe modifier from primary constructor to type", this.TypeDeclaration);
 						this.TypeDeclaration.Modifiers |= Modifiers.Unsafe;
 					}
 
-					if (!PrimaryConstructorDecl.Initializer.IsNull && TypeDeclaration is { BaseTypes.Count: > 0 })
+					if (PrimaryConstructorDecl.Initializer is { } initializer && TypeDeclaration is { BaseTypes.Count: > 0 })
 					{
-						Debug.Assert(PrimaryConstructorDecl.Initializer is { ConstructorInitializerType: ConstructorInitializerType.Base });
+						Debug.Assert(initializer.ConstructorInitializerType == ConstructorInitializerType.Base);
 
 						var baseType = TypeDeclaration.BaseTypes.First();
 						var newBaseType = new InvocationAstType();
+						context.Step("Move primary constructor initializer to base type", baseType);
 						baseType.ReplaceWith(newBaseType);
 						newBaseType.BaseType = baseType;
-						PrimaryConstructorDecl.Initializer.GetChildrenByRole(Roles.Argument).MoveTo(newBaseType.Arguments);
+						initializer.Arguments.MoveTo(newBaseType.Arguments);
+						context.EndStep(newBaseType);
 					}
 
+					context.Step("Remove primary constructor body", PrimaryConstructorDecl);
 					PrimaryConstructorDecl.Remove();
 				}
 
@@ -836,8 +887,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				{
 					Debug.Assert(StaticConstructorDecl != null);
 
-					if (IsBeforeFieldInit && StaticConstructorDecl.Body.Statements.Count == 0)
+					if (IsBeforeFieldInit && StaticConstructorDecl.Body is { Statements.Count: 0 })
 					{
+						context.Step("Remove empty static constructor", StaticConstructorDecl);
 						StaticConstructorDecl.Remove();
 					}
 				}
@@ -847,7 +899,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					return;
 
 				var ctor = InstanceConstructors[0];
-				var ctorMethod = (IMethod)ctor.GetSymbol();
+				var ctorMethod = (IMethod)ctor.GetSymbol()!;
 
 				if (TypeDefinition.Kind == TypeKind.Struct && ctorMethod.Parameters.Count == 0 && InstanceInitializers != null)
 				{
@@ -867,7 +919,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					bool retainBecauseOfDocumentation = context.Settings.ShowXmlDocumentation
 						&& context.DecompileRun.DocumentationProvider?.GetDocumentation(ctorMethod) != null;
 					if (!retainBecauseOfDocumentation)
+					{
+						context.Step("Remove implicit constructor", ctor);
 						ctor.Remove();
+					}
 				}
 			}
 
@@ -952,7 +1007,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 			foreach (var typeDeclaration in node.Descendants.OfType<TypeDeclaration>())
 			{
-				var currentTypeDefinition = (ITypeDefinition)typeDeclaration.GetSymbol();
+				var currentTypeDefinition = (ITypeDefinition)typeDeclaration.GetSymbol()!;
 				TransformDeclaration(currentTypeDefinition, typeDeclaration, typeDeclaration.Members);
 			}
 		}
@@ -980,7 +1035,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 			foreach (var constructorDeclaration in members.OfType<ConstructorDeclaration>())
 			{
-				analyzer.MoveConstructorInitializer(constructorDeclaration, (IMethod)constructorDeclaration.GetSymbol());
+				analyzer.MoveConstructorInitializer(constructorDeclaration, (IMethod)constructorDeclaration.GetSymbol()!);
 			}
 
 			analyzer.RemoveImplicitConstructor();
@@ -999,7 +1054,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					}
 					identifier.Parent.RemoveAnnotations<MemberResolveResult>();
 					identifier.Parent.AddAnnotation(new ILVariableResolveResult(v));
-					identifier.ReplaceWith(Identifier.Create(v.Name));
+					identifier.ReplaceWith(Identifier.Create(v.Name!));
 				}
 			}
 
@@ -1039,7 +1094,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// Drop it here; it has no observable effect.
 			foreach (var ctor in node.Children.OfType<ConstructorDeclaration>())
 			{
-				var lastStatement = ctor.Body.Statements.LastOrDefault();
+				var lastStatement = ctor.Body?.Statements.LastOrDefault();
 				if (lastStatement == null)
 					continue;
 				var m = ThisCallClassPattern.Match(lastStatement);
@@ -1050,7 +1105,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				var invocation = m.Get<AstNode>("invocation").Single();
 				if (invocation.GetSymbol() is not IMethod { IsConstructor: true })
 					continue;
-				if (invocation.GetChildrenByRole(Roles.Argument).Any())
+				if (invocation.GetChildren(Slots.Argument).Any())
 					continue;
 				lastStatement.Remove();
 			}

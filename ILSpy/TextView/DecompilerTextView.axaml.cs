@@ -33,6 +33,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 
+using AvaloniaEdit.Document;
 using AvaloniaEdit.Folding;
 using AvaloniaEdit.Highlighting;
 
@@ -40,12 +41,16 @@ using ICSharpCode.Decompiler.CSharp.OutputVisitor;
 using ICSharpCode.Decompiler.Disassembler;
 using ICSharpCode.Decompiler.Documentation;
 using ICSharpCode.Decompiler.Metadata;
+using ICSharpCode.Decompiler.Output;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.ILSpyX;
+using ICSharpCode.ILSpyX.TreeView;
 
 using ICSharpCode.ILSpy;
 using ICSharpCode.ILSpy.AppEnv;
+using ICSharpCode.ILSpy.AssemblyTree;
 using ICSharpCode.ILSpy.Options;
+using ICSharpCode.ILSpy.TreeNodes;
 
 namespace ICSharpCode.ILSpy.TextView
 {
@@ -59,6 +64,7 @@ namespace ICSharpCode.ILSpy.TextView
 		// softer green for the actual definition.
 		static readonly Color LocalMatchBackground = Colors.GreenYellow;
 		static readonly Color LocalDefinitionBackground = Color.FromArgb(0x80, 0xA0, 0xFF, 0xA0);
+		static readonly Color DebugStepBackground = Color.FromArgb(0x80, 0xFF, 0xD7, 0x66);
 
 		// Stay-open corridor for the rich popup: as long as the pointer is closer than
 		// `distanceToPopupLimit` to the popup edges, the popup stays. The limit shrinks toward
@@ -73,6 +79,8 @@ namespace ICSharpCode.ILSpy.TextView
 		TextMarkerService textMarkerService = null!;
 		BracketHighlightRenderer bracketHighlightRenderer = null!;
 		readonly List<TextMarker> localReferenceMarks = new();
+		readonly List<TextMarker> debugStepMarks = new();
+		int debugStepHighlightVersion;
 		readonly List<AvaloniaEdit.Rendering.VisualLineElementGenerator> activeCustomGenerators = new();
 		RichTextColorizer? activeColorizer;
 		FoldingManager? activeFoldingManager;
@@ -88,6 +96,11 @@ namespace ICSharpCode.ILSpy.TextView
 		ScrollViewer? editorScrollViewer;
 		DisplaySettings? currentDisplaySettings;
 		ReferenceSegment? lastRightClickedSegment;
+		// Document offset under the pointer at the last right-click, or null if the click missed the
+		// text. Position-relative menu entries (e.g. "Toggle folding") read this so they act on the
+		// clicked line rather than wherever the caret happens to sit.
+		int? lastRightClickedOffset;
+		Bookmarks.BookmarkMargin? bookmarkMargin;
 		IReadOnlyList<IContextMenuEntryExport> contextMenuEntries = Array.Empty<IContextMenuEntryExport>();
 		Popup richPopup = null!;
 		double distanceToPopupLimit;
@@ -129,6 +142,42 @@ namespace ICSharpCode.ILSpy.TextView
 			Editor.TextArea.Caret.PositionChanged += OnCaretPositionChanged;
 
 			SetupZoomAndCopy();
+
+			// Ctrl+L focuses the omnibar into search mode (browser address-bar gesture). Tunnel so
+			// it wins before AvaloniaEdit's own key handling while focus is anywhere in the editor.
+			AddHandler(KeyDownEvent, OnPreviewKeyDownForOmnibar, RoutingStrategies.Tunnel);
+
+			// Ctrl+B toggles a bookmark on the caret line. Bubble so normal editor keys keep working.
+			AddHandler(KeyDownEvent, OnBookmarkKeyDown, RoutingStrategies.Bubble);
+
+			// Bookmark icon gutter, leftmost (before the line numbers). It draws nothing unless the
+			// current document is C# and has bookmarks, so it is harmless on IL / metadata views.
+			bookmarkMargin = new Bookmarks.BookmarkMargin(this);
+			Editor.TextArea.LeftMargins.Insert(0, bookmarkMargin);
+
+			// The text area paints the I-beam across its whole surface and the gutter margins inherit it
+			// by walking up the visual tree. The left margins (bookmark gutter, line numbers, folding) are
+			// click targets, not text, so force the normal arrow there. Line numbers and folding come and
+			// go as their display settings toggle, so re-apply whenever the margin collection changes.
+			Editor.TextArea.LeftMargins.CollectionChanged += (_, _) => ApplyArrowCursorToLeftMargins();
+			ApplyArrowCursorToLeftMargins();
+		}
+
+		internal static readonly Cursor ArrowCursor = new(StandardCursorType.Arrow);
+
+		void ApplyArrowCursorToLeftMargins()
+		{
+			foreach (var margin in Editor.TextArea.LeftMargins)
+				margin.Cursor = ArrowCursor;
+		}
+
+		void OnPreviewKeyDownForOmnibar(object? sender, KeyEventArgs e)
+		{
+			if (e.Key == Key.L && e.KeyModifiers == KeyModifiers.Control && Omnibar.IsVisible)
+			{
+				Omnibar.FocusSearch();
+				e.Handled = true;
+			}
 		}
 
 		// One generator lives for the lifetime of the view; we only swap its References collection
@@ -144,15 +193,22 @@ namespace ICSharpCode.ILSpy.TextView
 
 			// Reference navigation fires on pointer-RELEASE without drag (WPF parity: the WPF
 			// view used TextArea.PreviewMouseDown/Up the same way), so a press-and-drag over a
-			// link starts a text selection instead of navigating away. Tunnel routing mirrors
-			// WPF's Preview events and sees the gesture before AvaloniaEdit's own handlers.
+			// link starts a text selection instead of navigating away. The press handler only
+			// records the start position, so tunnel routing (before AvaloniaEdit consumes the
+			// press) is fine.
 			Editor.TextArea.AddHandler(InputElement.PointerPressedEvent,
 				OnTextAreaPointerPressedForReferenceClick,
 				RoutingStrategies.Tunnel,
 				handledEventsToo: true);
+			// The release handler must run AFTER AvaloniaEdit's own PointerReleased: AvaloniaEdit's
+			// SelectionMouseHandler captures the pointer and enters selection mode on press, and
+			// only its release handler resets that mode and releases the capture. AvaloniaEdit
+			// subscribes in the bubble phase from the TextArea constructor (before this view adds
+			// its handlers), so a bubble handler here is guaranteed to run after it. handledEventsToo
+			// keeps us running even though AvaloniaEdit marks the release handled.
 			Editor.TextArea.AddHandler(InputElement.PointerReleasedEvent,
 				OnTextAreaPointerReleasedForReferenceClick,
-				RoutingStrategies.Tunnel,
+				RoutingStrategies.Bubble,
 				handledEventsToo: true);
 		}
 
@@ -187,9 +243,10 @@ namespace ICSharpCode.ILSpy.TextView
 				ClearLocalReferenceMarks();
 				return;
 			}
-			// Cancel the caret-click selection AvaloniaEdit started on press, and stop its
-			// release processing, so the navigation's caret move doesn't grow a selection
-			// between the old anchor and the new position.
+			// AvaloniaEdit's own release handler has already reset its selection mode and released
+			// the pointer capture (it runs first in the bubble phase). Clear the empty caret-click
+			// selection it leaves behind, then navigate; marking the release handled stops it from
+			// bubbling further now that it has been consumed as a link click.
 			Editor.TextArea.ClearSelection();
 			e.Handled = true;
 			OnReferenceClicked(segment);
@@ -291,6 +348,9 @@ namespace ICSharpCode.ILSpy.TextView
 		/// document, so an HTML copy can include it on top of the xshd syntax colours.</summary>
 		internal RichTextModel? SemanticHighlightingModel => boundModel?.HighlightingModel;
 
+		/// <summary>The currently painted local-reference highlight marks (test observability).</summary>
+		internal IReadOnlyList<TextMarker> LocalReferenceMarks => localReferenceMarks;
+
 		// ThemeManager.Current is a process-lived singleton, so subscribing to its ThemeChanged in
 		// the constructor and never detaching would root every DecompilerTextView for the lifetime of
 		// the process -- one leaked view per decompiler tab. Bind the handler to the visual-tree
@@ -358,16 +418,41 @@ namespace ICSharpCode.ILSpy.TextView
 		/// <summary>Number of currently-collapsed folds (test observation point for the folding commands).</summary>
 		internal int FoldedFoldingCount => activeFoldingManager is { } mgr ? mgr.AllFoldings.Count(f => f.IsFolded) : 0;
 
-		/// <summary>Toggles the innermost fold containing the caret (the "Toggle folding" command / Ctrl+M).</summary>
-		public void ToggleFoldingAtCaret()
+		/// <summary>The active foldings as (Start, End, IsFolded) tuples (test observation point for
+		/// verifying which fold a positional command acted on).</summary>
+		internal IReadOnlyList<(int Start, int End, bool IsFolded)> GetFoldingsForTest()
+			=> activeFoldingManager is { } mgr
+				? mgr.AllFoldings.Select(f => (f.StartOffset, f.EndOffset, f.IsFolded)).ToArray()
+				: Array.Empty<(int, int, bool)>();
+
+		/// <summary>True when the innermost fold containing <paramref name="offset"/> is collapsed.
+		/// Returns false when no fold contains it (test observation point).</summary>
+		internal bool IsFoldedAt(int offset)
 		{
 			if (activeFoldingManager is not { } mgr)
-				return;
-			var caret = Editor.TextArea.Caret.Offset;
+				return false;
 			FoldingSection? target = null;
 			foreach (var f in mgr.AllFoldings)
 			{
-				if (f.StartOffset <= caret && caret <= f.EndOffset)
+				if (f.StartOffset <= offset && offset <= f.EndOffset && (target == null || f.StartOffset > target.StartOffset))
+					target = f;
+			}
+			return target?.IsFolded == true;
+		}
+
+		/// <summary>Toggles the innermost fold containing the caret (the "Toggle folding" command / Ctrl+M).</summary>
+		public void ToggleFoldingAtCaret() => ToggleFoldingAt(Editor.TextArea.Caret.Offset);
+
+		/// <summary>Toggles the innermost fold containing <paramref name="offset"/>. The right-click menu
+		/// passes the offset under the pointer so it acts on the clicked line, not the caret line.</summary>
+		public void ToggleFoldingAt(int offset)
+		{
+			if (activeFoldingManager is not { } mgr)
+				return;
+			FoldingSection? target = null;
+			foreach (var f in mgr.AllFoldings)
+			{
+				if (f.StartOffset <= offset && offset <= f.EndOffset)
 				{
 					if (target == null || f.StartOffset > target.StartOffset)
 						target = f;
@@ -492,6 +577,7 @@ namespace ICSharpCode.ILSpy.TextView
 			ApplyDisplaySetting(s, nameof(DisplaySettings.HighlightCurrentLine));
 			ApplyDisplaySetting(s, nameof(DisplaySettings.IndentationSize));
 			ApplyDisplaySetting(s, nameof(DisplaySettings.IndentationUseTabs));
+			ApplyDisplaySetting(s, nameof(DisplaySettings.EnableOmnibar));
 		}
 
 		void ApplyDisplaySetting(DisplaySettings s, string? propertyName)
@@ -522,6 +608,11 @@ namespace ICSharpCode.ILSpy.TextView
 				case nameof(DisplaySettings.IndentationUseTabs):
 					Editor.Options.ConvertTabsToSpaces = !s.IndentationUseTabs;
 					break;
+				case nameof(DisplaySettings.EnableOmnibar):
+					// Off by default; the Options Display "Tab options" toggle shows/hides the bar
+					// live without a re-decompile, per text view.
+					Omnibar.IsVisible = s.EnableOmnibar;
+					break;
 			}
 		}
 
@@ -549,13 +640,19 @@ namespace ICSharpCode.ILSpy.TextView
 			if (!e.GetCurrentPoint(Editor.TextArea.TextView).Properties.IsRightButtonPressed)
 				return;
 			var pos = GetPositionFromPointer(e);
-			if (pos == null || DataContext is not DecompilerTabPageModel model || model.References == null)
+			if (pos == null)
 			{
 				lastRightClickedSegment = null;
+				lastRightClickedOffset = null;
 				return;
 			}
 			var offset = Editor.Document.GetOffset(pos.Value.Line, pos.Value.Column);
-			lastRightClickedSegment = model.References.FindSegmentsContaining(offset).FirstOrDefault();
+			lastRightClickedOffset = offset;
+			// References and foldings are independent: a document may carry foldings but no clickable
+			// references, so the offset is recorded above before this reference lookup can bail.
+			lastRightClickedSegment = DataContext is DecompilerTabPageModel model && model.References != null
+				? model.References.FindSegmentsContaining(offset).FirstOrDefault()
+				: null;
 		}
 
 		void OnContextMenuOpening(object? sender, CancelEventArgs e)
@@ -565,6 +662,7 @@ namespace ICSharpCode.ILSpy.TextView
 			var ctx = new TextViewContext {
 				TextView = this,
 				Reference = lastRightClickedSegment,
+				TextLocation = lastRightClickedOffset,
 			};
 			menu.Items.Clear();
 
@@ -584,6 +682,269 @@ namespace ICSharpCode.ILSpy.TextView
 			}
 		}
 
+		#region Bookmarks
+
+		Bookmarks.BookmarkManager? bookmarkManager;
+
+		Bookmarks.BookmarkManager? BookmarkManager
+			=> bookmarkManager ??= AppEnv.AppComposition.TryGetExport<Bookmarks.BookmarkManager>();
+
+		// Bookmarks live only on the decompiled C# view, not on IL / metadata / resource output.
+		bool ShowsBookmarkableCode => DataContext is DecompilerTabPageModel { SyntaxExtension: ".cs" };
+
+		// Just the anchor for a line, or null when the line can't be bookmarked. Cheap enough to call
+		// per hovered line: it does not capture the editor view state (foldings, scroll, tree path),
+		// which only a bookmark that is actually being created needs.
+		Bookmarks.Bookmark? CreateAnchorForLine(int line)
+		{
+			if (!ShowsBookmarkableCode || DataContext is not DecompilerTabPageModel model)
+				return null;
+			var fallbackOwner = model.CurrentNode is IMemberTreeNode memberNode ? memberNode.Member : null;
+			return Bookmarks.BookmarkAnchoring.CreateForLine(model.DebugInfo, model.References, Editor.Document, line,
+				fallbackOwner, GetLocationNodeName(model.CurrentNode));
+		}
+
+		Bookmarks.Bookmark? CreateBookmarkForLine(int line)
+		{
+			var bookmark = CreateAnchorForLine(line);
+			if (bookmark != null && DataContext is DecompilerTabPageModel model)
+			{
+				var displaySettings = AppComposition.TryGetExport<SettingsService>()?.DisplaySettings;
+				var selectedTreeNodePath = AssemblyTreeModel.GetPathForNode(model.CurrentNode);
+				bookmark.ViewState = Bookmarks.BookmarkViewState.From(GetCurrentViewState(), displaySettings, selectedTreeNodePath);
+			}
+			return bookmark;
+		}
+
+		static string? GetLocationNodeName(SharpTreeNode? node)
+			=> node is IMemberTreeNode { Member: { } member } ? member.FullName : node?.ToString();
+
+		/// <summary>Whether <paramref name="line"/> can hold a bookmark in the current document.</summary>
+		internal bool CanToggleBookmarkAtLine(int line) => CreateAnchorForLine(line) != null;
+
+		internal bool CanToggleBookmarkAtOffset(int offset)
+		{
+			if (offset < 0 || offset > Editor.Document.TextLength)
+				return false;
+			return CanToggleBookmarkAtLine(Editor.Document.GetLineByOffset(offset).LineNumber);
+		}
+
+		/// <summary>
+		/// Adds or removes a bookmark on <paramref name="line"/>; a no-op for non-anchorable lines.
+		/// Returns true when a bookmark was added, false when one was removed or the line is not anchorable.
+		/// </summary>
+		internal bool ToggleBookmarkAtLine(int line)
+		{
+			if (CreateBookmarkForLine(line) is { } candidate)
+				return BookmarkManager?.Toggle(candidate) ?? false;
+			return false;
+		}
+
+		internal void ToggleBookmarkAtOffset(int offset)
+		{
+			if (offset < 0 || offset > Editor.Document.TextLength)
+				return;
+			ToggleBookmarkAtLine(Editor.Document.GetLineByOffset(offset).LineNumber);
+		}
+
+		void OnBookmarkKeyDown(object? sender, KeyEventArgs e)
+		{
+			if (e.Key == Key.B && e.KeyModifiers == KeyModifiers.Control && Editor.TextArea.IsKeyboardFocusWithin)
+			{
+				ToggleBookmarkAtLine(Editor.TextArea.Caret.Line);
+				e.Handled = true;
+			}
+		}
+
+		// Moves the caret to the next/previous bookmark in this document, ordered by line and relative
+		// to the caret (wrapping around). A no-op when the document holds fewer than one bookmark.
+		void NavigateBookmarkInFile(bool forward)
+		{
+			if (BookmarkManager is not { } manager)
+				return;
+			var lines = new List<int>();
+			foreach (var bookmark in manager.Bookmarks)
+			{
+				// Disabled bookmarks stay visible in the gutter but are skipped by next/previous.
+				if (bookmark.Enabled && GetLineForBookmark(bookmark) is { } line)
+					lines.Add(line);
+			}
+			if (lines.Count == 0)
+				return;
+			lines.Sort();
+			int caretLine = Editor.TextArea.Caret.Line;
+			int target = forward
+				? lines.FirstOrDefault(l => l > caretLine, lines[0])
+				: lines.LastOrDefault(l => l < caretLine, lines[^1]);
+			ScrollToLine(target);
+		}
+
+		void ApplyPendingBookmark(DecompilerTabPageModel model)
+		{
+			// Clear only once the line actually resolves and we scroll. A document-apply can run
+			// against the not-yet-decompiled document (a fresh preview tab binds with empty text
+			// before its decompile lands); leaving PendingBookmark set there lets the apply that
+			// follows the real content position the caret instead of discarding the navigation.
+			if (model.PendingBookmark is { } bookmark && ApplyBookmark(bookmark))
+				model.PendingBookmark = null;
+		}
+
+		// Computes the bookmark's current line from its saved token/anchor (resilient to reflow) and
+		// scrolls there with the one-shot highlight. Returns false when the line cannot be resolved
+		// yet (document not decompiled, or not C#). Shared by the document-apply consumption of
+		// PendingBookmark and the ScrollToBookmark callback for an already-displayed node.
+		bool ApplyBookmark(Bookmarks.Bookmark bookmark)
+		{
+			if (GetLineForBookmark(bookmark) is { } line)
+			{
+				ScrollToLine(line, bookmark.ViewState);
+				return true;
+			}
+			return false;
+		}
+
+		void ScrollToLine(int line, Bookmarks.BookmarkViewState? viewState = null)
+		{
+			var document = Editor.Document;
+			line = Math.Clamp(line, 1, document.LineCount);
+			Editor.TextArea.Caret.Offset = document.GetLineByNumber(line).Offset;
+			// Centre the line and pulse its gutter icon once the layout has caught up. Posting lets a
+			// just-applied document finish measuring, so the visual position is accurate either way --
+			// whether we got here after a fresh decompile or while the document was already on screen.
+			Dispatcher.UIThread.Post(() => {
+				if (!ReferenceEquals(Editor.Document, document) || line < 1 || line > document.LineCount)
+					return;
+				// Restore the captured foldings first -- collapsing/expanding shifts where lines sit --
+				// then centre the re-resolved line. The bookmark's saved caret/scroll are deliberately
+				// not restored: a decompiler-setting change can reflow the text so the bookmark
+				// re-anchors to a different line, and the stale offset would scroll it back off-screen.
+				if (viewState != null)
+					RestoreBookmarkFoldings(viewState);
+				CenterLineInView(document, line);
+				LineHighlightAdorner.DisplayLineHighlight(Editor.TextArea, line);
+				bookmarkMargin?.PulseLine(line);
+			}, DispatcherPriority.Background);
+		}
+
+		void RestoreBookmarkFoldings(Bookmarks.BookmarkViewState viewState)
+		{
+			if (viewState.ToDecompilerTextViewState().Foldings is { } saved && activeFoldingManager is { } manager)
+				FoldingsViewState.Restore(manager.AllFoldings, saved);
+		}
+
+		// Scrolls so <paramref name="line"/> sits in the middle of the viewport. AvaloniaEdit's
+		// ScrollTo* are no-ops in 12.0.0 (#594), so set the ScrollViewer offset directly.
+		void CenterLineInView(TextDocument document, int line)
+		{
+			if (EditorScrollViewer is not { } scrollViewer)
+				return;
+			if (!ReferenceEquals(Editor.Document, document) || line < 1 || line > document.LineCount)
+				return;
+			var textView = Editor.TextArea.TextView;
+			if (!ReferenceEquals(textView.Document, document))
+				return;
+			double visualTop = textView.GetVisualTopByDocumentLine(line);
+			double target = visualTop - (scrollViewer.Viewport.Height - textView.DefaultLineHeight) / 2;
+			scrollViewer.Offset = new Vector(scrollViewer.Offset.X, Math.Max(0, target));
+		}
+
+		// The identity of the inputs that decide where bookmarks resolve in the current C# document.
+		// Both are replaced on every decompile, while the editor reuses one TextDocument (only its text
+		// changes), so this -- not the document reference -- is what tells the gutter its cache is stale.
+		internal (object? DebugInfo, object? References) BookmarkContentVersion
+			=> DataContext is DecompilerTabPageModel { SyntaxExtension: ".cs" } model
+				? (model.DebugInfo, model.References)
+				: default;
+
+		/// <summary>
+		/// The document line a bookmark sits on in the currently shown C# document, or null when the
+		/// bookmark belongs to other code. Body anchors resolve via the IL-offset map; token anchors
+		/// via the definition's position. The module identity is verified so a token value shared
+		/// across assemblies can't place an icon on the wrong line.
+		/// </summary>
+		internal int? GetLineForBookmark(Bookmarks.Bookmark bookmark, bool updateRenderedLine = true)
+		{
+			if (DataContext is not DecompilerTabPageModel { SyntaxExtension: ".cs" } model)
+				return null;
+
+			if (bookmark.Kind == Bookmarks.BookmarkKind.Body)
+			{
+				if (model.DebugInfo is not { } debug)
+					return null;
+				foreach (var method in debug.Methods)
+				{
+					if (MatchesBookmark(method, bookmark)
+						&& method.TryGetLineForOffset(bookmark.ILOffset, out var bodyLine))
+					{
+						if (updateRenderedLine)
+							bookmark.UpdateRenderedLineNumber(bodyLine);
+						return bodyLine;
+					}
+				}
+				return null;
+			}
+
+			if (bookmark.Kind == Bookmarks.BookmarkKind.Line)
+			{
+				if (bookmark.LineNumber < 1 || bookmark.LineNumber > Editor.Document.LineCount)
+					return null;
+				if (DocumentContainsBookmarkToken(model, bookmark))
+					return bookmark.LineNumber;
+				return null;
+			}
+
+			if (model.References is { } references)
+			{
+				foreach (var segment in references)
+				{
+					if (segment.IsDefinition && segment.Reference is IEntity entity && MatchesBookmark(entity, bookmark))
+					{
+						var line = Editor.Document.GetLineByOffset(segment.StartOffset).LineNumber;
+						if (updateRenderedLine)
+							bookmark.UpdateRenderedLineNumber(line);
+						return line;
+					}
+				}
+			}
+			return null;
+		}
+
+		// The token + assembly identity that ties a bookmark to a member in the current document. The
+		// module identity is checked too, so a token value shared across assemblies can't match the
+		// wrong member. Both forms (the body-anchor debug map and a reference segment's entity) are
+		// kept in step here rather than spelled out at each call site.
+		static bool MatchesBookmark(Bookmarks.MethodDebugInfo method, Bookmarks.Bookmark bookmark)
+			=> method.Token == bookmark.Token && method.AssemblyFullName == bookmark.AssemblyFullName;
+
+		static bool MatchesBookmark(IEntity entity, Bookmarks.Bookmark bookmark)
+			=> (uint)MetadataTokens.GetToken(entity.MetadataToken) == bookmark.Token
+				&& entity.ParentModule?.MetadataFile?.FullName == bookmark.AssemblyFullName;
+
+		static bool DocumentContainsBookmarkToken(DecompilerTabPageModel model, Bookmarks.Bookmark bookmark)
+		{
+			if (model.DebugInfo != null)
+			{
+				foreach (var method in model.DebugInfo.Methods)
+				{
+					if (MatchesBookmark(method, bookmark))
+						return true;
+				}
+			}
+
+			if (model.References != null)
+			{
+				foreach (var segment in model.References)
+				{
+					if (segment.Reference is IEntity entity && MatchesBookmark(entity, bookmark))
+						return true;
+				}
+			}
+
+			return false;
+		}
+
+		#endregion
+
 		protected override void OnDataContextChanged(System.EventArgs e)
 		{
 			base.OnDataContextChanged(e);
@@ -594,6 +955,8 @@ namespace ICSharpCode.ILSpy.TextView
 			{
 				previous.PropertyChanged -= OnModelPropertyChanged;
 				previous.CaptureViewState = null;
+				previous.NavigateBookmarkInFile = null;
+				previous.ScrollToBookmark = null;
 			}
 
 			boundModel = DataContext as DecompilerTabPageModel;
@@ -604,7 +967,19 @@ namespace ICSharpCode.ILSpy.TextView
 				// records a navigation away. (Re)assigning every DataContext-change handles both
 				// the first attach and an ABA reattach.
 				model.CaptureViewState = GetCurrentViewState;
+				// Bookmarks-pane toolbar navigation actions that operate on the active document route through this.
+				model.NavigateBookmarkInFile = NavigateBookmarkInFile;
+				// Direct scroll for a bookmark activated on the already-displayed node, where no
+				// document-apply step runs to consume PendingBookmark.
+				model.ScrollToBookmark = bookmark => ApplyBookmark(bookmark);
 				ApplyDocument(model);
+				// Point the breadcrumb at this tab's node (the bar owns its own VM, so feed it the
+				// node rather than letting it inherit the document DataContext).
+				Omnibar.SetNode(model.CurrentNode);
+			}
+			else
+			{
+				Omnibar.SetNode(null);
 			}
 		}
 
@@ -637,6 +1012,13 @@ namespace ICSharpCode.ILSpy.TextView
 				// SyntaxExtension fires an intermediate rebuild that must not move the scroll.
 				ApplyDocument(model, restoreViewState: e.PropertyName == nameof(DecompilerTabPageModel.Text));
 			}
+			// Keep the breadcrumb in step when the tab re-targets a different node (the model
+			// raises this when CurrentNodes changes).
+			else if (sender is DecompilerTabPageModel nodeModel
+				&& e.PropertyName == nameof(DecompilerTabPageModel.CurrentNode))
+			{
+				Omnibar.SetNode(nodeModel.CurrentNode);
+			}
 			// HighlightedReference can change independently of a re-decompile (e.g. the analyzer
 			// pane sets it while the user is already on the right tab). Apply it directly without
 			// rebuilding the document.
@@ -667,6 +1049,7 @@ namespace ICSharpCode.ILSpy.TextView
 			// force-close even if the popup currently wants to stay (mouseClick: true).
 			TryCloseExistingPopup(mouseClick: true);
 			ClearLocalReferenceMarks();
+			ClearDebugStepMarks();
 			Editor.SyntaxHighlighting = HighlightingService.GetByExtension(model.SyntaxExtension);
 			Editor.Document.Text = model.Text;
 
@@ -695,6 +1078,15 @@ namespace ICSharpCode.ILSpy.TextView
 
 			if (restoreViewState)
 				RestoreOrResetViewState(pendingState);
+
+			ApplyDebugStepHighlight(model.DebugStepHighlight);
+
+			// Position at a navigated-to bookmark once its document (and debug map) has landed. Only on
+			// the final content (the Text change, where restoreViewState is set), AFTER the view-state
+			// reset above, so the bookmark scroll is the last word on position and the highlight plays
+			// on the settled layout instead of an intermediate render a later rebuild would scroll away.
+			if (restoreViewState)
+				ApplyPendingBookmark(model);
 
 			SwapCustomElementGenerators(model.CustomElementGenerators);
 
@@ -861,6 +1253,49 @@ namespace ICSharpCode.ILSpy.TextView
 			foreach (var mark in localReferenceMarks)
 				textMarkerService.Remove(mark);
 			localReferenceMarks.Clear();
+		}
+
+		void ApplyDebugStepHighlight(TextRange? range)
+		{
+			ClearDebugStepMarks();
+			if (range is not { } r || r.Length < 0)
+				return;
+			var start = Math.Clamp(r.Start, 0, Editor.Document.TextLength);
+			// A zero-length range is a seam caret: a step that removed its node leaves nothing to
+			// colour in the resulting text, so only the caret is placed and pulsed at the gap.
+			if (r.Length > 0)
+			{
+				var end = Math.Clamp(r.Start + r.Length, start, Editor.Document.TextLength);
+				if (end > start)
+				{
+					var mark = textMarkerService.Create(start, end - start);
+					mark.BackgroundColor = DebugStepBackground;
+					debugStepMarks.Add(mark);
+				}
+			}
+			Editor.TextArea.Caret.Offset = start;
+			Editor.TextArea.Caret.BringCaretToView();
+			// Centre on the changed node once layout has caught up, via the same helper bookmark
+			// navigation uses: GetVisualTopByDocumentLine accounts for collapsed foldings (dense in
+			// ILAst block output) that a logical line*height calc would misplace, Background priority
+			// lets a just-applied document finish measuring, and CenterLineInView rechecks the document
+			// so a newer decompile landing before the post runs can't scroll the wrong content.
+			var document = Editor.Document;
+			var line = document.GetLineByOffset(start).LineNumber;
+			var highlightVersion = debugStepHighlightVersion;
+			Dispatcher.UIThread.Post(() => {
+				if (highlightVersion == debugStepHighlightVersion)
+					CenterLineInView(document, line);
+			}, DispatcherPriority.Background);
+			CaretHighlightAdorner.DisplayCaretHighlightAnimation(Editor.TextArea);
+		}
+
+		void ClearDebugStepMarks()
+		{
+			debugStepHighlightVersion++;
+			foreach (var mark in debugStepMarks)
+				textMarkerService.Remove(mark);
+			debugStepMarks.Clear();
 		}
 
 		// Live cursor + full ScrollOffset, queried at hover-event time. Returns null if the
@@ -1040,7 +1475,10 @@ namespace ICSharpCode.ILSpy.TextView
 			switch (resolved)
 			{
 				case IEntity entity when language != null:
-					var rich = language.GetRichTextTooltip(entity);
+					// The hover tooltip is the full signature (return type before the name, no body);
+					// IL renders its own header form. No bold emphasis here, unlike the analyzer pane.
+					var rich = language.GetRichText(entity,
+						ConversionFlags.All & ~(ConversionFlags.ShowBody | ConversionFlags.PlaceReturnTypeAfterParameterList));
 					if (rich == null || string.IsNullOrEmpty(rich.Text))
 						return null;
 					var renderer = CreateTooltipRenderer();

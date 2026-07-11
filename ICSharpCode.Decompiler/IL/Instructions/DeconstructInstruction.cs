@@ -159,7 +159,7 @@ namespace ICSharpCode.Decompiler.IL
 				assignments.ChildIndex = Init.Count + 2;
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write("deconstruct ");

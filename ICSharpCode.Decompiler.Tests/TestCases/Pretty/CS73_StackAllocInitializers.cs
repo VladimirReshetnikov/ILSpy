@@ -212,11 +212,39 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return UsePointer((byte*)ptr);
 		}
 
+		// Mixed constant/non-constant floating-point initializers go through the constant data
+		// blob; reading a 'float'/'double' element as the integer of the same width produced the
+		// raw bit pattern as the literal (e.g. 1f decoded as 1.0653532E+09f).
+		public unsafe string SimpleStackAllocSingle(float a)
+		{
+			float* ptr = stackalloc float[4] { 1f, 2f, 3f, a };
+			Console.WriteLine(*ptr);
+			return UsePointer((byte*)ptr);
+		}
+
+		public unsafe string SimpleStackAllocDouble(double a)
+		{
+			double* ptr = stackalloc double[4] { 1.0, 2.0, 3.0, a };
+			Console.WriteLine(*ptr);
+			return UsePointer((byte*)ptr);
+		}
+
 		public unsafe string SimpleStackAllocInt32NonConstant(int a, int b, int c)
 		{
 			int* ptr = stackalloc int[6] { 0, 1, 0, a, b, c };
 			Console.WriteLine(*ptr);
 			return UsePointer((byte*)ptr);
+		}
+
+		// The buffer is only passed to a static call, never dereferenced as a typed pointer, so
+		// some compilers keep it on the stack as a native int rather than in an int* local.
+		// Combined with the constant allocation size being folded to a byte count, that previously
+		// made the decompiler lose the element type and throw "given Block is invalid!".
+		public unsafe string Issue3799(int pid)
+		{
+			int* ptr = stackalloc int[4] { 1, 14, 1, pid };
+			long num = 0L;
+			return UseTwoPointers(ptr, &num);
 		}
 
 		public unsafe string NotAnInitializer(int a, int b, int c)
@@ -227,6 +255,45 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			ptr[5] = c;
 			Console.WriteLine(*ptr);
 			return UsePointer((byte*)ptr);
+		}
+
+		// A pointer-typed stackalloc passed to a call must stay a local: inlining it into the
+		// argument would retype it as Span<T>, which does not convert to the pointer parameter.
+		public unsafe void StackAllocPassedToPointerCall(int v)
+		{
+			int* ptr = stackalloc int[3] { 1, 2, v };
+			UseIntPointer(ptr);
+		}
+
+		public unsafe static void UseIntPointer(int* ptr)
+		{
+		}
+
+		// A buffer that is only partially written through a reinterpreting cast is not an
+		// initializer: the fourth int is never assigned, so it must stay a sequence of stores
+		// rather than be reconstructed as 'stackalloc int[4] { 1, v, 3 }' (too few elements).
+		public unsafe string PartialReinterpret(int v)
+		{
+#if OPT
+			byte* num = stackalloc byte[16];
+			*(int*)num = 1;
+			((int*)num)[1] = v;
+			((int*)num)[2] = 3;
+			long num2 = 0L;
+			return UseBytePointer(num, &num2);
+#else
+			byte* ptr = stackalloc byte[16];
+			*(int*)ptr = 1;
+			((int*)ptr)[1] = v;
+			((int*)ptr)[2] = 3;
+			long num = 0L;
+			return UseBytePointer(ptr, &num);
+#endif
+		}
+
+		public unsafe static string UseBytePointer(byte* ptr, long* length)
+		{
+			return ((int*)ptr)->ToString();
 		}
 
 		public unsafe string NegativeOffsets(int a, int b, int c)
@@ -253,6 +320,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public unsafe string UsePointer(byte* ptr)
 		{
 			return ptr->ToString();
+		}
+
+		public unsafe static string UseTwoPointers(int* ptr, long* length)
+		{
+			return ((byte*)ptr)->ToString();
 		}
 
 		public string GetSpan()

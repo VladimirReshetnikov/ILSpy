@@ -2,6 +2,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
@@ -185,14 +186,36 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		}
 	}
 
-	public class T08_Decoration
+	public class T08_NullablePostconditionAttributes
+	{
+		public bool TryGet(string key, [MaybeNullWhen(false)] out string value)
+		{
+			value = null;
+			return false;
+		}
+
+		public static void ThrowIfNull([NotNull] object? o)
+		{
+			if (o == null)
+			{
+				throw new ArgumentNullException("o");
+			}
+		}
+
+		[return: MaybeNull]
+		public T FirstOrDefault<T>(IEnumerable<T> source)
+		{
+			return default(T);
+		}
+	}
+	public class T09_Decoration
 	{
 	}
-	public abstract class T08_DecorationSet
+	public abstract class T09_DecorationSet
 	{
-		public abstract TDecoration? Get<TDecoration>() where TDecoration : T08_Decoration;
+		public abstract TDecoration? Get<TDecoration>() where TDecoration : T09_Decoration;
 	}
-	public class T08_EmptyDecorationSet : T08_DecorationSet
+	public class T09_EmptyDecorationSet : T09_DecorationSet
 	{
 		public override TDecoration? Get<TDecoration>() where TDecoration : class
 		{

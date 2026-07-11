@@ -272,7 +272,7 @@ namespace ICSharpCode.Decompiler.IL
 			}
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -336,7 +336,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override StackType ResultType => Method.ReturnType.GetStackType();
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -372,7 +372,7 @@ namespace ICSharpCode.Decompiler.IL
 			this.ValueArgumentInfo = valueArgumentInfo;
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);

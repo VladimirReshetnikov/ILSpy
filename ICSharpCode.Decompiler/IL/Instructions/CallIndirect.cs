@@ -74,7 +74,7 @@ namespace ICSharpCode.Decompiler.IL
 			Debug.Assert(Arguments.Count == FunctionPointerType.ParameterTypes.Length + (IsInstance ? 1 : 0));
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write("call.indirect ");

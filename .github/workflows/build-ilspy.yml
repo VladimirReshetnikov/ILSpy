@@ -36,7 +36,7 @@ jobs:
     - run: mkdir -p $env:StagingDirectory
       
 
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         submodules: true
         fetch-depth: 0
@@ -90,6 +90,7 @@ jobs:
       run: dotnet-format whitespace --verify-no-changes --verbosity detailed ILSpy.sln
 
     - name: Execute unit tests
+      id: unit-tests
       run: >
         dotnet test --solution ilspy.sln
         --configuration ${{ matrix.configuration }}
@@ -102,6 +103,14 @@ jobs:
       with:
         name: test-results-${{ matrix.configuration }}
         path: 'test-results/${{ matrix.configuration }}/*.trx'
+
+    - name: Upload TestCases on test failure
+      uses: actions/upload-artifact@v7
+      if: failure() && steps.unit-tests.outcome == 'failure'
+      with:
+        name: testcases-${{ matrix.configuration }}
+        path: ICSharpCode.Decompiler.Tests/TestCases
+        compression-level: 9
 
     - name: Create Test Report
       uses: test-summary/action@v2
@@ -144,11 +153,9 @@ jobs:
         dotnet msbuild ILSpy.Installer.sln /p:Configuration="Release" /p:Platform="Any CPU"
         dotnet msbuild ILSpy.Installer.sln /p:Configuration="Release" /p:Platform="Any CPU" /p:PlatformForInstaller="ARM64"
 
-    - name: Build VS Extensions (for 2017-2019 and 2022)
+    - name: Build VS Extension (for VS 2022)
       if: matrix.configuration == 'release' && env.BuildAndPublishVsix == 'true'
-      run: |
-        msbuild ILSpy.VSExtensions.sln /t:Restore /p:Configuration="Release" /p:Platform="Any CPU"
-        msbuild ILSpy.VSExtensions.sln /p:Configuration="Release" /p:Platform="Any CPU"
+      run: dotnet build ILSpy.VSExtensions.slnx -c Release
       
     - name: Verify package contents
       if: matrix.configuration == 'debug'
@@ -157,14 +164,6 @@ jobs:
         git diff --exit-code
 
     # https://github.com/actions/upload-artifact
-    - name: Upload VSIX (VS 2019) release build artifacts
-      if: matrix.configuration == 'release' && env.BuildAndPublishVsix == 'true'
-      uses: actions/upload-artifact@v7
-      with:
-        name: ILSpy VS Addin for VS 2017-2019 ${{ steps.version.outputs.ILSPY_VERSION_NUMBER }} (${{ matrix.configuration }})
-        path: ILSpy.AddIn\bin\${{ matrix.configuration }}\net472\*.vsix
-        if-no-files-found: error
-
     - name: Upload VSIX (VS 2022) release build artifacts
       if: matrix.configuration == 'release' && env.BuildAndPublishVsix == 'true'
       uses: actions/upload-artifact@v7
@@ -291,7 +290,7 @@ jobs:
     steps:
     - run: mkdir -p $env:StagingDirectory
 
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         submodules: true
         fetch-depth: 0
@@ -334,6 +333,7 @@ jobs:
         --results-directory test-results
 
     - name: Execute decompiler tests
+      id: decompiler-tests
       run: >
         dotnet test --project ICSharpCode.Decompiler.Tests/ICSharpCode.Decompiler.Tests.csproj
         --configuration Release
@@ -346,6 +346,14 @@ jobs:
       with:
         name: test-results-${{ matrix.platform }}
         path: 'test-results/*.trx'
+
+    - name: Upload TestCases on test failure
+      uses: actions/upload-artifact@v7
+      if: failure() && steps.decompiler-tests.outcome == 'failure'
+      with:
+        name: testcases-${{ matrix.platform }}
+        path: ICSharpCode.Decompiler.Tests/TestCases
+        compression-level: 9
 
     - name: Create Test Report
       uses: test-summary/action@v2

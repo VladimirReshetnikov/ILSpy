@@ -37,7 +37,7 @@ namespace ICSharpCode.Decompiler.IL
 
 	partial class LdObj
 	{
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			if (options.UseFieldSugar)
 			{
@@ -65,7 +65,7 @@ namespace ICSharpCode.Decompiler.IL
 
 	partial class StObj
 	{
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			if (options.UseFieldSugar)
 			{

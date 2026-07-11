@@ -64,6 +64,7 @@ namespace ICSharpCode.ILSpy.Options
 			// Decompiler / disassembler output (see SettingsService.ApplyDisplaySettings +
 			// GetIndentationString, and CSharpILMixedLanguage / ILLanguage for the IL-detail ones).
 			[nameof(DisplaySettings.FoldBraces)] = DisplaySettingReaction.Redecompile,
+			[nameof(DisplaySettings.ExpandXmlDocumentationComments)] = DisplaySettingReaction.Redecompile,
 			[nameof(DisplaySettings.ExpandMemberDefinitions)] = DisplaySettingReaction.Redecompile,
 			[nameof(DisplaySettings.ExpandUsingDeclarations)] = DisplaySettingReaction.Redecompile,
 			[nameof(DisplaySettings.ShowDebugInfo)] = DisplaySettingReaction.Redecompile,
@@ -80,6 +81,8 @@ namespace ICSharpCode.ILSpy.Options
 			[nameof(DisplaySettings.EnableWordWrap)] = DisplaySettingReaction.EditorLive,
 			[nameof(DisplaySettings.HighlightCurrentLine)] = DisplaySettingReaction.EditorLive,
 			[nameof(DisplaySettings.HighlightMatchingBraces)] = DisplaySettingReaction.EditorLive,
+			// The text view shows/hides its own omnibar from this; tree and output are unaffected.
+			[nameof(DisplaySettings.EnableOmnibar)] = DisplaySettingReaction.EditorLive,
 
 			// No model-side reaction.
 			[nameof(DisplaySettings.StyleWindowTitleBar)] = DisplaySettingReaction.None,

@@ -310,6 +310,23 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
+		private static void BitwiseAndShiftBinaryOperators(dynamic a, dynamic b)
+		{
+			DynamicTests.MemberAccess(a & b);
+			DynamicTests.MemberAccess(a & 1);
+			DynamicTests.MemberAccess(a & null);
+			DynamicTests.MemberAccess(a | b);
+			DynamicTests.MemberAccess(a | 1);
+			DynamicTests.MemberAccess(a | null);
+			DynamicTests.MemberAccess(a ^ b);
+			DynamicTests.MemberAccess(a ^ 1);
+			DynamicTests.MemberAccess(a ^ null);
+			DynamicTests.MemberAccess(a << b);
+			DynamicTests.MemberAccess(a << 1);
+			DynamicTests.MemberAccess(a >> b);
+			DynamicTests.MemberAccess(a >> 1);
+		}
+
 		private static void RelationalOperators(dynamic a, dynamic b)
 		{
 			DynamicTests.MemberAccess(a == b);
@@ -369,6 +386,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			a.Setter2 -= b;
 			a.Setter2 *= b;
 			a.Setter2 /= b;
+			a.Setter2 %= b;
+			a.Setter2 &= b;
+			a.Setter2 |= b;
+			a.Setter2 ^= b;
+			a.Setter2 <<= b;
+			a.Setter2 >>= b;
 			field.Setter += 5;
 			field.Setter -= 5;
 		}
@@ -394,6 +417,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			//++a;
 			DynamicTests.Casts(-a);
 			DynamicTests.Casts(+a);
+			DynamicTests.Casts(~a);
 		}
 
 		private static void Loops(dynamic list)
@@ -552,6 +576,37 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return ref o;
 		}
 #endif
+
+		private static void WhileDynamic(dynamic a)
+		{
+			while (a)
+			{
+				Console.WriteLine("x");
+			}
+		}
+
+#if CS60
+		private static void NullConditionalInvocation(dynamic a)
+		{
+			a?.Call();
+		}
+#endif
+
+		private static void DynamicEventAssignment(dynamic a, EventHandler b)
+		{
+			a.Event += b;
+			a.Event -= b;
+		}
+
+		private static void DynamicEventAssignmentResultUsed(dynamic a, EventHandler b)
+		{
+			Console.WriteLine(a.Event += b);
+		}
+
+		private static dynamic DynamicEventAssignmentResultReturned(dynamic a, EventHandler b)
+		{
+			return a.Event += b;
+		}
 	}
 
 	internal static class Extension

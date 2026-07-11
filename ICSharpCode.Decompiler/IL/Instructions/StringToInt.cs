@@ -52,7 +52,7 @@ namespace ICSharpCode.Decompiler.IL
 			return dict;
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write("string.to.int ");

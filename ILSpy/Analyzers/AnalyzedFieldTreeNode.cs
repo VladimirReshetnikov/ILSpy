@@ -18,6 +18,8 @@
 
 using System;
 
+using AvaloniaEdit.Highlighting;
+
 using ICSharpCode.Decompiler.Output;
 using ICSharpCode.Decompiler.TypeSystem;
 
@@ -36,8 +38,11 @@ namespace ICSharpCode.ILSpy.Analyzers.TreeNodes
 
 		public override IEntity Member => analyzedField;
 
-		public override object Text => Language.EntityToString(analyzedField,
-			ConversionFlags.ShowDeclaringType | ConversionFlags.UseFullyQualifiedEntityNames);
+		public override object Text => CreateRichText()?.Text
+			?? Language.EntityToString(analyzedField,
+				ConversionFlags.ShowDeclaringType | ConversionFlags.UseFullyQualifiedEntityNames);
+
+		protected override RichText? BuildRichText() => CreateMemberRichText("", MemberSignatureFlags);
 
 		public override object Icon => Images.GetIcon(Images.Field,
 			Images.GetOverlay(analyzedField.Accessibility), analyzedField.IsStatic);

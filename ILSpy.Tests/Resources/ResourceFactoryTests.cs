@@ -62,6 +62,7 @@ public class ResourceFactoryTests
 	[TestCase("favicon.ico")]
 	[TestCase("pointer.cur")]
 	[TestCase("strings.resources")]
+	[TestCase("!AvaloniaResources")]
 	public void Typed_Resource_Names_Route_To_Specialised_Node(string name)
 	{
 		// Each known resource extension (.xsd/.xml/.png/.bmp/.ico/.cur/.resources/...) has a
@@ -184,6 +185,57 @@ public class ResourceFactoryTests
 		types[1].Patterns.Should().BeEquivalentTo(new[] { "*.resx" });
 	}
 
+	[AvaloniaTest]
+	public void AvaloniaResources_Unpacks_Packed_Files_Into_Child_Nodes()
+	{
+		// The !AvaloniaResources blob packs every Avalonia resource behind a single index. The
+		// node must unpack it into one child per packed file (sorted naturally) so each file can
+		// be viewed and saved on its own, mirroring how .resources files are unpacked.
+
+		// Arrange — boot composition; build a blob with three packed files (deliberately out of
+		// order to exercise the natural sort) and dispatch it.
+		EnsureComposition();
+		var node = (AvaloniaResourcesFileTreeNode)ResourceEntryNode.Create(
+			new ByteArrayResource("!AvaloniaResources", BuildAvaloniaResources(
+				("/Views/MainWindow.axaml", Encoding.UTF8.GetBytes("<Window/>")),
+				("/App.axaml", Encoding.UTF8.GetBytes("<Application/>")),
+				("/assets/logo.png", new byte[] { 0x89, 0x50, 0x4E, 0x47 }))));
+
+		// Act — force the lazy children to load.
+		node.EnsureLazyChildren();
+
+		// Assert — one child per packed file, keyed by the rooted path and naturally sorted.
+		var names = node.Children.Cast<ResourceEntryNode>().Select(c => c.Text.ToString()).ToList();
+		names.Should().Equal("/App.axaml", "/assets/logo.png", "/Views/MainWindow.axaml");
+	}
+
+	static byte[] BuildAvaloniaResources(params (string Path, byte[] Data)[] files)
+	{
+		var ms = new MemoryStream();
+		var data = new MemoryStream();
+		using (var bw = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true))
+		{
+			bw.Write(0); // index length placeholder, patched below
+			bw.Write(2); // BinaryCurrentVersion
+			bw.Write(files.Length);
+			foreach (var (path, bytes) in files)
+			{
+				bw.Write(path);
+				bw.Write((int)data.Position);
+				bw.Write(bytes.Length);
+				data.Write(bytes, 0, bytes.Length);
+			}
+		}
+		int indexLength = (int)(ms.Length - 4);
+		ms.Position = 0;
+		using (var bw = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true))
+			bw.Write(indexLength);
+		ms.Position = ms.Length;
+		data.Position = 0;
+		data.CopyTo(ms);
+		return ms.ToArray();
+	}
+
 	static byte[] BuildResources((string Key, object Value)[] entries)
 	{
 		var ms = new MemoryStream();
@@ -193,5 +245,64 @@ public class ResourceFactoryTests
 				writer.AddResource(k, v);
 		}
 		return ms.ToArray();
+	}
+
+	[AvaloniaTest]
+	[TestCase("Themes/Generic.baml")]
+	[TestCase("logo.png")]
+	[TestCase("favicon.ico")]
+	public void Byte_Array_Entries_Route_Through_The_Factory_Pipeline(string name)
+	{
+		// .resources / !AvaloniaResources containers unpack their entries as raw byte arrays.
+		// Those entries must go through the same factory dispatch as top-level resources, so a
+		// .baml entry gets the BAML-to-XAML decompiler view, an image its viewer, and so on —
+		// not the generic byte-count node.
+		EnsureComposition();
+
+		var node = ResourceEntryNode.Create(name, new byte[] { 0x00, 0x01 });
+
+		node.GetType().Should().NotBe(typeof(ResourceEntryNode),
+			$"entry '{name}' should be routed to a specialised node, not the generic entry node");
+	}
+
+	[AvaloniaTest]
+	public void Resources_File_Decompile_Lists_Stream_Entries()
+	{
+		// Binary entries inside a .resources file only show up as tree children; the container's
+		// text view must also list them by name so the content is discoverable without expanding
+		// the tree.
+		EnsureComposition();
+		var node = (ResourcesFileTreeNode)ResourceEntryNode.Create(
+			new ByteArrayResource("app.g.resources", BuildResources(
+				new (string, object)[] {
+					("assets/data.bin", new byte[] { 1, 2, 3 }),
+					("greeting", "hello"),
+				})));
+		node.EnsureLazyChildren();
+		var output = new AvaloniaEditTextOutput();
+		var language = AppComposition.Current.GetExport<LanguageService>().CurrentLanguage;
+
+		node.Decompile(language, output, new DecompilationOptions(new DecompilerSettings()));
+
+		output.GetText().Should().Contain("assets/data.bin");
+	}
+
+	[AvaloniaTest]
+	public void AvaloniaResources_Decompile_Lists_Packed_Entries()
+	{
+		// The !AvaloniaResources container packs files behind one index; its text view must
+		// enumerate the packed paths, mirroring the .resources entry listing.
+		EnsureComposition();
+		var node = (AvaloniaResourcesFileTreeNode)ResourceEntryNode.Create(
+			new ByteArrayResource("!AvaloniaResources", BuildAvaloniaResources(
+				("/App.axaml", Encoding.UTF8.GetBytes("<Application/>")),
+				("/assets/logo.png", new byte[] { 0x89, 0x50, 0x4E, 0x47 }))));
+		var output = new AvaloniaEditTextOutput();
+		var language = AppComposition.Current.GetExport<LanguageService>().CurrentLanguage;
+
+		node.Decompile(language, output, new DecompilationOptions(new DecompilerSettings()));
+
+		output.GetText().Should().Contain("/App.axaml");
+		output.GetText().Should().Contain("/assets/logo.png");
 	}
 }

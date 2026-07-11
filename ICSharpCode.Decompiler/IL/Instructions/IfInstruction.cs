@@ -82,7 +82,7 @@ namespace ICSharpCode.Decompiler.IL
 			return InstructionFlags.ControlFlow | condition.Flags | SemanticHelper.CombineBranches(trueInst.Flags, falseInst.Flags);
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			if (options.UseLogicOperationSugar)

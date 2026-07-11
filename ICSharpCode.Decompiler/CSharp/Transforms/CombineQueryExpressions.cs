@@ -16,7 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
@@ -30,11 +33,21 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 	/// </summary>
 	public class CombineQueryExpressions : IAstTransform
 	{
+		[AllowNull] TransformContext context;
+
 		public void Run(AstNode rootNode, TransformContext context)
 		{
 			if (!context.Settings.QueryExpressions)
 				return;
-			CombineQueries(rootNode, new Dictionary<string, object>());
+			this.context = context;
+			try
+			{
+				CombineQueries(rootNode, new Dictionary<string, object?>());
+			}
+			finally
+			{
+				this.context = null;
+			}
 		}
 
 		static readonly InvocationExpression castPattern = new InvocationExpression {
@@ -45,10 +58,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		};
 
-		void CombineQueries(AstNode node, Dictionary<string, object> fromOrLetIdentifiers)
+		void CombineQueries(AstNode node, Dictionary<string, object?> fromOrLetIdentifiers)
 		{
-			AstNode next;
-			for (AstNode child = node.FirstChild; child != null; child = next)
+			AstNode? next;
+			for (AstNode? child = node.FirstChild; child != null; child = next)
 			{
 				// store reference to next child before transformation
 				next = child.NextSibling;
@@ -66,10 +79,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					else
 					{
 						QueryContinuationClause continuation = new QueryContinuationClause();
+						context.Step("Introduce query continuation", fromClause);
 						continuation.PrecedingQuery = innerQuery.Detach();
 						continuation.Identifier = fromClause.Identifier;
 						continuation.CopyAnnotationsFrom(fromClause);
 						fromClause.ReplaceWith(continuation);
+						context.EndStep(continuation);
 					}
 				}
 				else
@@ -83,6 +98,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						// explicit Cast call as the query source in that case so the result still parses.
 						if (inExpr is not UnaryOperatorExpression { Operator: UnaryOperatorType.NullConditional })
 						{
+							context.Step("Move Cast type into from clause", fromClause);
 							fromClause.Type = m.Get<AstType>("targetType").Single().Detach();
 							fromClause.Expression = inExpr.Detach();
 						}
@@ -108,11 +124,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		};
 
-		bool TryRemoveTransparentIdentifier(QueryExpression query, QueryFromClause fromClause, QueryExpression innerQuery, Dictionary<string, object> letClauses)
+		bool TryRemoveTransparentIdentifier(QueryExpression query, QueryFromClause fromClause, QueryExpression innerQuery, Dictionary<string, object?> letClauses)
 		{
 			if (!CSharpDecompiler.IsTransparentIdentifier(fromClause.Identifier))
 				return false;
-			QuerySelectClause selectClause = innerQuery.Clauses.Last() as QuerySelectClause;
+			QuerySelectClause? selectClause = innerQuery.Clauses.Last() as QuerySelectClause;
+			if (selectClause == null)
+				return false;
 			Match match = selectTransparentIdentifierPattern.Match(selectClause);
 			if (!match.Success)
 				return false;
@@ -120,14 +138,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// from * in (from x in ... select new { members of anonymous type }) ...
 			// =>
 			// from x in ... { let x = ... } ...
+			context.Step("Remove transparent query identifier", fromClause);
 			fromClause.Remove();
 			selectClause.Remove();
 			// Move clauses from innerQuery to query
-			QueryClause insertionPos = null;
+			QueryClause? insertionPos = null;
 			foreach (var clause in innerQuery.Clauses)
 			{
 				query.Clauses.InsertAfter(insertionPos, insertionPos = clause.Detach());
 			}
+			context.EndStep(query.Clauses.First());
 
 			foreach (var expr in match.Get<Expression>("expr"))
 			{
@@ -164,7 +184,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// <summary>
 		/// Removes all occurrences of transparent identifiers
 		/// </summary>
-		void RemoveTransparentIdentifierReferences(AstNode node, Dictionary<string, object> fromOrLetIdentifiers)
+		void RemoveTransparentIdentifierReferences(AstNode node, Dictionary<string, object?> fromOrLetIdentifiers)
 		{
 			foreach (AstNode child in node.Children)
 			{
@@ -184,7 +204,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				newIdent.RemoveAnnotations<Semantics.MemberResolveResult>(); // remove the reference to the property of the anonymous type
 				if (annotation != null)
 					newIdent.AddAnnotation(annotation);
+				context.Step("Replace transparent query identifier reference", mre);
 				mre.ReplaceWith(newIdent);
+				context.EndStep(newIdent);
 				return;
 			}
 		}

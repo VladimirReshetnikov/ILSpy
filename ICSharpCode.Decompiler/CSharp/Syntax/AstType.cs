@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System.Collections.Generic;
 
 using ICSharpCode.Decompiler.CSharp.Resolver;
@@ -26,91 +28,9 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	/// <summary>
 	/// A type reference in the C# AST.
 	/// </summary>
-	public abstract class AstType : AstNode
+	[DecompilerAstNode(hasPatternPlaceholder: true)]
+	public abstract partial class AstType : AstNode
 	{
-		#region Null
-		public new static readonly AstType Null = new NullAstType();
-
-		sealed class NullAstType : AstType
-		{
-			public override bool IsNull {
-				get {
-					return true;
-				}
-			}
-
-			public override void AcceptVisitor(IAstVisitor visitor)
-			{
-				visitor.VisitNullNode(this);
-			}
-
-			public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-			{
-				return visitor.VisitNullNode(this);
-			}
-
-			public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-			{
-				return visitor.VisitNullNode(this, data);
-			}
-
-			protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-			{
-				return other == null || other.IsNull;
-			}
-		}
-		#endregion
-
-		#region PatternPlaceholder
-		public static implicit operator AstType(PatternMatching.Pattern pattern)
-		{
-			return pattern != null ? new PatternPlaceholder(pattern) : null;
-		}
-
-		sealed class PatternPlaceholder : AstType, INode
-		{
-			readonly PatternMatching.Pattern child;
-
-			public PatternPlaceholder(PatternMatching.Pattern child)
-			{
-				this.child = child;
-			}
-
-			public override NodeType NodeType {
-				get { return NodeType.Pattern; }
-			}
-
-			public override void AcceptVisitor(IAstVisitor visitor)
-			{
-				visitor.VisitPatternPlaceholder(this, child);
-			}
-
-			public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-			{
-				return visitor.VisitPatternPlaceholder(this, child);
-			}
-
-			public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-			{
-				return visitor.VisitPatternPlaceholder(this, child, data);
-			}
-
-			protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-			{
-				return child.DoMatch(other, match);
-			}
-
-			bool PatternMatching.INode.DoMatchCollection(Role role, PatternMatching.INode pos, PatternMatching.Match match, PatternMatching.BacktrackingInfo backtrackingInfo)
-			{
-				return child.DoMatchCollection(role, pos, match, backtrackingInfo);
-			}
-		}
-		#endregion
-
-		public override NodeType NodeType {
-			get { return NodeType.TypeReference; }
-		}
-
 		public new AstType Clone()
 		{
 			return (AstType)base.Clone();
@@ -121,7 +41,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		public bool IsVar()
 		{
-			SimpleType st = this as SimpleType;
+			SimpleType? st = this as SimpleType;
 			return st != null && st.Identifier == "var" && st.TypeArguments.Count == 0;
 		}
 
@@ -138,7 +58,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				return NameLookupMode.TypeInUsingDeclaration;
 			}
-			else if (outermostType.Role == Roles.BaseType)
+			else if (outermostType.Slot?.Kind == Slots.BaseType)
 			{
 				// Use BaseTypeReference for a type's base type, and for a constraint on a type.
 				// Do not use it for a constraint on a method.

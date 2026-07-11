@@ -90,6 +90,14 @@
                     <SolidColorBrush x:Key="ILSpy.FoldingMarkerForeground" Color="#808080" />
                     <SolidColorBrush x:Key="ILSpy.FoldingMarkerSelectedBackground" Color="White" />
                     <SolidColorBrush x:Key="ILSpy.FoldingMarkerSelectedForeground" Color="Black" />
+                    <SolidColorBrush x:Key="ILSpy.BookmarkGutterBackground" Color="#F3F0D0" />
+                    <SolidColorBrush x:Key="ILSpy.BookmarkGutterBorder" Color="#FFC8CDD3" />
+                    <!-- Omnibar (breadcrumb / search bar atop the decompiled view): a faint surface
+                         set off from the cream editor canvas, with the toolbar accent for crumb hover. -->
+                    <SolidColorBrush x:Key="ILSpy.OmnibarBackground" Color="#F3F3F3" />
+                    <SolidColorBrush x:Key="ILSpy.OmnibarBorder" Color="#FFC8CDD3" />
+                    <SolidColorBrush x:Key="ILSpy.OmnibarHover" Color="#330078D7" />
+                    <SolidColorBrush x:Key="ILSpy.OmnibarScrollThumb" Color="#A6555555" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="ILSpy.EditorBackground" Color="#1E1E1E" />
@@ -142,6 +150,14 @@
                     <SolidColorBrush x:Key="ILSpy.FoldingMarkerForeground" Color="#A0A0A0" />
                     <SolidColorBrush x:Key="ILSpy.FoldingMarkerSelectedBackground" Color="#2D2D30" />
                     <SolidColorBrush x:Key="ILSpy.FoldingMarkerSelectedForeground" Color="#DCDCDC" />
+                    <SolidColorBrush x:Key="ILSpy.BookmarkGutterBackground" Color="#252526" />
+                    <SolidColorBrush x:Key="ILSpy.BookmarkGutterBorder" Color="#3F3F46" />
+                    <!-- Omnibar: a step lighter than the dark editor canvas so the bar reads as
+                         chrome, sharing the toolbar accent for crumb hover. -->
+                    <SolidColorBrush x:Key="ILSpy.OmnibarBackground" Color="#2D2D30" />
+                    <SolidColorBrush x:Key="ILSpy.OmnibarBorder" Color="#3F3F46" />
+                    <SolidColorBrush x:Key="ILSpy.OmnibarHover" Color="#330078D7" />
+                    <SolidColorBrush x:Key="ILSpy.OmnibarScrollThumb" Color="#A6C8C8C8" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 
@@ -243,6 +259,19 @@
         <Style Selector="MenuItem">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource ILSpy.MenuForeground}" />
+            <!-- The Simple theme sizes a dropdown row to its 16px icon plus margins (~24px), tighter
+                 than the classic WPF menu. Give rows more vertical breathing room to match. -->
+            <Setter Property="MinHeight" Value="28" />
+        </Style>
+        <!-- Centre the icon and label in the taller row instead of letting them sit at the top. -->
+        <Style Selector="MenuItem /template/ ContentPresenter#PART_IconPresenter">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="MenuItem /template/ TextBlock#PART_InputGestureText">
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style Selector="ContextMenu">
             <Setter Property="Background" Value="{DynamicResource ILSpy.MenuBackground}" />

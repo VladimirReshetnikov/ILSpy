@@ -86,7 +86,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public static string GetToken(this ComparisonKind kind)
 		{
-			return BinaryOperatorExpression.GetOperatorRole(kind.ToBinaryOperatorType()).Token;
+			return BinaryOperatorExpression.GetOperatorToken(kind.ToBinaryOperatorType());
 		}
 	}
 
@@ -179,7 +179,7 @@ namespace ICSharpCode.Decompiler.IL
 			}
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			if (options.UseLogicOperationSugar && MatchLogicNot(out var arg))

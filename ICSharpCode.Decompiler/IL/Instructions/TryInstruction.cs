@@ -68,7 +68,7 @@ namespace ICSharpCode.Decompiler.IL
 			return clone;
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(".try ");
@@ -164,7 +164,7 @@ namespace ICSharpCode.Decompiler.IL
 			}
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write("catch ");
@@ -217,7 +217,7 @@ namespace ICSharpCode.Decompiler.IL
 			return new TryFinally(TryBlock.Clone(), finallyBlock.Clone()).WithILRange(this);
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(".try ");
@@ -314,7 +314,7 @@ namespace ICSharpCode.Decompiler.IL
 			return new TryFault(TryBlock.Clone(), faultBlock.Clone()).WithILRange(this);
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(".try ");

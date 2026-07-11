@@ -125,7 +125,7 @@ namespace ICSharpCode.Decompiler.IL
 				entryPoint.IncomingEdgeCount--;
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.WriteLocalReference("BlockContainer", this, isDefinition: true);

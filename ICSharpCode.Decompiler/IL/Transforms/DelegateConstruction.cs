@@ -69,6 +69,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 							v.CaptureScope = BlockContainer.FindClosestContainer(store);
 						}
 					}
+					if (f != null)
+					{
+						context.EndStep(f);
+					}
 					context.StepEndGroup();
 				}
 			}

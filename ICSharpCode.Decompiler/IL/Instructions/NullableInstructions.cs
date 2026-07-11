@@ -90,7 +90,7 @@ namespace ICSharpCode.Decompiler.IL
 			Debug.Assert(Ancestors.Any(a => a is NullableRewrap));
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			output.Write("nullable.unwrap.");
 			if (RefInput)

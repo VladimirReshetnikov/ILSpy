@@ -165,6 +165,60 @@ Are you sure you want to continue?</value>
   <data name="BaseTypes" xml:space="preserve">
     <value>Base Types</value>
   </data>
+  <data name="BookmarkAssemblyMissing" xml:space="preserve">
+    <value>Assembly for this bookmark no longer exists on disk, remove bookmark?</value>
+  </data>
+  <data name="BookmarkDelete" xml:space="preserve">
+    <value>Delete Bookmark</value>
+  </data>
+  <data name="BookmarkDisable" xml:space="preserve">
+    <value>Enable / Disable Bookmark</value>
+  </data>
+  <data name="BookmarkExport" xml:space="preserve">
+    <value>Export Bookmarks...</value>
+  </data>
+  <data name="BookmarkExportTitle" xml:space="preserve">
+    <value>Export Bookmarks</value>
+  </data>
+  <data name="BookmarkImport" xml:space="preserve">
+    <value>Import Bookmarks...</value>
+  </data>
+  <data name="BookmarkImportFailed" xml:space="preserve">
+    <value>The selected file could not be read as a bookmark file. Your bookmarks were left unchanged.</value>
+  </data>
+  <data name="BookmarkImportMerge" xml:space="preserve">
+    <value>Merge</value>
+  </data>
+  <data name="BookmarkImportReplace" xml:space="preserve">
+    <value>Replace</value>
+  </data>
+  <data name="BookmarkImportReplaceOrMerge" xml:space="preserve">
+    <value>Replace the current bookmarks with the imported ones, or merge them?</value>
+  </data>
+  <data name="BookmarkImportTitle" xml:space="preserve">
+    <value>Import Bookmarks</value>
+  </data>
+  <data name="BookmarkModule" xml:space="preserve">
+    <value>Module</value>
+  </data>
+  <data name="BookmarkNextBookmark" xml:space="preserve">
+    <value>Next Bookmark</value>
+  </data>
+  <data name="BookmarkNextInFile" xml:space="preserve">
+    <value>Next Bookmark in File</value>
+  </data>
+  <data name="BookmarkPreviousBookmark" xml:space="preserve">
+    <value>Previous Bookmark</value>
+  </data>
+  <data name="BookmarkPreviousInFile" xml:space="preserve">
+    <value>Previous Bookmark in File</value>
+  </data>
+  <data name="BookmarkToggle" xml:space="preserve">
+    <value>Toggle Bookmark</value>
+  </data>
+  <data name="Bookmarks" xml:space="preserve">
+    <value>Bookmarks</value>
+  </data>
   <data name="C_lone" xml:space="preserve">
     <value>C_lone</value>
   </data>
@@ -492,9 +546,6 @@ Are you sure you want to continue?</value>
   <data name="DecompilerSettings.RequiredMembers" xml:space="preserve">
     <value>Required members</value>
   </data>
-  <data name="DecompilerSettings.RuntimeAsync" xml:space="preserve">
-    <value>Decompile runtime-async (System.Runtime.CompilerServices.AsyncHelpers) methods</value>
-  </data>
   <data name="DecompilerSettings.ScopedRef" xml:space="preserve">
     <value>'scoped' lifetime annotation</value>
   </data>
@@ -666,6 +717,9 @@ Are you sure you want to continue?</value>
   <data name="ExpandUsingDeclarationsAfterDecompilation" xml:space="preserve">
     <value>Expand using declarations after decompilation</value>
   </data>
+  <data name="ExpandXmlDocumentationCommentsAfterDecompilation" xml:space="preserve">
+    <value>Expand XML documentation comments after decompilation</value>
+  </data>
   <data name="ExportProjectSolution" xml:space="preserve">
     <value>Export Project/Solution...</value>
   </data>
@@ -717,6 +771,9 @@ Are you sure you want to continue?</value>
   <data name="ILSpyAboutPageTxt" xml:space="preserve">
     <value>ILSpyAboutPage.txt</value>
   </data>
+  <data name="ILSpyStartedFrom" xml:space="preserve">
+    <value>ILSpy started from </value>
+  </data>
   <data name="ILSpyVersion" xml:space="preserve">
     <value>ILSpy version </value>
   </data>
@@ -731,6 +788,9 @@ Are you sure you want to continue?</value>
   </data>
   <data name="InsertUsingDeclarations" xml:space="preserve">
     <value>Insert using declarations</value>
+  </data>
+  <data name="InvalidTargetFramework" xml:space="preserve">
+    <value>Unknown target framework. Enter a moniker such as net48 or net6.0.</value>
   </data>
   <data name="ListDeleteConfirmation" xml:space="preserve">
     <value>Are you sure that you want to delete the selected assembly list?</value>
@@ -928,6 +988,9 @@ Do you want to continue?</value>
   <data name="RenameList" xml:space="preserve">
     <value>Rename list</value>
   </data>
+  <data name="ResetTargetFramework" xml:space="preserve">
+    <value>Reset Target Framework</value>
+  </data>
   <data name="ResetToDefaults" xml:space="preserve">
     <value>Reset to defaults</value>
   </data>
@@ -991,6 +1054,9 @@ Do you want to continue?</value>
   <data name="SelectVersionDropdownTooltip" xml:space="preserve">
     <value>Select version of language to output (Alt+E)</value>
   </data>
+  <data name="SetTargetFramework" xml:space="preserve">
+    <value>Set Target Framework...</value>
+  </data>
   <data name="SettingsChangeRestartRequired" xml:space="preserve">
     <value>You must restart ILSpy for the change to take effect.</value>
   </data>
@@ -1026,6 +1092,9 @@ Do you want to continue?</value>
   </data>
   <data name="ShowMetadataTokensInBase10" xml:space="preserve">
     <value>Show metadata tokens in base 10</value>
+  </data>
+  <data name="ShowOmnibar" xml:space="preserve">
+    <value>Show omnibar (breadcrumb / search bar) above the decompiled code</value>
   </data>
   <data name="ShowPublicOnlyTypesMembers" xml:space="preserve">
     <value>Show only public types and members</value>
@@ -1074,6 +1143,9 @@ Do you want to continue?</value>
   </data>
   <data name="TabSize" xml:space="preserve">
     <value>Tab size:</value>
+  </data>
+  <data name="TargetFramework" xml:space="preserve">
+    <value>Target framework:</value>
   </data>
   <data name="Theme" xml:space="preserve">
     <value>Theme</value>

@@ -40,7 +40,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public bool IsRefStruct { get; set; }
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write("using");

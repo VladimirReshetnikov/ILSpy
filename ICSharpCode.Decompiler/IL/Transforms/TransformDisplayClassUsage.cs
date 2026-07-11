@@ -972,7 +972,9 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					if (inst.Value is StLoc || inst.Value is CompoundAssignmentInstruction)
 					{
 						context.Step($"Remove unused variable assignment {inst.Variable.Name}", inst);
-						inst.ReplaceWith(inst.Value);
+						var replacement = inst.Value;
+						inst.ReplaceWith(replacement);
+						context.EndStep(replacement);
 					}
 					return;
 				}
@@ -982,12 +984,16 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					if (inst.Value is Block initBlock && initBlock.Kind == BlockKind.ObjectInitializer)
 					{
 						context.Step($"Remove initializer of {inst.Variable.Name}", inst);
+						ILInstruction firstInlinedStore = null;
 						for (int i = 1; i < initBlock.Instructions.Count; i++)
 						{
 							var stobj = (StObj)initBlock.Instructions[i];
 							var variable = displayClass.VariablesToDeclare[(IField)((LdFlda)stobj.Target).Field.MemberDefinition];
-							parentBlock.Instructions.Insert(inst.ChildIndex + i, new StLoc(variable.GetOrDeclare(), stobj.Value).WithILRange(stobj));
+							var inlinedStore = new StLoc(variable.GetOrDeclare(), stobj.Value).WithILRange(stobj);
+							parentBlock.Instructions.Insert(inst.ChildIndex + i, inlinedStore);
+							firstInlinedStore ??= inlinedStore;
 						}
+						context.EndStep(firstInlinedStore);
 					}
 					context.Step($"Remove initializer of {inst.Variable.Name}", inst);
 					parentBlock.Instructions.Remove(inst);
@@ -1005,10 +1011,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					if (referencedDisplayClass != null && displayClasses.TryGetValue(referencedDisplayClass, out _))
 					{
 						context.Step($"Propagate reference to {referencedDisplayClass.Name} in {inst.Variable}", inst);
+						ILInstruction firstReplacement = null;
 						foreach (var ld in inst.Variable.LoadInstructions.ToArray())
 						{
-							ld.ReplaceWith(new LdLoc(referencedDisplayClass).WithILRange(ld));
+							var newLoad = new LdLoc(referencedDisplayClass).WithILRange(ld);
+							ld.ReplaceWith(newLoad);
+							firstReplacement ??= newLoad;
 						}
+						context.EndStep(firstReplacement);
 						parentBlock.Instructions.Remove(inst);
 						return;
 					}
@@ -1081,7 +1091,9 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			var v = displayClass.VariablesToDeclare[keyField];
 			context.Step($"Replace {field.Name} with captured variable {v.Name}", inst);
 			ILVariable variable = v.GetOrDeclare();
-			inst.ReplaceWith(new LdLoca(variable).WithILRange(inst));
+			var replacement = new LdLoca(variable).WithILRange(inst);
+			inst.ReplaceWith(replacement);
+			context.EndStep(replacement);
 			// add captured variable to all descendant functions from the declaring function to this use-site function
 			foreach (var f in currentFunctions)
 			{

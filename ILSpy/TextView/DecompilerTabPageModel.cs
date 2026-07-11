@@ -183,6 +183,17 @@ namespace ICSharpCode.ILSpy.TextView
 		[ObservableProperty]
 		private DefinitionLookup? definitionLookup;
 
+		[ObservableProperty]
+		private TextRange? debugStepHighlight;
+
+		/// <summary>
+		/// IL-offset &lt;-&gt; line maps for the methods in this document (C# only). Lets bookmarks
+		/// anchor in-method lines by IL offset and the gutter place their icons. Null for non-C#
+		/// content; <see cref="Bookmarks.DecompiledDebugInfo.Empty"/> when C# yielded no methods.
+		/// </summary>
+		[ObservableProperty]
+		private Bookmarks.DecompiledDebugInfo? debugInfo;
+
 		/// <summary>
 		/// Inline UI elements (<see cref="ISmartTextOutput.AddUIElement"/>), in offset order.
 		/// Fed to <see cref="UIElementGenerator"/> by the text view.
@@ -228,6 +239,26 @@ namespace ICSharpCode.ILSpy.TextView
 		/// async gap between the navigation firing and the decompile finishing.
 		/// </summary>
 		public DecompilerTextViewState? PendingViewState { get; set; }
+
+		/// <summary>
+		/// A bookmark to scroll to the next time this document is (re)applied. Set by bookmark
+		/// navigation before the target node is decompiled; the text view reads it in its
+		/// document-apply step, computes the line from the saved token, positions the caret and plays
+		/// the highlight, then clears it. Consumed there -- alongside the view-state restore -- rather
+		/// than reacting to a property change, so the reset-to-top of a fresh navigation cannot scroll
+		/// the bookmark position away in a later pass.
+		/// </summary>
+		public Bookmarks.Bookmark? PendingBookmark { get; set; }
+
+		/// <summary>
+		/// Scrolls the live document to a bookmark immediately, for navigation that lands on the
+		/// already-displayed node (no re-decompile, so no document-apply step runs). Set by the text
+		/// view; mirrors <see cref="NavigateBookmarkInFile"/>.
+		/// </summary>
+		public System.Action<Bookmarks.Bookmark>? ScrollToBookmark { get; set; }
+
+		/// <summary>Moves to the next (true) / previous (false) bookmark within this document. Set by the text view.</summary>
+		public System.Action<bool>? NavigateBookmarkInFile { get; set; }
 
 		/// <summary>
 		/// Fired when the user clicks a cross-document reference. The host (DockWorkspace)
@@ -307,6 +338,10 @@ namespace ICSharpCode.ILSpy.TextView
 				cachedBaseTitle = ComposeBaseTitle();
 				foreach (var n in currentNodes)
 					n.PropertyChanged += OnCurrentNodePropertyChanged;
+				// Let host chrome (the omnibar breadcrumb) react to the tab re-targeting a node.
+				// Nothing else relied on the absence of this notification.
+				OnPropertyChanged(nameof(CurrentNodes));
+				OnPropertyChanged(nameof(CurrentNode));
 				StartDecompile();
 			}
 		}
@@ -347,6 +382,7 @@ namespace ICSharpCode.ILSpy.TextView
 		// every run; set non-default by RestartDecompileWithStepLimit before kicking off a
 		// debug-stepper decompile. Set on the UI thread only — no inter-thread access.
 		int pendingStepLimit = int.MaxValue;
+		int? pendingHighlightStep;
 		bool pendingIsDebug;
 
 		/// <summary>
@@ -365,11 +401,12 @@ namespace ICSharpCode.ILSpy.TextView
 		/// is <see cref="int.MaxValue"/>). <paramref name="isDebug"/> toggles the transforms'
 		/// verbose-debug emission. No-op when there's nothing currently being decompiled.
 		/// </summary>
-		public void RestartDecompileWithStepLimit(int stepLimit, bool isDebug)
+		public Task RestartDecompileWithStepLimit(int stepLimit, bool isDebug, int? highlightStep = null)
 		{
 			pendingStepLimit = stepLimit;
+			pendingHighlightStep = highlightStep;
 			pendingIsDebug = isDebug;
-			StartDecompile();
+			return StartDecompile();
 		}
 
 		/// <summary>Re-runs the current decompile with a larger output-length limit (the "Display code
@@ -426,16 +463,20 @@ namespace ICSharpCode.ILSpy.TextView
 			ICSharpCode.ILSpy.Commands.SaveCodeHelper.SaveNodeAsync(node, languageService, dockWorkspace).HandleExceptions();
 		}
 
-		// Fire-and-forget wrapper around DecompileAsync that observes the resulting Task.
-		// Without this, exceptions raised by the dispatched property setters (e.g. the
-		// PropertyChanged subscribers in DecompilerTextView) become UnobservedTaskException
-		// faults that the finalizer thread rethrows much later, hiding the originating bug.
-		void StartDecompile()
+		// Starts a decompile and returns the Task that completes once the output has been applied,
+		// so callers (e.g. the Debug Steps replay, and tests) can await completion deterministically
+		// instead of polling IsDecompiling/Text. A fault-observing continuation is attached so that
+		// exceptions raised by the dispatched property setters (e.g. the PropertyChanged subscribers
+		// in DecompilerTextView) don't become UnobservedTaskException faults the finalizer thread
+		// rethrows much later, hiding the originating bug.
+		Task StartDecompile()
 		{
-			pendingDecompile = DecompileAsync().ContinueWith(t => {
+			var decompile = DecompileAsync();
+			pendingDecompile = decompile.ContinueWith(t => {
 				if (t.Exception is { } ex)
 					System.Diagnostics.Debug.WriteLine($"DecompileAsync faulted: {ex.Flatten()}");
 			}, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+			return decompile;
 		}
 
 		/// <summary>
@@ -478,6 +519,8 @@ namespace ICSharpCode.ILSpy.TextView
 				Foldings = null;
 				References = null;
 				DefinitionLookup = null;
+				DebugInfo = null;
+				DebugStepHighlight = null;
 				UIElements = null;
 				Text = string.Empty;
 				IsDecompiling = false;
@@ -504,8 +547,10 @@ namespace ICSharpCode.ILSpy.TextView
 				// stable value, and reset the fields to defaults so the NEXT decompile runs
 				// at full fidelity unless RestartDecompileWithStepLimit sets them again.
 				var stepLimit = pendingStepLimit;
+				var highlightStep = pendingHighlightStep;
 				var isDebug = pendingIsDebug;
 				pendingStepLimit = int.MaxValue;
+				pendingHighlightStep = null;
 				pendingIsDebug = false;
 				var outputLengthLimit = pendingOutputLengthLimit;
 				pendingOutputLengthLimit = DefaultOutputLengthLimit;
@@ -513,13 +558,17 @@ namespace ICSharpCode.ILSpy.TextView
 				using (ICSharpCode.ILSpy.AppEnv.AppLog.Phase($"DecompileAsync #{callNumber}: Task.Run decompile body ({nodes.Count} node(s), language={language.Name})"))
 				{
 					(output, _) = await Task.Run(() => {
-						var output = new AvaloniaEditTextOutput { LengthLimit = outputLengthLimit };
+						var output = new AvaloniaEditTextOutput {
+							LengthLimit = outputLengthLimit,
+							EnableNodeTracking = stepLimit != int.MaxValue,
+						};
 						// decompilerSettings is null only in design-time / minimal test hosts
 						// without composition; fall back to defaults there.
 						var options = new DecompilationOptions(
 							decompilerSettings ?? new ICSharpCode.Decompiler.DecompilerSettings()) {
 							CancellationToken = cts.Token,
 							StepLimit = stepLimit,
+							HighlightStep = highlightStep,
 							IsDebug = isDebug,
 						};
 						try
@@ -707,6 +756,12 @@ namespace ICSharpCode.ILSpy.TextView
 			Foldings = output.Foldings;
 			References = output.References;
 			DefinitionLookup = output.DefinitionLookup;
+			DebugInfo = syntaxExtension != ".cs"
+				? null
+				: output.MethodDebugInfos.Count > 0
+					? new Bookmarks.DecompiledDebugInfo(output.MethodDebugInfos)
+					: Bookmarks.DecompiledDebugInfo.Empty;
+			DebugStepHighlight = output.DebugStepHighlight;
 			UIElements = output.UIElements;
 			Text = text;
 		}

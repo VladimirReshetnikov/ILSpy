@@ -130,7 +130,7 @@ namespace ICSharpCode.Decompiler.IL
 
 	partial class DynamicConvertInstruction
 	{
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -182,7 +182,7 @@ namespace ICSharpCode.Decompiler.IL
 			Arguments.AddRange(arguments);
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -228,7 +228,7 @@ namespace ICSharpCode.Decompiler.IL
 			Target = target;
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -264,7 +264,7 @@ namespace ICSharpCode.Decompiler.IL
 			Value = value;
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -302,7 +302,7 @@ namespace ICSharpCode.Decompiler.IL
 			Arguments.AddRange(arguments);
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -334,7 +334,7 @@ namespace ICSharpCode.Decompiler.IL
 			Arguments.AddRange(arguments);
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -369,7 +369,7 @@ namespace ICSharpCode.Decompiler.IL
 			this.resultType = type;
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -406,7 +406,7 @@ namespace ICSharpCode.Decompiler.IL
 			Right = right;
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -448,7 +448,7 @@ namespace ICSharpCode.Decompiler.IL
 			Right = right;
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -495,7 +495,7 @@ namespace ICSharpCode.Decompiler.IL
 			Operand = operand;
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -542,7 +542,7 @@ namespace ICSharpCode.Decompiler.IL
 			Arguments.AddRange(arguments);
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -572,7 +572,7 @@ namespace ICSharpCode.Decompiler.IL
 			Argument = argument;
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);

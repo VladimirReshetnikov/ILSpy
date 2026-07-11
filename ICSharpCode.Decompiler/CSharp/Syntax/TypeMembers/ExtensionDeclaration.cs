@@ -16,55 +16,36 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class ExtensionDeclaration : EntityDeclaration
+	/// <summary>
+	/// Not present in this revision of the C# specification grammar: C# 14 extension blocks ('extension(receiver) { members }').
+	/// <c>extension_declaration ::= attribute_section* 'extension' type_parameter* '(' parameter* ')' constraint* '{' member* '}'</c>
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class ExtensionDeclaration : EntityDeclaration
 	{
-		public readonly static TokenRole ExtensionKeywordRole = new TokenRole("extension");
+		public const string ExtensionKeyword = "extension";
 
 		public override SymbolKind SymbolKind => SymbolKind.TypeDefinition;
 
-		public AstNodeCollection<TypeParameterDeclaration> TypeParameters {
-			get { return GetChildrenByRole(Roles.TypeParameter); }
-		}
+		[Slot("AttributeSection")]
+		public override partial AstNodeCollection<AttributeSection> Attributes { get; }
 
-		public AstNodeCollection<ParameterDeclaration> ReceiverParameters {
-			get { return GetChildrenByRole(Roles.Parameter); }
-		}
+		[Slot("TypeParameter")]
+		public partial AstNodeCollection<TypeParameterDeclaration> TypeParameters { get; }
 
-		public AstNodeCollection<Constraint> Constraints {
-			get { return GetChildrenByRole(Roles.Constraint); }
-		}
+		[Slot("Parameter")]
+		public partial AstNodeCollection<ParameterDeclaration> ReceiverParameters { get; }
 
-		public AstNodeCollection<EntityDeclaration> Members {
-			get { return GetChildrenByRole(Roles.TypeMemberRole); }
-		}
+		[Slot("Constraint")]
+		public partial AstNodeCollection<Constraint> Constraints { get; }
 
-		public ExtensionDeclaration()
-		{
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitExtensionDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitExtensionDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitExtensionDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			var o = other as ExtensionDeclaration;
-			return o != null;
-		}
+		[Slot("TypeMember")]
+		public partial AstNodeCollection<EntityDeclaration> Members { get; }
 	}
 }

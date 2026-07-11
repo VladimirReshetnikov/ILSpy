@@ -16,44 +16,21 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// BaseType "(" Argument { "," Argument } ")"
+	/// No C# spec grammar production: ILSpy-internal type form used when a type appears applied to arguments (e.g. an attribute type written with its constructor arguments).
+	/// <c>invocation_ast_type ::= type '(' argument_list? ')'</c>
 	/// </summary>
-	public class InvocationAstType : AstType
+	[DecompilerAstNode]
+	public sealed partial class InvocationAstType : AstType
 	{
-		public AstNodeCollection<Expression> Arguments {
-			get { return GetChildrenByRole(Roles.Expression); }
-		}
+		[Slot("Expression")]
+		public partial AstNodeCollection<Expression> Arguments { get; }
 
-		public AstType BaseType {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitInvocationType(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitInvocationType(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitInvocationType(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, Match match)
-		{
-			return other is InvocationAstType o
-				&& this.BaseType.DoMatch(o.BaseType, match)
-				&& this.Arguments.DoMatch(o.Arguments, match);
-		}
+		[Slot("Type")]
+		public partial AstType BaseType { get; set; }
 	}
 }

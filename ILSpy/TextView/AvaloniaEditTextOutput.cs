@@ -42,7 +42,7 @@ namespace ICSharpCode.ILSpy.TextView
 	/// Reference markers, fold ranges, and inline UI elements are intentionally dropped here —
 	/// those land when we add hyperlinks and folding support.
 	/// </summary>
-	public sealed class AvaloniaEditTextOutput : ISmartTextOutput
+	public sealed class AvaloniaEditTextOutput : ISmartTextOutput, INodeTrackingOutput
 	{
 		readonly StringBuilder builder = new();
 
@@ -54,11 +54,19 @@ namespace ICSharpCode.ILSpy.TextView
 		public int LengthLimit { get; set; } = int.MaxValue;
 
 		readonly Stack<(int Offset, HighlightingColor Color)> openSpans = new();
+		// Keyed by node rather than a stack: node writes are strictly nested today, but keying by
+		// identity means a stray or out-of-order MarkNodeEnd is a clean no-op that can't desync the
+		// remaining open nodes. Each node is written exactly once, so there is no self-nesting.
+		readonly Dictionary<object, int> openNodeStarts = new(ReferenceEqualityComparer.Instance);
 		readonly Stack<(NewFolding Folding, int StartLine)> openFoldings = new();
 		readonly List<NewFolding> foldings = new();
 		int indent;
 		bool needsIndent;
 		int lineNumber = 1;
+
+		/// <summary>The 1-based line the next written text lands on; used to map captured
+		/// sequence-point lines (relative to a code block) to absolute document lines.</summary>
+		public int CurrentLine => lineNumber;
 
 		public RichTextModel HighlightingModel { get; } = new RichTextModel();
 
@@ -71,6 +79,12 @@ namespace ICSharpCode.ILSpy.TextView
 		/// <summary>The highlighting spans referencing the live named colours; see the field note.</summary>
 		public IReadOnlyList<(int Start, int Length, HighlightingColor Color)> HighlightingSpans => highlightingSpans;
 
+		/// <summary>
+		/// Enables syntax-node range collection for debug-step highlighting. Normal decompiles leave this
+		/// off because node ranges are only consumed by step-limited replay output.
+		/// </summary>
+		public bool EnableNodeTracking { get; set; }
+
 		/// <summary>Foldings collected during writing — only ones spanning more than one line.</summary>
 		public IReadOnlyList<NewFolding> Foldings => foldings;
 
@@ -82,6 +96,22 @@ namespace ICSharpCode.ILSpy.TextView
 
 		/// <summary>Maps reference targets to their definition offsets in the rendered text.</summary>
 		public DefinitionLookup DefinitionLookup { get; } = new();
+
+		internal NodeLookup NodeLookup { get; } = new();
+
+		internal TextRange? DebugStepHighlight { get; set; }
+
+		readonly List<Bookmarks.MethodDebugInfo> methodDebugInfos = new();
+
+		/// <summary>
+		/// Per-method IL-offset &lt;-&gt; line maps captured during a C# decompile (see
+		/// <see cref="Bookmarks.MethodDebugInfo"/>). Empty for non-C# output; used to anchor
+		/// in-method bookmarks by IL offset instead of a fragile line number.
+		/// </summary>
+		public IReadOnlyList<Bookmarks.MethodDebugInfo> MethodDebugInfos => methodDebugInfos;
+
+		/// <summary>Appends a captured method map; called by the C# language after writing the code.</summary>
+		public void AddMethodDebugInfo(Bookmarks.MethodDebugInfo info) => methodDebugInfos.Add(info);
 
 		readonly List<KeyValuePair<int, Func<Control>>> uiElements = new();
 
@@ -180,7 +210,13 @@ namespace ICSharpCode.ILSpy.TextView
 		{
 			WriteIndentIfNeeded();
 			int start = builder.Length;
-			var name = omitSuffix ? opCode.Name.TrimEnd('.') : opCode.Name;
+			string name = opCode.Name;
+			if (omitSuffix)
+			{
+				int lastDot = name.LastIndexOf('.');
+				if (lastDot > 0)
+					name = name.Remove(lastDot + 1);
+			}
 			builder.Append(name);
 			References.Add(new ReferenceSegment {
 				StartOffset = start,
@@ -263,6 +299,7 @@ namespace ICSharpCode.ILSpy.TextView
 
 		public void BeginSpan(HighlightingColor highlightingColor)
 		{
+			WriteIndentIfNeeded();
 			openSpans.Push((builder.Length, highlightingColor));
 		}
 
@@ -277,6 +314,25 @@ namespace ICSharpCode.ILSpy.TextView
 				HighlightingModel.SetHighlighting(start, length, color);
 				highlightingSpans.Add((start, length, color));
 			}
+		}
+
+		public void MarkNodeStart(object node)
+		{
+			if (!EnableNodeTracking)
+				return;
+			// Flush a pending indent before capturing the offset so a node opened at the start of a
+			// line records its range from the first real character, not from column 0 across the
+			// leading indentation.
+			WriteIndentIfNeeded();
+			openNodeStarts[node] = builder.Length;
+		}
+
+		public void MarkNodeEnd(object node)
+		{
+			if (!EnableNodeTracking)
+				return;
+			if (openNodeStarts.Remove(node, out var start))
+				NodeLookup.AddNode(node, start, builder.Length - start);
 		}
 	}
 }

@@ -117,6 +117,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						checkForOverflow: false, Sign.None);
 				}
 				inst.ReplaceWith(replacement);
+				context.EndStep(replacement);
 				return true;
 			}
 			return false;
@@ -144,6 +145,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						checkForOverflow: false, Sign.None);
 				}
 				inst.ReplaceWith(replacement);
+				context.EndStep(replacement);
 				return true;
 			}
 			return false;
@@ -170,6 +172,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					replacement = replacement.WithILRange(r);
 				}
 				temp.ReplaceWith(replacement);
+				context.EndStep(replacement);
 			}
 		}
 
@@ -188,7 +191,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		// rewritten into IL that the surrounding non-async control flow can't represent.
 		internal static bool TransformAsyncHelpersAwaitToAwait(Call inst, ILTransformContext context)
 		{
-			if (!context.Settings.RuntimeAsync || !context.Function.IsAsync)
+			if (!context.Settings.AsyncAwait || !context.Function.IsAsync)
 				return false;
 			if (!inst.Method.IsStatic || inst.Arguments.Count != 1 || !IsAsyncHelpersMethod(inst.Method, "Await"))
 				return false;
@@ -197,6 +200,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			awaitInst.GetAwaiterMethod = null;
 			awaitInst.GetResultMethod = inst.Method;
 			inst.ReplaceWith(awaitInst);
+			context.EndStep(awaitInst);
 			return true;
 		}
 
@@ -212,6 +216,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				context.Step("TransformDecimalCtorToConstant", inst);
 				inst.ReplaceWith(decimalConstant);
+				context.EndStep(decimalConstant);
 				return;
 			}
 

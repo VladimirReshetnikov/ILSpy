@@ -27,8 +27,8 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using ICSharpCode.Decompiler.DebugSteps;
 using ICSharpCode.Decompiler.IL;
-using ICSharpCode.Decompiler.IL.Transforms;
 
 using ICSharpCode.ILSpy.AppEnv;
 using ICSharpCode.ILSpy.Commands;
@@ -100,6 +100,20 @@ namespace ICSharpCode.ILSpy.ViewModels
 		[ObservableProperty]
 		bool isAvailable;
 
+		/// <summary>
+		/// Free-text filter for the step tree; empty shows everything. Bound to the filter box in the
+		/// pane's top-right corner. A row survives when its description -- or a descendant's -- matches.
+		/// </summary>
+		[ObservableProperty]
+		[NotifyPropertyChangedFor(nameof(IsFiltering))]
+		string? filterText;
+
+		/// <summary>
+		/// True while <see cref="FilterText"/> is non-empty. Drives auto-expansion of the tree so that
+		/// matches nested under transform groups are revealed rather than hidden in collapsed groups.
+		/// </summary>
+		public bool IsFiltering => !string.IsNullOrWhiteSpace(FilterText);
+
 		public IRelayCommand ShowStateBeforeCommand { get; }
 		public IRelayCommand ShowStateAfterCommand { get; }
 		public IRelayCommand DebugStepCommand { get; }
@@ -109,8 +123,8 @@ namespace ICSharpCode.ILSpy.ViewModels
 		{
 			Id = PaneContentId;
 			Title = "Debug Steps";
-			ShowStateBeforeCommand = new RelayCommand(() => RequestRedecompile(SelectedStep?.BeginStep ?? int.MaxValue, isDebug: false));
-			ShowStateAfterCommand = new RelayCommand(() => RequestRedecompile(SelectedStep?.EndStep ?? int.MaxValue, isDebug: false));
+			ShowStateBeforeCommand = new RelayCommand(() => RequestRedecompile(SelectedStep?.BeginStep ?? int.MaxValue, isDebug: false, SelectedStep?.BeginStep));
+			ShowStateAfterCommand = new RelayCommand(() => RequestRedecompile(SelectedStep?.EndStep ?? int.MaxValue, isDebug: false, SelectedStep?.BeginStep));
 			DebugStepCommand = new RelayCommand(() => {
 				// "Debug this step" relies on Stepper.Step calling Debugger.Break() when
 				// step == StepLimit — which is a silent no-op without a debugger attached.
@@ -123,7 +137,7 @@ namespace ICSharpCode.ILSpy.ViewModels
 					if (!System.Diagnostics.Debugger.Launch())
 						AppEnv.AppLog.Mark("DebugStep: Debugger.Launch returned false; the upcoming Stepper.Step break is a no-op without a debugger attached.");
 				}
-				RequestRedecompile(SelectedStep?.BeginStep ?? int.MaxValue, isDebug: true);
+				RequestRedecompile(SelectedStep?.BeginStep ?? int.MaxValue, isDebug: true, SelectedStep?.BeginStep);
 			});
 		}
 
@@ -206,12 +220,26 @@ namespace ICSharpCode.ILSpy.ViewModels
 
 		void OnSelectionChanged(object? sender, AssemblyTreeSelectionChangedEventArgs e)
 		{
-			// User picked a new tree node — the previous run's stepper is stale until the
-			// next decompile populates it.
-			Dispatcher.UIThread.Post(() => {
+			// User picked a new tree node — the previous run's stepper is stale until the next
+			// decompile populates it. Clear synchronously (this message is raised on the UI thread,
+			// right as the new selection's decompile is kicked off) so the blanking is pinned before
+			// that decompile can finish and post its StepperUpdated. A deferred clear could otherwise
+			// float to a dispatcher cycle after the populate and wipe the fresh steps, leaving the
+			// pane empty until the next decompile — the intermittent "no steps" race.
+			if (Dispatcher.UIThread.CheckAccess())
+			{
+				ClearSteps();
+			}
+			else
+			{
+				Dispatcher.UIThread.Post(ClearSteps);
+			}
+
+			void ClearSteps()
+			{
 				Steps = null;
 				lastSelectedStep = int.MaxValue;
-			});
+			}
 		}
 
 		void OnWritingOptionsChanged(object? sender, PropertyChangedEventArgs e)
@@ -222,12 +250,12 @@ namespace ICSharpCode.ILSpy.ViewModels
 			RequestRedecompile(lastSelectedStep, isDebug: false);
 		}
 
-		void RequestRedecompile(int stepLimit, bool isDebug)
+		void RequestRedecompile(int stepLimit, bool isDebug, int? highlightStep = null)
 		{
 			lastSelectedStep = stepLimit;
 			// Composition unavailable in design-time previews; the gesture is a no-op there.
 			var dock = AppComposition.TryGetExport<DockWorkspace>();
-			dock?.ActiveDecompilerTab?.RestartDecompileWithStepLimit(stepLimit, isDebug);
+			dock?.ActiveDecompilerTab?.RestartDecompileWithStepLimit(stepLimit, isDebug, highlightStep);
 		}
 	}
 }

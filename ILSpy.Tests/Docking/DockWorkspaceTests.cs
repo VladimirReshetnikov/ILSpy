@@ -35,7 +35,7 @@ namespace ICSharpCode.ILSpy.Tests.Docking;
 public class DockWorkspaceTests
 {
 	[AvaloniaTest]
-	public void DockWorkspace_resolves_and_exposes_root_layout_with_three_tool_panes()
+	public void DockWorkspace_resolves_and_exposes_root_layout_with_tool_panes()
 	{
 		var workspace = AppComposition.Current.GetExport<DockWorkspace>();
 		workspace.Should().NotBeNull("DockWorkspace is [Export][Shared] in ICSharpCode.ILSpy.Docking.");
@@ -43,11 +43,11 @@ public class DockWorkspaceTests
 		workspace.Layout.Should().NotBeNull("ILSpyDockFactory.CreateLayout() wires the root dock in the ctor.");
 		workspace.Factory.Should().NotBeNull();
 #if DEBUG
-		workspace.ToolPaneMenuItems.Should().HaveCount(4,
-			"AssemblyTree, Search, Analyzers, and the Debug Steps pane (Debug-only) are wired at this point.");
+		workspace.ToolPaneMenuItems.Should().HaveCount(5,
+			"AssemblyTree, Search, Analyzers, Bookmarks, and the Debug Steps pane (Debug-only) are wired at this point.");
 #else
-		workspace.ToolPaneMenuItems.Should().HaveCount(3,
-			"AssemblyTree, Search, and Analyzers are the three tool panes wired at this point.");
+		workspace.ToolPaneMenuItems.Should().HaveCount(4,
+			"AssemblyTree, Search, Analyzers, and Bookmarks are the tool panes wired at this point.");
 #endif
 	}
 }
