@@ -1548,20 +1548,24 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (interfaceProperty.CanGet)
 				{
 					var getter = new Accessor { Body = new BlockStatement() };
-					getter.Body.Add(InterfaceImplComment(memberDecl.Name));
-					getter.Body.Add(new ReturnStatement(
-						new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name)));
+					var returnStatement = new ReturnStatement(
+						new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name));
+					// Attach the comment as trivia rather than as a statement of its own, so a
+					// single-return getter still collapses to an expression-bodied property.
+					returnStatement.AddLeadingTrivia(InterfaceImplComment(memberDecl.Name));
+					getter.Body.Add(returnStatement);
 					propertyDecl.Getter = getter;
 					commentEmitted = true;
 				}
 				if (interfaceProperty.CanSet)
 				{
 					var setter = new Accessor { Body = new BlockStatement() };
-					if (!commentEmitted)
-						setter.Body.Add(InterfaceImplComment(memberDecl.Name));
-					setter.Body.Add(new ExpressionStatement(new AssignmentExpression(
+					var assignmentStatement = new ExpressionStatement(new AssignmentExpression(
 						new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name),
-						new IdentifierExpression("value"))));
+						new IdentifierExpression("value")));
+					if (!commentEmitted)
+						assignmentStatement.AddLeadingTrivia(InterfaceImplComment(memberDecl.Name));
+					setter.Body.Add(assignmentStatement);
 					propertyDecl.Setter = setter;
 				}
 				yield return propertyDecl;
@@ -1597,10 +1601,11 @@ namespace ICSharpCode.Decompiler.CSharp
 				eventDecl.PrivateImplementationType = astBuilder.ConvertType(interfaceEvent.DeclaringType);
 				eventDecl.Name = interfaceEvent.Name;
 				var addAccessor = new Accessor { Body = new BlockStatement() };
-				addAccessor.Body.Add(InterfaceImplComment(memberDecl.Name));
-				addAccessor.Body.Add(new ExpressionStatement(new AssignmentExpression(
+				var addStatement = new ExpressionStatement(new AssignmentExpression(
 					new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name),
-					AssignmentOperatorType.Add, new IdentifierExpression("value"))));
+					AssignmentOperatorType.Add, new IdentifierExpression("value")));
+				addStatement.AddLeadingTrivia(InterfaceImplComment(memberDecl.Name));
+				addAccessor.Body.Add(addStatement);
 				eventDecl.AddAccessor = addAccessor;
 				var removeAccessor = new Accessor { Body = new BlockStatement() };
 				removeAccessor.Body.Add(new ExpressionStatement(new AssignmentExpression(
@@ -1611,12 +1616,10 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 		}
 
-		static Statement InterfaceImplComment(string memberName)
+		static Comment InterfaceImplComment(string memberName)
 		{
-			var commentStatement = new EmptyStatement();
-			commentStatement.AddTrailingTrivia(new Comment(
-				"ILSpy generated this explicit interface implementation from .override directive in " + memberName));
-			return commentStatement;
+			return new Comment(
+				"ILSpy generated this explicit interface implementation from .override directive in " + memberName);
 		}
 
 		/// <summary>

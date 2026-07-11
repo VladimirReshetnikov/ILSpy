@@ -513,6 +513,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				if (stmt == null)
 					return isValueType;
 
+				if (isValueType && stmt != constructorDeclaration.Body.Statements.FirstOrDefault())
+				{
+					// A value-type chain is an ordinary body statement ('this = new TSelf(...)'), which
+					// is legal C# as it stands. Lifting it past the leading statements into a this(...)
+					// initializer would run it before those statements (e.g. before an argument
+					// null-guard), changing the observable behavior; keep the body form instead.
+					return true;
+				}
+
 				AstNode invocation = m.Get<AstNode>("invocation").Single();
 				if (invocation.GetSymbol() is not IMethod { IsConstructor: true } ctor)
 					return false;
