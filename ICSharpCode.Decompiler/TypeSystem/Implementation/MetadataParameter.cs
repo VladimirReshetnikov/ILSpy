@@ -87,8 +87,15 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 			if ((attributes & ParameterAttributes.In) == ParameterAttributes.In && ReferenceKind is not (ReferenceKind.In or ReferenceKind.RefReadOnly))
 				b.Add(KnownAttribute.In);
-			if ((attributes & ParameterAttributes.Out) == ParameterAttributes.Out && ReferenceKind != ReferenceKind.Out)
+			if ((attributes & ParameterAttributes.Out) == ParameterAttributes.Out && ReferenceKind != ReferenceKind.Out
+				&& (Type.Kind != TypeKind.ByReference || (attributes & ParameterAttributes.In) == ParameterAttributes.In))
+			{
+				// A bare [Out] on a byref parameter is not valid C# (CS0662 requires [In] alongside it).
+				// Surface the flag only where it compiles: on a by-value parameter, or on a byref parameter
+				// that also carries [In] (rendered as '[In, Out] ref'). A byref parameter flagged [Out] only,
+				// such as a Visual Basic ByRef override of a C# 'ref', drops the otherwise uncompilable flag.
 				b.Add(KnownAttribute.Out);
+			}
 			b.Add(parameter.GetCustomAttributes(), SymbolKind.Parameter);
 			b.AddMarshalInfo(parameter.GetMarshallingDescriptor());
 
@@ -107,7 +114,16 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			if (Type.Kind != TypeKind.ByReference)
 				return ReferenceKind.None;
 			if ((attributes & inOut) == ParameterAttributes.Out)
+			{
+				// A byref parameter flagged [Out] normally renders 'out'. The Visual Basic compiler,
+				// however, also emits [Out] on a ByRef parameter that overrides or implements a C# 'ref'
+				// parameter. Rendering it 'out' there breaks the override, because C# requires the override
+				// to match the base member's ref-kind (CS0115). When the contract declares the parameter
+				// 'ref', follow the contract; the retained [Out] flag is surfaced as an explicit attribute.
+				if (ContractParameterIs(ReferenceKind.Ref))
+					return ReferenceKind.Ref;
 				return ReferenceKind.Out;
+			}
 			if ((module.TypeSystemOptions & TypeSystemOptions.ReadOnlyStructsAndParameters) != 0)
 			{
 				var metadata = module.metadata;
@@ -127,22 +143,24 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			// ParameterAttributes.Out flag, because the VB compiler does not emit one. Without the flag it
 			// would render as 'ref' and no longer match the overridden/implemented 'out' member, so the
 			// override fails to bind (CS0115/CS0534/CS0539). Recover the direction from the contract.
-			if (Owner is IMethod method && !handle.IsNil)
-			{
-				int parameterIndex = module.metadata.GetParameter(handle).SequenceNumber - 1;
-				if (parameterIndex >= 0 && ContractParameterIsOut(method, parameterIndex))
-					return ReferenceKind.Out;
-			}
+			if (ContractParameterIs(ReferenceKind.Out))
+				return ReferenceKind.Out;
 			return ReferenceKind.Ref;
 		}
 
 		/// <summary>
-		/// Returns true if the parameter at <paramref name="parameterIndex"/> is declared 'out' by a member
-		/// that <paramref name="method"/> implements or overrides. 'out' and 'ref' share the same byref
-		/// signature, so the contract is what distinguishes them when the implementation drops the flag.
+		/// Returns true if the corresponding parameter of a member that this parameter's owning method
+		/// implements or overrides is declared with the given <paramref name="kind"/>. 'out' and 'ref'
+		/// share the same byref signature, so the contract is what distinguishes them when the
+		/// implementation's own [Out] flag disagrees with the base member.
 		/// </summary>
-		static bool ContractParameterIsOut(IMethod method, int parameterIndex)
+		bool ContractParameterIs(ReferenceKind kind)
 		{
+			if (Owner is not IMethod method || handle.IsNil)
+				return false;
+			int parameterIndex = module.metadata.GetParameter(handle).SequenceNumber - 1;
+			if (parameterIndex < 0)
+				return false;
 			// Direct interface-implementation links cover Visual Basic 'Implements' (renamed or not) and
 			// C#-style explicit implementations; GetBaseMembers additionally covers overrides and implicit
 			// same-signature interface implementations.
@@ -151,8 +169,14 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			{
 				if (contract is IMethod contractMethod
 					&& parameterIndex < contractMethod.Parameters.Count
-					&& contractMethod.Parameters[parameterIndex].ReferenceKind == ReferenceKind.Out)
+					&& contractMethod.Parameters[parameterIndex].ReferenceKind == kind)
 				{
+					// GetBaseMembers also returns a base class member that this method merely hides
+					// (a 'new' member). Hiding does not require a matching ref-kind, so a hidden
+					// base member is not a contract: only a genuine override or an interface member
+					// constrains the parameter direction. Skip a hidden non-interface base member.
+					if (contractMethod.DeclaringType.Kind != TypeKind.Interface && !method.IsOverride)
+						continue;
 					return true;
 				}
 			}

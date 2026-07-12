@@ -948,7 +948,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			var rootFunction = function.Ancestors.OfType<ILFunction>().Single(f => f.Parent == null);
 			foreach (var f in rootFunction.Descendants.OfType<ILFunction>())
 			{
-				foreach (var p in rootFunction.Parameters)
+				// Reserve each function's own parameters, not just the root's. A local function's
+				// parameter shares the declaration space of any variable declared inside that function,
+				// so a foreach or local generated with the parameter's natural name would collide with
+				// it (CS0136). Reserving f.Parameters here keeps the generated name distinct.
+				foreach (var p in f.Parameters)
 				{
 					AddExistingName(reservedVariableNames, p.Name);
 				}

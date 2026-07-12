@@ -971,5 +971,22 @@ namespace LocalFunctions
 				}
 			}
 		}
+
+		public void NestedForeachCollidesWithLocalFunctionParameter()
+		{
+			Local(0);
+			void Local(int psiFile)
+			{
+				foreach (int psiFile2 in GetPsiFiles())
+				{
+					Console.WriteLine(psiFile + psiFile2);
+				}
+			}
+		}
+
+		private List<int> GetPsiFiles()
+		{
+			return new List<int>();
+		}
 	}
 }

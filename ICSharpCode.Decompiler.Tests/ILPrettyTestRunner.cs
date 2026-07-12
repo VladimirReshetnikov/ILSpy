@@ -58,6 +58,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task VBByRefOutParameterOverride()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task FieldKeywordCollision()
 		{
 			await Run();

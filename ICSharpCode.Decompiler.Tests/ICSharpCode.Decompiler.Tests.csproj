@@ -213,6 +213,8 @@
     <None Include="TestCases\ILPretty\SwitchExpressionThrowHelper.cs" />
     <Compile Remove="TestCases\VBPretty\OutParameterDefiniteAssignment.cs" />
     <None Include="TestCases\VBPretty\OutParameterDefiniteAssignment.cs" />
+    <Compile Remove="TestCases\ILPretty\VBByRefOutParameterOverride.cs" />
+    <None Include="TestCases\ILPretty\VBByRefOutParameterOverride.cs" />
     <Compile Remove="TestCases\VBPretty\VBAnonymousType.cs" />
     <None Include="TestCases\VBPretty\VBAnonymousType.cs" />
     <Compile Remove="TestCases\VBPretty\VBClosures.cs" />
