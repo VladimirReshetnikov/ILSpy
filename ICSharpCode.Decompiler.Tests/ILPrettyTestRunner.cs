@@ -358,6 +358,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task QueryExpressionInParameter()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task FieldKeywordPatternVariableCollision()
 		{
 			await Run();

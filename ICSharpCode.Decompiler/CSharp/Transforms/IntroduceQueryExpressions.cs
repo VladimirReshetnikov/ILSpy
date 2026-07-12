@@ -19,6 +19,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -78,6 +79,51 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		}
 
+		/// <summary>
+		/// A query range variable is not an addressable lvalue, so it cannot be passed to an
+		/// 'in' (readonly-ref) parameter with an explicit 'in' modifier: C# rejects that as CS8159.
+		/// At the IL level the original 'ldarga' of the lambda parameter is indistinguishable from
+		/// passing an addressable variable by reference, so the call builder renders the argument as
+		/// 'in rangeVariable'. Once the lambda parameter becomes a query range variable this is no
+		/// longer valid, so drop the explicit 'in' and pass by value; the compiler makes the hidden
+		/// readonly copy that an 'in' parameter requires. 'ref'/'out' are left untouched: they demand
+		/// an lvalue and cannot be satisfied by a range variable at all.
+		/// </summary>
+		private void RemoveInModifierFromRangeVariableArguments(QueryExpression query)
+		{
+			var rangeVariables = new HashSet<ILVariable>();
+			foreach (var fromClause in query.Clauses.OfType<QueryFromClause>())
+			{
+				if (fromClause.Annotation<ILVariableResolveResult>()?.Variable is ILVariable variable)
+					rangeVariables.Add(variable);
+			}
+			foreach (var joinClause in query.Clauses.OfType<QueryJoinClause>())
+			{
+				if (joinClause.JoinIdentifierToken.Annotation<ILVariableResolveResult>()?.Variable is ILVariable joinVariable)
+					rangeVariables.Add(joinVariable);
+				if (joinClause.IntoIdentifierToken?.Annotation<ILVariableResolveResult>()?.Variable is ILVariable intoVariable)
+					rangeVariables.Add(intoVariable);
+			}
+			if (rangeVariables.Count == 0)
+				return;
+			foreach (var directionExpression in query.Descendants.OfType<DirectionExpression>().ToArray())
+			{
+				if (directionExpression.FieldDirection != FieldDirection.In)
+					continue;
+				if (directionExpression.Expression is not IdentifierExpression identifierExpression)
+					continue;
+				if (identifierExpression.Annotation<ILVariableResolveResult>()?.Variable is not ILVariable variable
+					|| !rangeVariables.Contains(variable))
+				{
+					continue;
+				}
+				context.Step("Remove 'in' modifier from query range variable argument", directionExpression);
+				var value = identifierExpression.Detach();
+				directionExpression.ReplaceWith(value);
+				context.EndStep(value);
+			}
+		}
+
 		private void CombineRangeVariables(QueryClause clause, ILVariable? oldVariable, ILVariable? newVariable)
 		{
 			if (oldVariable == null || newVariable == null)
@@ -111,6 +157,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		void DecompileQueries(AstNode node)
 		{
 			Expression? query = DecompileQuery(node as InvocationExpression);
+			if (query is QueryExpression queryExpression)
+			{
+				RemoveInModifierFromRangeVariableArguments(queryExpression);
+			}
 			if (query != null)
 			{
 				if (node.Parent is ExpressionStatement && CanUseDiscardAssignment())
