@@ -310,8 +310,14 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 								{
 									td = td.DeclaringTypeDefinition;
 								}
-								if (td != null && td.MetadataToken is { IsNil: false } token && !processedTypes.Contains((TypeDefinitionHandle)token))
+								if (td != null && td.MetadataToken is { IsNil: false } token && !processedTypes.Contains((TypeDefinitionHandle)token)
+									&& !CSharpDecompiler.MemberIsHidden(module, token, Settings))
 								{
+									// Types that are decompiled inline into their usage (anonymous types,
+									// closure/state-machine display classes, ...) are never emitted as their own
+									// file. Without this guard a stray reference to such a type in the decompiled
+									// output (e.g. an anonymous type surfacing in an explicit variable declaration)
+									// would queue it here and produce an empty source file for it.
 									lock (workList)
 									{
 										workList.Add((TypeDefinitionHandle)token);
