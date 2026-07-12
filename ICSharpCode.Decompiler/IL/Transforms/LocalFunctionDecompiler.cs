@@ -144,11 +144,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 						if (context.Function.Method.IsConstructor)
 						{
+							var scope = FindDeclarationScopeAtUseSite(localFunction, useSite);
 							if (localFunction.DeclarationScope == null)
 							{
-								localFunction.DeclarationScope = BlockContainer.FindClosestContainer(useSite);
+								localFunction.DeclarationScope = scope;
 							}
-							else if (GetDeclaringFunction(localFunction) == context.Function || IsNonCapturing(localFunction))
+							else if (scope != null
+								&& (GetDeclaringFunction(localFunction) == context.Function || IsNonCapturing(localFunction)))
 							{
 								// Broaden the declaration scope to cover this use-site. A non-capturing
 								// (static) local function captures nothing, so closure analysis never anchors
@@ -162,7 +164,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 								// arrives via a forwarded by-ref display-class struct), pulling the scope up to
 								// a common ancestor with a use-site would move it out of that function and
 								// leave the captured display-class fields without a declaration.
-								localFunction.DeclarationScope = FindCommonAncestorInstruction<BlockContainer>(useSite, localFunction.DeclarationScope);
+								localFunction.DeclarationScope = FindCommonAncestorInstruction<BlockContainer>(scope, localFunction.DeclarationScope);
 								if (localFunction.DeclarationScope == null)
 								{
 									localFunction.DeclarationScope = (BlockContainer)context.Function.Body;
@@ -391,6 +393,46 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				}
 				return null;
 			}
+		}
+
+		/// <summary>
+		/// Determines the declaration scope implied by a single use site of a local function.
+		/// Usually this is the closest enclosing block container. However, if the use site is
+		/// located inside another local function whose type parameters the target local function
+		/// does not inherit, the target cannot be declared there: the C# compiler adds a copy of
+		/// every type parameter of all enclosing generic functions to a nested local function, so
+		/// a local function lacking these copies must have been declared further out. In that case
+		/// the scope is hoisted to the declaration scope of the enclosing local function.
+		/// Returns null, if no valid scope could be determined (e.g., because the declaration
+		/// scope of the enclosing local function is not yet known).
+		/// </summary>
+		private BlockContainer FindDeclarationScopeAtUseSite(ILFunction localFunction, ILInstruction useSite)
+		{
+			var scope = BlockContainer.FindClosestContainer(useSite);
+			var visitedFunctions = new HashSet<ILFunction>();
+			while (scope != null)
+			{
+				var enclosingFunction = scope.Ancestors.OfType<ILFunction>().FirstOrDefault();
+				if (enclosingFunction == null || enclosingFunction == context.Function
+					|| enclosingFunction.Kind != ILFunctionKind.LocalFunction)
+				{
+					break;
+				}
+				if (!visitedFunctions.Add(enclosingFunction))
+				{
+					// Cyclic declaration scopes: give up on this use site.
+					return null;
+				}
+				// Number of type parameters localFunction would inherit, if it were declared
+				// inside enclosingFunction; mirrors the computation in TryValidateSkipCount.
+				int inheritedTypeParametersCount = enclosingFunction.Method.DeclaringType.TypeParameterCount
+					- localFunction.Method.DeclaringType.TypeParameterCount
+					+ enclosingFunction.Method.TypeParameters.Count;
+				if (inheritedTypeParametersCount <= localFunction.ReducedMethod.NumberOfCompilerGeneratedTypeParameters)
+					break;
+				scope = enclosingFunction.DeclarationScope;
+			}
+			return scope;
 		}
 
 		private ILFunction GetDeclaringFunction(ILFunction localFunction)

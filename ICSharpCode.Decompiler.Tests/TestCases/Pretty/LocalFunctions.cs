@@ -391,6 +391,30 @@ namespace LocalFunctions
 			}
 		});
 
+		public LocalFunctions()
+		{
+			Invoke(GenericLocalFunctionInCtor<int>, 1);
+			Invoke(GenericLocalFunctionInCtor<string>, "a");
+			void GenericLocalFunctionInCtor<T>(T data)
+			{
+				GenericSiblingOnlyUsedHere<T>(field, data);
+			}
+#if CS80
+			static void GenericSiblingOnlyUsedHere<T>(int state, T data)
+#else
+			void GenericSiblingOnlyUsedHere<T>(int state, T data)
+#endif
+			{
+				Console.WriteLine(state);
+				Console.WriteLine(data);
+			}
+		}
+
+		private static void Invoke<T>(Action<T> action, T arg)
+		{
+			action(arg);
+		}
+
 		private static void Test(int x)
 		{
 		}
