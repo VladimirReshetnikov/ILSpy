@@ -60,13 +60,45 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		Queue<(ILFunction function, VariableScope parentScope)> workList;
 		const char maxLoopVariableName = 'n';
 
+		/// <summary>
+		/// Equality comparer used for the name-assignment mapping. It unifies local ILVariables that
+		/// share a locals-signature slot (so they receive the same name), matching
+		/// <see cref="ILVariableEqualityComparer"/> - except for by-ref locals. Live-range splitting can
+		/// produce several ref locals sharing one slot; each needs its own 'ref T x = ref ...;'
+		/// declaration because a ref local cannot be declared without an initializer. Sharing a name
+		/// would force DeclareVariables to merge those declarations (they collide under CS0136) into an
+		/// illegal uninitialized 'ref T x;', so ref locals are compared by identity and thus keep
+		/// distinct names.
+		/// </summary>
+		sealed class NamingVariableComparer : IEqualityComparer<ILVariable>
+		{
+			public static readonly NamingVariableComparer Instance = new();
+
+			static bool IsDistinctRefLocal(ILVariable v)
+				=> v.Kind == VariableKind.Local && v.StackType == StackType.Ref;
+
+			public bool Equals(ILVariable x, ILVariable y)
+			{
+				if ((x != null && IsDistinctRefLocal(x)) || (y != null && IsDistinctRefLocal(y)))
+					return ReferenceEquals(x, y);
+				return ILVariableEqualityComparer.Instance.Equals(x, y);
+			}
+
+			public int GetHashCode(ILVariable obj)
+			{
+				if (IsDistinctRefLocal(obj))
+					return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+				return ILVariableEqualityComparer.Instance.GetHashCode(obj);
+			}
+		}
+
 		public class VariableScope
 		{
 			readonly ILTransformContext context;
 			readonly VariableScope parentScope;
 			readonly ILFunction function;
 			readonly Dictionary<MethodDefinitionHandle, string> localFunctions = new();
-			readonly Dictionary<ILVariable, string> variableMapping = new(ILVariableEqualityComparer.Instance);
+			readonly Dictionary<ILVariable, string> variableMapping = new(NamingVariableComparer.Instance);
 			readonly string[] assignedLocalSignatureIndices;
 
 			IImmutableSet<string> currentLowerCaseTypeOrMemberNames;
@@ -589,7 +621,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					case VariableKind.DisplayClassLocal:
 						v.Name = context.NextDisplayClassLocal();
 						break;
-					case VariableKind.Local when v.Index != null:
+					// By-ref locals are excluded from slot-based name sharing: unlike ordinary locals,
+					// a ref local cannot be declared without an initializer, so several split ref locals
+					// that share one IL slot cannot be merged into a single hoisted declaration. Sharing
+					// a name would force DeclareVariables to merge them (they collide under CS0136), which
+					// would then emit an illegal uninitialized 'ref T x;'. Giving each a distinct name lets
+					// every ref local keep its own 'ref T x = ref ...;' at its definition.
+					case VariableKind.Local when v.Index != null && v.StackType != StackType.Ref:
 						name = context.TryGetExistingName(v.Function, v.Index.Value);
 						if (name != null)
 						{

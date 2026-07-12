@@ -396,6 +396,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task RefLocalSlotSharing()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task EmptyBodies()
 		{
 			await Run();
