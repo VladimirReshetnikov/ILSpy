@@ -14,6 +14,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public S CustomStruct { get; set; }
 			public int? NullableIntProp { get; set; }
 			public S? NullableCustomStructProp { get; set; }
+			public bool Flag { get; set; }
 		}
 
 		public struct S
@@ -381,6 +382,18 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public void RecursivePattern_StringConstant(object obj)
 		{
 			if (obj is X { Text: "Hello" } x)
+			{
+				Console.WriteLine("Test " + x);
+			}
+			else
+			{
+				Console.WriteLine("not Test");
+			}
+		}
+
+		public void RecursivePattern_TrueBoolConstant(object obj)
+		{
+			if (obj is X { Flag: true } x)
 			{
 				Console.WriteLine("Test " + x);
 			}

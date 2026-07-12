@@ -4976,8 +4976,16 @@ namespace ICSharpCode.Decompiler.CSharp
 					if (comp.MatchLogicNot(out var negatedPattern)
 						&& MatchInstruction.IsPatternMatch(negatedPattern, out _, settings))
 					{
-						return new UnaryOperatorExpression(UnaryOperatorType.PatternNot,
-								TranslatePattern(negatedPattern, leftHandType))
+						var innerPattern = TranslatePattern(negatedPattern, leftHandType);
+						// A negated bool constant is canonicalized to the positive form: a positive
+						// test of a bool member lowers to a double negation (brfalse of the getter),
+						// which would otherwise print as the bizarre '{ Flag: not false }'.
+						if (innerPattern.Expression is PrimitiveExpression { Value: bool boolValue })
+						{
+							return new PrimitiveExpression(!boolValue)
+								.WithILInstruction(comp);
+						}
+						return new UnaryOperatorExpression(UnaryOperatorType.PatternNot, innerPattern)
 							.WithILInstruction(comp);
 					}
 					var constantValue = Translate(comp.Right, leftHandType);
@@ -4987,6 +4995,14 @@ namespace ICSharpCode.Decompiler.CSharp
 							return constantValue
 								.WithILInstruction(comp);
 						case ComparisonKind.Inequality:
+							// A negated bool constant is canonicalized to the positive form: a positive
+							// test of a bool member lowers to '!= false', which would otherwise print
+							// as the bizarre '{ Flag: not false }'.
+							if (constantValue.Expression is PrimitiveExpression { Value: bool boolConstant })
+							{
+								return new PrimitiveExpression(!boolConstant)
+									.WithILInstruction(comp);
+							}
 							return new UnaryOperatorExpression(UnaryOperatorType.PatternNot, constantValue)
 								.WithILInstruction(comp);
 						case ComparisonKind.LessThan:
