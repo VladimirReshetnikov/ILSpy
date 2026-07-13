@@ -254,12 +254,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				// A stackalloc whose result is a pointer (rather than a Span<T>) is only valid C# as
 				// the initializer of a pointer-typed local. Inlining it into any expression position
 				// retypes it as Span<T>, which breaks every pointer use (dereference, a pointer-typed
-				// argument, a reinterpreting cast). Moving it into a local store keeps it a local
-				// initializer, and the Span<T>/ReadOnlySpan<T> constructor is the one position where
-				// reinterpreting it as a span is exactly the point; everything else must not inline.
+				// argument, a reinterpreting cast). Storing it into a single-definition local keeps it
+				// a local initializer; a target with several stores would be declared separately and
+				// receive the stackalloc as a plain assignment (CS8346), so that position must not
+				// inline either. The Span<T>/ReadOnlySpan<T> constructor is the one non-store position
+				// where reinterpreting it as a span is exactly the point; everything else must not inline.
 				if (inlinedExpression.ResultType == StackType.I
 					&& (inlinedExpression is LocAlloc || inlinedExpression is Block { Kind: BlockKind.StackAllocInitializer })
-					&& loadInst.Parent is not StLoc
+					&& loadInst.Parent is not StLoc { Variable.IsSingleDefinition: true }
 					&& !IsStackAllocSpanConstructorArgument(loadInst))
 				{
 					return false;

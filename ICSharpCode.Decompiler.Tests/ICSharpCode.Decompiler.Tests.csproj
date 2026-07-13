@@ -132,6 +132,7 @@
     <None Include="TestCases\ILPretty\VarianceBoundDelegateClosure.il" />
     <None Include="TestCases\ILPretty\WeirdEnums.il" />
     <None Include="TestCases\ILPretty\ConstantBlobs.il" />
+    <None Include="TestCases\ILPretty\StackAllocConditionalPointer.il" />
     <None Include="TestCases\ILPretty\CS1xSwitch_Debug.il" />
     <None Include="TestCases\ILPretty\CS1xSwitch_Release.il" />
     <None Include="TestCases\ILPretty\Issue1157.il" />
@@ -269,6 +270,8 @@
     <None Include="TestCases\ILPretty\ScopedRefStructLocal.cs" />
     <Compile Remove="TestCases\ILPretty\VarianceBoundDelegateClosure.cs" />
     <None Include="TestCases\ILPretty\VarianceBoundDelegateClosure.cs" />
+    <Compile Remove="TestCases\ILPretty\StackAllocConditionalPointer.cs" />
+    <None Include="TestCases\ILPretty\StackAllocConditionalPointer.cs" />
     <Compile Remove="TestCases\ILPretty\UnknownTypes.cs" />
     <None Include="TestCases\ILPretty\UnknownTypes.cs" />
     <Compile Remove="TestCases\ILPretty\Unsafe.cs" />

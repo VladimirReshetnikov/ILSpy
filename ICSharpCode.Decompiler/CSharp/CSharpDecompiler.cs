@@ -116,6 +116,11 @@ namespace ICSharpCode.Decompiler.CSharp
 				new SwitchExpressionDefaultCaseTransform(),
 				new SplitVariables(), // split variables once again, because SwitchOnNullableTransform eliminates ldloca
 				new IntroduceRefReadOnlyModifierOnLocals(),
+				// Must run before ConditionDetection: giving a pointer stackalloc its own single-definition
+				// local keeps it out of a conditional operand or a plain assignment (both would retype it
+				// as Span<T>), and leaves each branch with more than one instruction so the conditional
+				// operator transform does not fold the two stores back together.
+				new SplitPointerStackAllocStores(),
 				new BlockILTransform { // per-block transforms
 					PostOrderTransforms = {
 						// Even though it's a post-order block-transform as most other transforms,
