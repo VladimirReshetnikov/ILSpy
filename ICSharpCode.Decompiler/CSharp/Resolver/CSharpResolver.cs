@@ -2967,8 +2967,94 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			var or = rr.PerformOverloadResolution(CurrentTypeResolveContext.Compilation, arguments, argumentNames, allowExtensionMethods: true);
 			if (or == null || or.IsAmbiguous)
 				return false;
-			return method.Equals(or.GetBestCandidateWithSubstitutedTypeArguments())
-				&& CSharpResolver.IsEligibleExtensionMethod(target.Type, method, useTypeInference: false, out _);
+			if (!method.Equals(or.GetBestCandidateWithSubstitutedTypeArguments())
+				|| !CSharpResolver.IsEligibleExtensionMethod(target.Type, method, useTypeInference: false, out _))
+			{
+				return false;
+			}
+			// A decompiled lambda argument is modeled by the single fixed delegate type it was inferred
+			// to carry, so the overload resolution above only sees it as convertible to that delegate
+			// type. Written in infix form the argument becomes a bare lambda that can also bind to
+			// differently-shaped delegates - in particular a void-returning delegate when the lambda
+			// body is a statement expression. If that makes a sibling instance method of the same name
+			// on the receiver type applicable, C# member lookup picks that instance method (instance
+			// methods are preferred over extension methods) instead of the intended extension method,
+			// silently changing the call's meaning. Keep the static invocation form in that case.
+			if (SiblingInstanceMethodWouldWin(rr, arguments, argumentNames))
+				return false;
+			return true;
+		}
+
+		bool SiblingInstanceMethodWouldWin(MethodGroupResolveResult rr, ResolveResult[] arguments, string[] argumentNames)
+		{
+			ResolveResult[] flexibleArguments = null;
+			for (int i = 0; i < arguments.Length; i++)
+			{
+				var lambda = AsBareLambda(arguments[i]);
+				if (lambda == null)
+					continue;
+				flexibleArguments ??= (ResolveResult[])arguments.Clone();
+				flexibleArguments[i] = new FlexibleReturnTypeLambda(lambda);
+			}
+			if (flexibleArguments == null)
+			{
+				// Without a lambda argument that can re-bind, the infix form resolves exactly as the
+				// overload resolution that already selected the extension method, so it stays safe.
+				return false;
+			}
+			var instanceOnly = rr.PerformOverloadResolution(CurrentTypeResolveContext.Compilation,
+				flexibleArguments, argumentNames, allowExtensionMethods: false);
+			return instanceOnly != null && instanceOnly.FoundApplicableCandidate;
+		}
+
+		static LambdaResolveResult AsBareLambda(ResolveResult rr)
+		{
+			return rr switch {
+				LambdaResolveResult lambda => lambda,
+				ConversionResolveResult { Conversion.IsAnonymousFunctionConversion: true, Input: LambdaResolveResult lambda } => lambda,
+				_ => null
+			};
+		}
+
+		/// <summary>
+		/// Wraps a decompiled lambda so that, in addition to the delegate types the lambda already
+		/// converts to, it is also treated as convertible to any void-returning delegate with a
+		/// matching parameter list. This models the fact that a bare expression lambda whose body is
+		/// a statement expression is convertible to such a delegate, which the fixed delegate type of
+		/// a decompiled lambda does not capture.
+		/// </summary>
+		sealed class FlexibleReturnTypeLambda : LambdaResolveResult
+		{
+			readonly LambdaResolveResult inner;
+
+			public FlexibleReturnTypeLambda(LambdaResolveResult inner)
+			{
+				this.inner = inner;
+			}
+
+			public override bool HasParameterList => inner.HasParameterList;
+			public override bool IsAnonymousMethod => inner.IsAnonymousMethod;
+			public override bool IsImplicitlyTyped => inner.IsImplicitlyTyped;
+			public override bool IsAsync => inner.IsAsync;
+			public override IReadOnlyList<IParameter> Parameters => inner.Parameters;
+			public override IType ReturnType => inner.ReturnType;
+			public override ResolveResult Body => inner.Body;
+
+			public override IType GetInferredReturnType(IType[] parameterTypes)
+				=> inner.GetInferredReturnType(parameterTypes);
+
+			public override Conversion IsValid(IType[] parameterTypes, IType returnType, CSharpConversions conversions)
+			{
+				var conversion = inner.IsValid(parameterTypes, returnType, conversions);
+				if (conversion.IsValid)
+					return conversion;
+				if (returnType.Kind == TypeKind.Void
+					&& (!inner.HasParameterList || inner.Parameters.Count == parameterTypes.Length))
+				{
+					return LambdaConversion.Instance;
+				}
+				return Conversion.None;
+			}
 		}
 
 		public bool CanTransformToExtensionMethodCall(IMethod method, bool ignoreTypeArguments = false, bool ignoreArgumentNames = true)
