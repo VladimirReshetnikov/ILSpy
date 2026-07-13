@@ -147,6 +147,28 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				currentNamespace = oldNamespace;
 			}
 
+			public override void VisitMemberReferenceExpression(MemberReferenceExpression memberReferenceExpression)
+			{
+				// A reduced extension method group (e.g. "receiver.Method") carries no SimpleType for
+				// the extension class, so its declaring namespace has to be imported from the annotation.
+				if (memberReferenceExpression.GetResolveResult() is MethodGroupResolveResult { ChosenMethod: { IsExtensionMethod: true } method })
+				{
+					AddImportedNamespace(method.DeclaringType);
+				}
+				base.VisitMemberReferenceExpression(memberReferenceExpression);
+			}
+
+			public override void VisitIdentifierExpression(IdentifierExpression identifierExpression)
+			{
+				// A reduced extension method group used without an explicit target still needs its
+				// extension class's namespace imported.
+				if (identifierExpression.GetResolveResult() is MethodGroupResolveResult { ChosenMethod: { IsExtensionMethod: true } method })
+				{
+					AddImportedNamespace(method.DeclaringType);
+				}
+				base.VisitIdentifierExpression(identifierExpression);
+			}
+
 			public override void VisitForeachStatement(ForeachStatement foreachStatement)
 			{
 				var annotation = foreachStatement.Annotation<ForeachAnnotation>();

@@ -706,6 +706,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ExtensionMethodDelegate([ValueSource(nameof(roslynOnlyOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
 		public async Task NullPropagation([ValueSource(nameof(roslynOnlyOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);

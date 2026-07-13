@@ -2062,6 +2062,10 @@ namespace ICSharpCode.Decompiler.CSharp
 					}
 					break;
 				}
+				if (result is MethodGroupResolveResult mgrr)
+				{
+					result = mgrr.WithChosenMethod(method);
+				}
 				return (currentTarget, addTypeArguments, method.Name, result!);
 			}
 			else
