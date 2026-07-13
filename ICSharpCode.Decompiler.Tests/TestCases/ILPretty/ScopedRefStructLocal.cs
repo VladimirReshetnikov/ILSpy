@@ -35,5 +35,87 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 			result[0] = (byte)n;
 			return result;
 		}
+
+		public static int DerivedFromSliceAndHelper(bool c, int n)
+		{
+			Span<byte> b = stackalloc byte[16];
+			scoped Span<byte> span;
+			if (c)
+			{
+				Console.WriteLine("side effect");
+				span = b.Slice(1, 4);
+			}
+			else
+			{
+				span = Wrap(b);
+			}
+			span[0] = (byte)n;
+			return span.Length;
+		}
+
+		public static int DiscardedRefStructSink(bool c, int n)
+		{
+			Span<byte> span = stackalloc byte[16];
+			scoped Span<byte> s;
+			if (c)
+			{
+				Console.WriteLine("side effect");
+				s = span.Slice(1, 4);
+			}
+			else
+			{
+				s = span;
+			}
+			Echo(s);
+			return n;
+		}
+
+		public static int CopiedIntoConfinedLocal(bool c, int n)
+		{
+			Span<byte> span = stackalloc byte[16];
+			scoped Span<byte> span2;
+			if (c)
+			{
+				Console.WriteLine("side effect");
+				span2 = span.Slice(1, 4);
+			}
+			else
+			{
+				span2 = span;
+			}
+			ReadOnlySpan<byte> s = span2;
+			return Count(s) + s.Length;
+		}
+
+		public static int WideArraySpanStaysBare(bool c, byte[] array, int n)
+		{
+			Span<byte> span;
+			if (c)
+			{
+				Console.WriteLine("side effect");
+				span = array.AsSpan(1);
+			}
+			else
+			{
+				span = array;
+			}
+			span[0] = (byte)n;
+			return span.Length;
+		}
+
+		private static Span<byte> Wrap(Span<byte> b)
+		{
+			return b.Slice(0, b.Length);
+		}
+
+		private static Span<byte> Echo(Span<byte> s)
+		{
+			return s;
+		}
+
+		private static int Count(ReadOnlySpan<byte> s)
+		{
+			return s.Length;
+		}
 	}
 }
