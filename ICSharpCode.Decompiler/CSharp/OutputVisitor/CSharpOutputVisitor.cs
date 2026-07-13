@@ -2208,6 +2208,11 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 		{
 			StartNode(variableDeclarationStatement);
 			WriteModifiers(variableDeclarationStatement.Modifiers);
+			if (variableDeclarationStatement.IsScopedRef)
+			{
+				WriteKeyword(ParameterDeclaration.ScopedRefKeyword);
+				Space();
+			}
 			variableDeclarationStatement.Type.AcceptVisitor(this);
 			Space();
 			WriteCommaSeparatedList(variableDeclarationStatement.Variables);

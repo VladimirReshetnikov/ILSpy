@@ -697,6 +697,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					}
 					var vds = new VariableDeclarationStatement(type, v.Name, initializer);
 					vds.Variables.Single().AddAnnotation(new ILVariableResolveResult(ilVariable));
+					if (context.Settings.ScopedRef && v.Type.IsByRefLike
+						&& ShouldDeclareByRefLikeLocalScoped(v))
+					{
+						vds.IsScopedRef = true;
+					}
 					context.Step("Insert variable declaration", v.InsertionPoint.nextNode);
 					if (v.InsertionPoint.nextNode.Parent is LambdaExpression lambda)
 					{
@@ -811,6 +816,179 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 			}
 			return false;
+		}
+
+		/// <summary>
+		/// Determines whether a by-ref-like (ref struct) local that is emitted as a bare hoisted
+		/// declaration (assigned in multiple branches and merged, so it cannot be combined with a
+		/// single initializer) should carry the C# 11 <c>scoped</c> modifier.
+		///
+		/// A bare ref-struct local's safe-context is the caller context (it may be returned), so
+		/// assigning it a stack-referring value such as the result of a <c>stackalloc</c> is a
+		/// compile error (CS8352/CS8353). <c>scoped</c> restricts the safe-context to the current
+		/// method and makes the narrow assignment legal - but only when the local genuinely does not
+		/// escape. This check is therefore deliberately asymmetric: it returns <see langword="true"/>
+		/// only when a stack-referring value is assigned <em>and</em> every use is provably confined
+		/// to the method. Any use whose confinement cannot be proven leaves the declaration bare
+		/// (the status quo), because a false "does not escape" would inject a new ref-safety error on
+		/// a legitimately escaping local, which is strictly worse than the missing modifier.
+		/// </summary>
+		bool ShouldDeclareByRefLikeLocalScoped(VariableToDeclare v)
+		{
+			// All uses of the variable live within the block that receives the declaration; the
+			// insertion point is the common ancestor of every reference (see FindInsertionPoints).
+			if (v.InsertionPoint.nextNode.Parent is not BlockStatement scope)
+				return false;
+			bool sawAssignmentOfStackReferringValue = false;
+			bool sawUse = false;
+			foreach (AstNode node in scope.Descendants)
+			{
+				if (node is not IdentifierExpression identifier)
+					continue;
+				if (ResolveVariableToDeclare(identifier.GetILVariable()) != v)
+					continue;
+				sawUse = true;
+				if (identifier.Parent is AssignmentExpression { Operator: AssignmentOperatorType.Assign } assignment
+					&& assignment.Left == identifier
+					&& IsStackReferringValue(assignment.Right))
+				{
+					sawAssignmentOfStackReferringValue = true;
+				}
+				if (ReferenceMayEscape(identifier))
+					return false;
+			}
+			return sawUse && sawAssignmentOfStackReferringValue;
+		}
+
+		/// <summary>
+		/// Whether <paramref name="expression"/> produces a value whose safe-context is the current
+		/// method rather than the caller, i.e. a value that requires the receiving ref-struct local
+		/// to be <c>scoped</c>. Only <c>stackalloc</c> (the intrinsic stack-referring primitive) is
+		/// recognized; other narrow sources are intentionally not treated as narrowing, so the
+		/// modifier is added only where it is clearly required.
+		/// </summary>
+		static bool IsStackReferringValue(Expression expression)
+		{
+			while (true)
+			{
+				switch (expression)
+				{
+					case ParenthesizedExpression paren:
+						expression = paren.Expression;
+						break;
+					case CastExpression cast:
+						expression = cast.Expression;
+						break;
+					case StackAllocExpression:
+						return true;
+					default:
+						return false;
+				}
+			}
+		}
+
+		/// <summary>
+		/// Conservatively determines whether the references held by the ref-struct value at
+		/// <paramref name="current"/> (derived from the local under analysis) may escape the current
+		/// method. Returns <see langword="true"/> whenever escape cannot be ruled out; only contexts
+		/// that provably confine the value (a store back into the local, or flowing into a value that
+		/// cannot carry references outward) return <see langword="false"/>.
+		/// </summary>
+		static bool ReferenceMayEscape(Expression current)
+		{
+			switch (current.Parent)
+			{
+				case ParenthesizedExpression paren:
+					return ReferenceMayEscape(paren);
+				case CastExpression cast:
+					// References survive a cast only if the target type is itself reference-carrying.
+					if (TypeCarriesReferences(cast.GetResolveResult().Type))
+						return ReferenceMayEscape(cast);
+					return false;
+				case AssignmentExpression assignment:
+					// Storing into the local (its own initializer) does not let the local escape;
+					// storing the local's value into any other l-value might.
+					return assignment.Left != current;
+				case ReturnStatement:
+				case YieldReturnStatement:
+					return true;
+				case DirectionExpression:
+					// Passed by ref/out/in: a reference is taken; conservatively an escape.
+					return true;
+				case MemberReferenceExpression member when member.Target == current:
+					// Method group of an invocation: the produced value is the call result.
+					if (member.Parent is InvocationExpression memberInvocation && memberInvocation.Target == member)
+						return ReferenceMayEscape(member);
+					// Field/property access: references survive only through a reference-carrying member.
+					if (TypeCarriesReferences(member.GetResolveResult().Type))
+						return ReferenceMayEscape(member);
+					return false;
+				case IndexerExpression indexer when indexer.Target == current:
+					if (TypeCarriesReferences(indexer.GetResolveResult().Type))
+						return ReferenceMayEscape(indexer);
+					return false;
+				case InvocationExpression invocation:
+					// The value leaves the call only through its return value; a call that returns a
+					// non-reference-carrying value confines it, provided no by-ref argument could
+					// receive the local's references.
+					if (TypeCarriesReferences(invocation.GetResolveResult().Type)
+						|| HasReferenceCarryingRefArgument(invocation.Arguments))
+					{
+						return ReferenceMayEscape(invocation);
+					}
+					return false;
+				case ObjectCreateExpression objectCreate:
+					if (TypeCarriesReferences(objectCreate.GetResolveResult().Type)
+						|| HasReferenceCarryingRefArgument(objectCreate.Arguments))
+					{
+						return ReferenceMayEscape(objectCreate);
+					}
+					return false;
+				case BinaryOperatorExpression binary:
+					// Operators such as == yield a non-reference-carrying result; anything else is
+					// treated conservatively as an escape.
+					return TypeCarriesReferences(binary.GetResolveResult().Type);
+				default:
+					// Any other context (variable initializer, conditional, foreach source, ...) is
+					// not proven safe, so treat it as an escape.
+					return true;
+			}
+		}
+
+		/// <summary>
+		/// Whether any argument is passed by ref/out/in with a reference-carrying (ref struct or
+		/// by-ref) type, which could receive the local's references even when the call's own result
+		/// cannot carry them outward.
+		/// </summary>
+		static bool HasReferenceCarryingRefArgument(AstNodeCollection<Expression> arguments)
+		{
+			foreach (Expression argument in arguments)
+			{
+				if (argument is DirectionExpression direction
+					&& TypeCarriesReferences(direction.Expression.GetResolveResult().Type))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		/// <summary>
+		/// Whether a value of <paramref name="type"/> can carry references out of the method: a
+		/// by-ref-like (ref struct) value, a managed reference, or an unresolved type (treated
+		/// conservatively as reference-carrying so it never acts as a firewall).
+		/// </summary>
+		static bool TypeCarriesReferences(IType type)
+		{
+			switch (type.Kind)
+			{
+				case TypeKind.ByReference:
+				case TypeKind.Unknown:
+				case TypeKind.None:
+					return true;
+				default:
+					return type.IsByRefLike;
+			}
 		}
 
 		/// <summary>

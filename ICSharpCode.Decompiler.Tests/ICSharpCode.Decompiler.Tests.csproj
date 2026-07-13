@@ -259,6 +259,8 @@
     <None Include="TestCases\ILPretty\Issue646.cs" />
     <Compile Remove="TestCases\ILPretty\RefLocalSlotSharing.cs" />
     <None Include="TestCases\ILPretty\RefLocalSlotSharing.cs" />
+    <Compile Remove="TestCases\ILPretty\ScopedRefStructLocal.cs" />
+    <None Include="TestCases\ILPretty\ScopedRefStructLocal.cs" />
     <Compile Remove="TestCases\ILPretty\VarianceBoundDelegateClosure.cs" />
     <None Include="TestCases\ILPretty\VarianceBoundDelegateClosure.cs" />
     <Compile Remove="TestCases\ILPretty\UnknownTypes.cs" />

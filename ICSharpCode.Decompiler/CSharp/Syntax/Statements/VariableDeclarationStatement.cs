@@ -42,6 +42,12 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		public Modifiers Modifiers { get; set; }
 
+		/// <summary>
+		/// Whether the declaration carries the C# 11 <c>scoped</c> modifier, restricting the
+		/// safe-context of a by-ref-like (ref struct) local to the current method.
+		/// </summary>
+		public bool IsScopedRef { get; set; }
+
 		[Slot("Type")]
 		public partial AstType Type { get; set; }
 
