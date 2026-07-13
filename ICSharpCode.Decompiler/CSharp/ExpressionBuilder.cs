@@ -4175,13 +4175,61 @@ namespace ICSharpCode.Decompiler.CSharp
 			SwitchExpression switchExpr = new SwitchExpression();
 			switchExpr.Expression = value;
 			IType resultType;
+			bool resultTypeFromContext;
 			if (context.TypeHint.Kind != TypeKind.Unknown && context.TypeHint.GetStackType() == inst.ResultType)
 			{
 				resultType = context.TypeHint;
+				resultTypeFromContext = true;
 			}
 			else
 			{
 				resultType = compilation.FindType(inst.ResultType);
+				resultTypeFromContext = false;
+			}
+
+			// Translate the arm bodies up front so their natural types can be inspected before
+			// the (implicit) conversion to resultType is applied. The emitted arms - the
+			// non-default sections, then the user-written default - are translated in that order;
+			// a compiler-generated default section is never emitted and is left untranslated.
+			var translatedBodies = new Dictionary<IL.SwitchSection, TranslatedExpression>();
+			foreach (var section in inst.Sections)
+			{
+				if (section == defaultSection)
+					continue;
+				translatedBodies.Add(section, Translate(section.Body, resultType));
+			}
+			if (!defaultSection.IsCompilerGeneratedDefaultSection)
+			{
+				translatedBodies.Add(defaultSection, Translate(defaultSection.Body, resultType));
+			}
+
+			// A switch expression has no type of its own: C# gives it the best common type of its
+			// arms, and only accepts a natural type that is one of the arm types (a type every arm
+			// converts to) - not a synthesized common base. When the surrounding context supplies a
+			// target type, resultType comes from context.TypeHint and that context pins the type at
+			// the use site, so no natural type is required. Otherwise resultType is only the stack
+			// type (e.g. System.Object for a reference switch); if the arms then also have no
+			// natural type - as when each arm yields a distinct sibling interface - the printed
+			// switch expression fails to compile (CS8506), e.g. when inlined into '... == null'. In
+			// that case anchor the type explicitly with a cast around the whole expression.
+			bool anchorResultType = false;
+			if (!resultTypeFromContext)
+			{
+				var armResults = new List<ResolveResult>();
+				foreach (var section in inst.Sections)
+				{
+					if (section == defaultSection && defaultSection.IsCompilerGeneratedDefaultSection)
+						continue;
+					armResults.Add(translatedBodies[section].ResolveResult);
+				}
+				if (armResults.Count >= 2)
+				{
+					IType bestCommonType = typeInference.GetBestCommonType(armResults, out bool success);
+					// GetBestCommonType can synthesize a common base type that no arm actually has;
+					// C#'s natural-type rule would reject it, so require the result to match an arm.
+					bool hasNaturalType = success && armResults.Any(r => r.Type.Equals(bestCommonType));
+					anchorResultType = !hasNaturalType;
+				}
 			}
 
 			foreach (var section in inst.Sections)
@@ -4212,12 +4260,18 @@ namespace ICSharpCode.Decompiler.CSharp
 				switchExpr.SwitchSections.Add(defaultSES);
 			}
 
-			return switchExpr.WithILInstruction(inst).WithRR(new ResolveResult(resultType));
+			var switchResult = switchExpr.WithILInstruction(inst).WithRR(new ResolveResult(resultType));
+			if (anchorResultType)
+			{
+				switchResult = new CastExpression(ConvertType(resultType), switchResult.Expression)
+					.WithILInstruction(inst)
+					.WithRR(new ConversionResolveResult(resultType, switchResult.ResolveResult, Conversion.IdentityConversion));
+			}
+			return switchResult;
 
 			Expression TranslateSectionBody(IL.SwitchSection section)
 			{
-				var body = Translate(section.Body, resultType);
-				return body.ConvertTo(resultType, this, allowImplicitConversion: true);
+				return translatedBodies[section].ConvertTo(resultType, this, allowImplicitConversion: true);
 			}
 		}
 

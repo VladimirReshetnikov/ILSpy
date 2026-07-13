@@ -37,6 +37,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			Null
 		}
 
+		public interface INode
+		{
+		}
+		public interface IUnaryNode : INode
+		{
+		}
+		public interface IBinaryNode : INode
+		{
+		}
+		public interface ITernaryNode : INode
+		{
+		}
+
 		public static bool? SwitchOverNullableEnum(State? state)
 		{
 			return state switch {
@@ -158,6 +171,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				"quux" => "quux",
 				_ => "default",
 			};
+		}
+
+		public static bool SwitchExpressionWithoutNaturalType(object node, int kind)
+		{
+			return (object)(kind switch {
+				0 => node as IUnaryNode,
+				1 => node as IBinaryNode,
+				2 => node as ITernaryNode,
+				_ => null,
+			}) == null;
 		}
 #pragma warning disable CS8509 // The switch expression does not handle all possible values of its input type (it is not exhaustive).
 		public static int Issue3382(StringComparison c)
