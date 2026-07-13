@@ -791,7 +791,16 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				var arg = attribute.FixedArguments[i];
 				var p = (i < parameters.Count) ? parameters[i] : null;
-				attr.Arguments.Add(ConvertConstantValue(p?.Type ?? arg.Type, arg.Type, arg.Value));
+				Expression argument = ConvertConstantValue(p?.Type ?? arg.Type, arg.Type, arg.Value);
+				if (p != null && argument is PrimitiveExpression
+					&& SmallIntegerAttributeArgumentIsAmbiguous(attribute, i, p.Type, arg.Value))
+				{
+					// A small-integer literal is rendered as a bare `int` literal; when a sibling
+					// constructor overload would also accept it, add an explicit cast so the
+					// recorded constructor binds unambiguously.
+					argument = new CastExpression(ConvertType(p.Type), argument);
+				}
+				attr.Arguments.Add(argument);
 			}
 			if (attribute.NamedArguments.Length > 0)
 			{
@@ -818,6 +827,63 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				attr.Arguments.Add(new ErrorExpression("Could not decode attribute arguments."));
 			}
 			return attr;
+		}
+
+		/// <summary>
+		/// Determines whether the positional attribute argument at <paramref name="argIndex"/>,
+		/// which is rendered as a bare integer literal, would be ambiguous or bind to the wrong
+		/// constructor overload.
+		///
+		/// C# has no small-integer literals, so a <c>short</c>/<c>byte</c>/<c>sbyte</c>/<c>ushort</c>
+		/// argument is printed as an <c>int</c> literal (e.g. the <c>short</c> value 0 as <c>0</c>).
+		/// When the attribute type declares another constructor of the same arity whose parameter at
+		/// this position the bare literal could also bind to -- an enum parameter matched by the
+		/// literal <c>0</c>, or a sibling <c>int</c>/small-integer parameter -- the call is ambiguous
+		/// (CS0121) or resolves to the wrong overload. The literal then needs an explicit cast to the
+		/// recorded parameter type. The classic case is <c>ClassInterfaceAttribute</c>, which has both
+		/// a <c>ClassInterfaceType</c> and a <c>short</c> constructor: <c>[ClassInterface(0)]</c> is
+		/// ambiguous, <c>[ClassInterface((short)0)]</c> is not.
+		/// </summary>
+		bool SmallIntegerAttributeArgumentIsAmbiguous(IAttribute attribute, int argIndex, IType parameterType, object? value)
+		{
+			if (value == null || !parameterType.IsCSharpSmallIntegerType())
+				return false;
+			if (attribute.Constructor == null)
+				return false;
+			int arity = attribute.FixedArguments.Length;
+			foreach (var ctor in attribute.AttributeType.GetConstructors())
+			{
+				if (ctor.Parameters.Count != arity || argIndex >= ctor.Parameters.Count)
+					continue;
+				var siblingType = ctor.Parameters[argIndex].Type;
+				// Skip the recorded constructor itself (and any overload with the same parameter type
+				// at this position): it is not a competing candidate for the bare literal.
+				if (siblingType.Equals(parameterType))
+					continue;
+				// The literal 0 is the only int literal implicitly convertible to an enum type.
+				if (siblingType.Kind == TypeKind.Enum && IsIntegerZero(value))
+					return true;
+				// A bare int literal binds to an int parameter exactly (a better match than the
+				// recorded small-integer parameter) or ambiguously to another small-integer parameter.
+				if (siblingType.IsKnownType(KnownTypeCode.Int32) || siblingType.IsCSharpSmallIntegerType())
+					return true;
+			}
+			return false;
+		}
+
+		static bool IsIntegerZero(object value)
+		{
+			return value switch {
+				sbyte v => v == 0,
+				byte v => v == 0,
+				short v => v == 0,
+				ushort v => v == 0,
+				int v => v == 0,
+				uint v => v == 0,
+				long v => v == 0,
+				ulong v => v == 0,
+				_ => false
+			};
 		}
 
 		private IEnumerable<AttributeSection> ConvertAttributes(IEnumerable<IAttribute> attributes, string? target = null)

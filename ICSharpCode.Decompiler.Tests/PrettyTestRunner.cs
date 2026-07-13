@@ -909,6 +909,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task AttributeArgumentCasts([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
 		public async Task MemberTests([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
