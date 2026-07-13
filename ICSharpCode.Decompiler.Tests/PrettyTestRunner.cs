@@ -464,6 +464,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task UnsafeAsync([ValueSource(nameof(roslyn3OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
 		public async Task ConstructorInitializers([ValueSource(nameof(defaultOptionsWithMcs))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions | CompilerOptions.ProcessXmlDoc);

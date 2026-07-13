@@ -18,6 +18,7 @@
 
 #nullable enable
 
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
@@ -78,13 +79,194 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				next = child.NextSibling;
 				result |= child.AcceptVisitor(this);
 			}
-			if (result && node is EntityDeclaration && !(node is Accessor))
+			if (result && node is EntityDeclaration entity && !(node is Accessor))
 			{
+				// C# forbids 'await' anywhere inside an unsafe context, so a method whose body
+				// lexically contains an await (an async method, or one holding an async lambda or
+				// local function) cannot carry the 'unsafe' modifier. Wrap only the pointer-using
+				// statements in inner 'unsafe' blocks that exclude the awaits instead.
+				if (entity is MethodDeclaration { Body: BlockStatement body } && ContainsAwait(body))
+				{
+					Step("Introduce unsafe blocks", node);
+					IntroduceUnsafeBlocks(body);
+					return false;
+				}
 				Step("Add unsafe modifier", node);
-				((EntityDeclaration)node).Modifiers |= Modifiers.Unsafe;
+				entity.Modifiers |= Modifiers.Unsafe;
 				return false;
 			}
 			return result;
+		}
+
+		/// <summary>
+		/// Scopes the pointer usage inside <paramref name="block"/> to inner 'unsafe' blocks that
+		/// never lexically contain an await. Consecutive await-free statements that need an unsafe
+		/// context are grouped into a single block; a statement that carries both pointer usage and
+		/// an await (e.g. a pointer-using lambda passed to an awaited call) is descended into so the
+		/// unsafe block can be placed around the nested body that actually needs it.
+		/// </summary>
+		void IntroduceUnsafeBlocks(BlockStatement block)
+		{
+			var runs = new List<(Statement first, Statement? afterExclusive)>();
+			var descend = new List<Statement>();
+			Statement? runStart = null;
+			for (Statement? stmt = block.Statements.FirstOrDefault(); stmt != null; stmt = stmt.GetNextStatement())
+			{
+				if (ContainsUnenclosedUnsafe(stmt))
+				{
+					if (!ContainsAwait(stmt))
+					{
+						runStart ??= stmt;
+						continue;
+					}
+					descend.Add(stmt);
+				}
+				if (runStart != null)
+				{
+					runs.Add((runStart, stmt));
+					runStart = null;
+				}
+			}
+			if (runStart != null)
+				runs.Add((runStart, null));
+
+			// Mutate only after the scan so the statement iteration above is not disturbed.
+			foreach (var (first, afterExclusive) in runs)
+				WrapStatementsInUnsafe(first, afterExclusive);
+			foreach (var stmt in descend)
+				DescendForUnsafe(stmt);
+		}
+
+		/// <summary>
+		/// Finds the nested blocks and lambda/local-function bodies that carry the pointer usage
+		/// inside a statement that cannot itself be wrapped (because it also contains an await),
+		/// and introduces the unsafe blocks there.
+		/// </summary>
+		void DescendForUnsafe(AstNode node)
+		{
+			for (AstNode? child = node.FirstChild; child != null; child = child.NextSibling)
+			{
+				if (!ContainsUnenclosedUnsafe(child))
+					continue;
+				switch (child)
+				{
+					case BlockStatement block:
+						IntroduceUnsafeBlocks(block);
+						break;
+					case AnonymousMethodExpression { Body: { } anonBody }:
+						IntroduceUnsafeBlocks(anonBody);
+						break;
+					case LambdaExpression { Body: BlockStatement lambdaBlock }:
+						IntroduceUnsafeBlocks(lambdaBlock);
+						break;
+					case LambdaExpression lambda:
+						WrapExpressionLambdaBody(lambda);
+						break;
+					case LocalFunctionDeclarationStatement { Declaration.Body: BlockStatement localFunctionBody }:
+						IntroduceUnsafeBlocks(localFunctionBody);
+						break;
+					default:
+						DescendForUnsafe(child);
+						break;
+				}
+			}
+		}
+
+		/// <summary>
+		/// Moves the statements in the range [<paramref name="first"/>, <paramref name="afterExclusive"/>)
+		/// into a fresh 'unsafe' block placed where <paramref name="first"/> was.
+		/// </summary>
+		void WrapStatementsInUnsafe(Statement first, Statement? afterExclusive)
+		{
+			Step("Add unsafe block", first);
+			var newBlock = new BlockStatement();
+			Statement? next;
+			for (Statement? stmt = first.GetNextStatement(); stmt != null && stmt != afterExclusive; stmt = next)
+			{
+				next = stmt.GetNextStatement();
+				newBlock.Add(stmt.Detach());
+			}
+			var unsafeStatement = new UnsafeStatement { Body = newBlock };
+			first.ReplaceWith(unsafeStatement);
+			newBlock.Statements.InsertAfter(null, first);
+			EndStep(unsafeStatement);
+		}
+
+		/// <summary>
+		/// Rewrites an expression-bodied lambda into a block-bodied one whose single statement is
+		/// wrapped in an 'unsafe' block, for the rare case where a pointer-using expression lambda
+		/// sits inside an awaited call.
+		/// </summary>
+		void WrapExpressionLambdaBody(LambdaExpression lambda)
+		{
+			if (lambda.Body is not Expression expression)
+				return;
+			Step("Wrap lambda body in unsafe block", lambda);
+			bool returnsVoid = expression.GetResolveResult()?.Type.Kind == TypeKind.Void;
+			Statement inner = returnsVoid
+				? new ExpressionStatement(expression.Detach())
+				: new ReturnStatement(expression.Detach());
+			var innerBlock = new BlockStatement();
+			innerBlock.Add(inner);
+			var lambdaBlock = new BlockStatement();
+			lambdaBlock.Add(new UnsafeStatement { Body = innerBlock });
+			lambda.Body = lambdaBlock;
+			EndStep(lambda);
+		}
+
+		/// <summary>
+		/// Whether <paramref name="node"/> lexically contains an await expression, descending into
+		/// nested lambdas and local functions (an unsafe modifier or block would cover those too).
+		/// </summary>
+		static bool ContainsAwait(AstNode node)
+		{
+			if (node is UnaryOperatorExpression { Operator: UnaryOperatorType.Await })
+				return true;
+			for (AstNode? child = node.FirstChild; child != null; child = child.NextSibling)
+			{
+				if (ContainsAwait(child))
+					return true;
+			}
+			return false;
+		}
+
+		/// <summary>
+		/// Whether <paramref name="node"/> contains pointer usage that is not already enclosed in an
+		/// 'unsafe' scope (an unsafe-modified entity or an existing unsafe block). Mirrors the
+		/// leaf conditions of the visitor above.
+		/// </summary>
+		bool ContainsUnenclosedUnsafe(AstNode node)
+		{
+			switch (node)
+			{
+				case UnsafeStatement:
+					return false;
+				case EntityDeclaration entity when (entity.Modifiers & Modifiers.Unsafe) != 0:
+					return false;
+				case PointerReferenceExpression:
+				case SizeOfExpression:
+				case FixedVariableInitializer:
+				case FunctionPointerAstType:
+					return true;
+				case ComposedType { PointerRank: > 0 }:
+					return true;
+				case UnaryOperatorExpression { Operator: UnaryOperatorType.Dereference }:
+				case UnaryOperatorExpression { Operator: UnaryOperatorType.AddressOf }:
+					return true;
+				case MemberReferenceExpression:
+				case IdentifierExpression:
+				case StackAllocExpression:
+				case InvocationExpression:
+					if (HasUnsafeResolveResult(node))
+						return true;
+					break;
+			}
+			for (AstNode? child = node.FirstChild; child != null; child = child.NextSibling)
+			{
+				if (ContainsUnenclosedUnsafe(child))
+					return true;
+			}
+			return false;
 		}
 
 		public override bool VisitPointerReferenceExpression(PointerReferenceExpression pointerReferenceExpression)
