@@ -298,6 +298,23 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 			var compilation = expressionBuilder.compilation;
 			var conversions = Resolver.CSharpConversions.Get(compilation);
+			if (Expression is TupleExpression tupleToConvert && type.Kind == TypeKind.None
+				&& !(targetType is TupleType targetTupleType2 && targetTupleType2.ElementTypes.Length == tupleToConvert.Elements.Count))
+			{
+				// A tuple literal only has a natural type when every element has one, so a literal with an
+				// untyped element (e.g. a null or default) cannot be boxed or converted to a non-tuple type
+				// such as object (CS8135). Recover the element types from the underlying ValueTuple
+				// construction and give the literal a natural type by re-emitting it with explicit element
+				// casts before applying the outer conversion.
+				var tupleNewObj = Expression.Annotation<IL.NewObj>();
+				if (tupleNewObj != null
+					&& TupleType.FromUnderlyingType(compilation, tupleNewObj.Method.DeclaringType) is TupleType naturalTupleType
+					&& naturalTupleType.ElementTypes.Length == tupleToConvert.Elements.Count)
+				{
+					return this.ConvertTo(naturalTupleType, expressionBuilder, checkForOverflow)
+						.ConvertTo(targetType, expressionBuilder, checkForOverflow, allowImplicitConversion);
+				}
+			}
 			if (ResolveResult is ConversionResolveResult conv && Expression is CastExpression cast2
 				&& !conv.Conversion.IsUserDefined
 				&& CastCanBeMadeImplicit(conversions, conv.Conversion, conv.Input.Type, type, targetType))
