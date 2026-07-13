@@ -402,6 +402,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task VarianceBoundDelegateClosure()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task EmptyBodies()
 		{
 			await Run();

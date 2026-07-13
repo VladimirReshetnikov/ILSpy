@@ -2463,7 +2463,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			// Create AnonymousMethodExpression and prepare parameters
 			AnonymousMethodExpression ame = new AnonymousMethodExpression();
 			ame.IsAsync = function.IsAsync;
-			ame.Parameters.AddRange(MakeParameters(function.Parameters, function));
+			ame.Parameters.AddRange(MakeParameters(function.Parameters, function, delegateType));
 			var builder = new StatementBuilder(
 				typeSystem,
 				this.decompilationContext,
@@ -2631,16 +2631,35 @@ namespace ICSharpCode.Decompiler.CSharp
 				return SpecialType.UnknownType;
 		}
 
-		IEnumerable<ParameterDeclaration> MakeParameters(IReadOnlyList<IParameter> parameters, ILFunction function)
+		IEnumerable<ParameterDeclaration> MakeParameters(IReadOnlyList<IParameter> parameters, ILFunction function, IType delegateType)
 		{
 			var variables = function.Variables.Where(v => v.Kind == VariableKind.Parameter).ToDictionary(v => v.Index!.Value);
+			// A CLR delegate may bind to a method whose parameter is a base type of the delegate's
+			// own parameter: delegate parameters are contravariant for the delegate-creation, but a
+			// C# lambda/anonymous-method parameter declaration must match the delegate's Invoke
+			// signature exactly (declaring it as the wider base type is CS1678/CS1661). This happens
+			// for VB closures. Render the parameter with the delegate's (narrower) parameter type so
+			// the emitted lambda compiles; every use inside the body was valid on the wider type and
+			// therefore stays valid on the narrower one.
+			var invokeParameters = delegateType?.GetDelegateInvokeMethod()?.Parameters;
 			int i = 0;
 			foreach (var parameter in parameters)
 			{
 				var pd = astBuilder.ConvertParameter(parameter);
+				IType parameterType = parameter.Type;
+				if (invokeParameters != null && i < invokeParameters.Count)
+				{
+					IType invokeParameterType = invokeParameters[i].Type;
+					if (!resolver.conversions.IdentityConversion(parameterType, invokeParameterType)
+						&& resolver.conversions.IsConstraintConvertible(invokeParameterType, parameterType))
+					{
+						parameterType = invokeParameterType;
+						pd.Type = ConvertType(invokeParameterType);
+					}
+				}
 				if (variables.TryGetValue(i, out var v))
 				{
-					pd.AddAnnotation(new ILVariableResolveResult(v, parameters[i].Type));
+					pd.AddAnnotation(new ILVariableResolveResult(v, parameterType));
 					pd.Name = v.Name!;
 				}
 				if (string.IsNullOrEmpty(pd.Name) && !pd.Type.IsArgList())
@@ -2648,7 +2667,7 @@ namespace ICSharpCode.Decompiler.CSharp
 					// needs to be consistent with logic in ILReader.CreateILVariable
 					pd.Name = "P_" + i;
 				}
-				if (settings.AnonymousTypes && parameter.Type.ContainsAnonymousType())
+				if (settings.AnonymousTypes && parameterType.ContainsAnonymousType())
 					pd.Type = null;
 				yield return pd;
 				i++;
