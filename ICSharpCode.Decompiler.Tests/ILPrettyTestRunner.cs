@@ -364,6 +364,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task OrderByThenByRangeVariable()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task FieldKeywordPatternVariableCollision()
 		{
 			await Run();

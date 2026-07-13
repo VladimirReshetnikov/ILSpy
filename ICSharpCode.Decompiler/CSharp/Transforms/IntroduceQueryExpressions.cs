@@ -306,6 +306,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						{
 							context.Step("Build order query", invocation);
 							QueryOrderClause orderClause = new QueryOrderClause();
+							// Each OrderBy/ThenBy lambda introduces its own parameter ILVariable, but they all
+							// denote the single range variable of the resulting query. Only the final (OrderBy)
+							// parameter becomes the query's 'from' range variable, so collect the ThenBy
+							// parameter variables and rebind their ordering keys onto it below.
+							var thenByVariables = new List<ILVariable>();
 							while (mre.MemberName == "ThenBy" || mre.MemberName == "ThenByDescending")
 							{
 								// insert new ordering at beginning
@@ -314,6 +319,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 										Expression = orderExpression.Detach(),
 										Direction = (mre.MemberName == "ThenBy" ? QueryOrderingDirection.None : QueryOrderingDirection.Descending)
 									}.CopyAnnotationsFrom(lambda));
+
+								if (parameter!.Annotation<ILVariableResolveResult>()?.Variable is ILVariable thenByVariable)
+									thenByVariables.Add(thenByVariable);
 
 								InvocationExpression tmp = (InvocationExpression)mre.Target;
 								mre = (MemberReferenceExpression)tmp.Target;
@@ -333,6 +341,17 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 									Expression = orderExpression.Detach(),
 									Direction = (mre.MemberName == "OrderBy" ? QueryOrderingDirection.None : QueryOrderingDirection.Descending)
 								}.CopyAnnotationsFrom(lambda));
+
+							// Rebind every ThenBy ordering key onto the OrderBy parameter's range variable so
+							// all keys share it. A later range-variable rename (CombineRangeVariables, e.g. when
+							// this degenerate order query is combined into a following query) rewrites identifiers
+							// by ILVariable; without this, only the OrderBy-bound keys would be renamed and the
+							// ThenBy-bound keys would keep a now out-of-scope name (CS0103).
+							if (parameter.Annotation<ILVariableResolveResult>()?.Variable is ILVariable orderByVariable)
+							{
+								foreach (var thenByVariable in thenByVariables)
+									CombineRangeVariables(orderClause, thenByVariable, orderByVariable);
+							}
 
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(MakeFromClause(parameter, mre.Target.Detach()));
