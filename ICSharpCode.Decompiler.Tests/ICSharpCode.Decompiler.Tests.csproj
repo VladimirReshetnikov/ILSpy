@@ -127,6 +127,7 @@
     <None Include="TestCases\ILPretty\Issue2104.il" />
     <None Include="TestCases\ILPretty\Issue3421.il" />
     <None Include="TestCases\ILPretty\RefLocalSlotSharing.il" />
+    <None Include="TestCases\ILPretty\SelfReferencingDelegate.il" />
     <None Include="TestCases\ILPretty\VarianceBoundDelegateClosure.il" />
     <None Include="TestCases\ILPretty\WeirdEnums.il" />
     <None Include="TestCases\ILPretty\ConstantBlobs.il" />
@@ -213,6 +214,8 @@
     <None Include="TestCases\ILPretty\InitializerConditionalValue.cs" />
     <Compile Remove="TestCases\ILPretty\PatternVariableInJoinBlock.cs" />
     <None Include="TestCases\ILPretty\PatternVariableInJoinBlock.cs" />
+    <Compile Remove="TestCases\ILPretty\SelfReferencingDelegate.cs" />
+    <None Include="TestCases\ILPretty\SelfReferencingDelegate.cs" />
     <Compile Remove="TestCases\ILPretty\SwitchExpressionThrowHelper.cs" />
     <None Include="TestCases\ILPretty\SwitchExpressionThrowHelper.cs" />
     <Compile Remove="TestCases\VBPretty\OutParameterDefiniteAssignment.cs" />

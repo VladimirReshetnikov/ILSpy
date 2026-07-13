@@ -599,6 +599,35 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return !context.Settings.SeparateLocalVariableDeclarations;
 		}
 
+		/// <summary>
+		/// Whether the right-hand side of a matching declaration+initializer assignment reads the
+		/// variable being declared - directly, or through the body of a nested anonymous method,
+		/// lambda, or local function that captures it. Such a self-reference makes the merged
+		/// single-initializer form 'T v = initializer;' illegal (CS0165): inside its own initializer
+		/// the variable is not definitely assigned, so a read of it there is a use of an unassigned local.
+		/// </summary>
+		bool InitializerReferencesVariable(AssignmentExpression assignment, VariableToDeclare v)
+		{
+			// DescendantsAndSelf walks into nested anonymous-method/lambda bodies, so a read of the
+			// variable from within an inline closure captured by the initializer is found here.
+			foreach (AstNode node in assignment.Right.DescendantsAndSelf)
+			{
+				if (node is not IdentifierExpression identifier)
+					continue;
+				if (ResolveVariableToDeclare(identifier.GetILVariable()) == v)
+					return true;
+				// A local function is referenced by name rather than inlined; its body is not a
+				// descendant of the initializer. Detect the self-reference by inspecting whether the
+				// referenced local function captures the variable being declared.
+				if (identifier.Annotation<ILFunction>() is { Kind: ILFunctionKind.LocalFunction } localFunction
+					&& localFunction.CapturedVariables.Any(cv => ResolveVariableToDeclare(cv) == v))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
 		void InsertVariableDeclarations(TransformContext context)
 		{
 			var replacements = new List<(AstNode OldNode, Func<AstNode> CreateNewNode, string StepDescription)>();
@@ -607,7 +636,22 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				if (v.RemovedDueToCollision || v.DeclaredInDeconstruction)
 					continue;
 
-				if (CombineDeclarationAndInitializer(v, context) && IsMatchingAssignment(v, out var assignment))
+				bool splitSelfReference = CombineDeclarationAndInitializer(v, context)
+					&& IsMatchingAssignment(v, out var assignment)
+					&& !v.Type.IsByRefLike
+					&& v.InsertionPoint.nextNode is ExpressionStatement
+					&& InitializerReferencesVariable(assignment, v);
+				if (splitSelfReference && v.DefaultInitialization == VariableInitKind.None)
+				{
+					// A closure-captured local whose sole initializer reads the variable itself
+					// (through the body of a nested anonymous method, lambda, or local function)
+					// cannot be merged into 'T v = <init>;': inside its own initializer the
+					// variable is not definitely assigned, so the merged form fails to compile
+					// (CS0165). Force a default-initialized declaration followed by the plain
+					// assignment, e.g. 'T v = default; v = <init>;'.
+					v.DefaultInitialization = VariableInitKind.NeedsDefaultValue;
+				}
+				if (!splitSelfReference && CombineDeclarationAndInitializer(v, context) && IsMatchingAssignment(v, out assignment))
 				{
 					// 'int v; v = expr;' can be combined to 'int v = expr;'
 					AstType type;
