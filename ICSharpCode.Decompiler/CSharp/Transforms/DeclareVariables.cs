@@ -492,6 +492,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				{
 					if (prev.RemovedDueToCollision)
 						continue;
+					// A collision can only be resolved by merging two declarations into one, which is
+					// valid only within a single method body. Two variables that belong to different
+					// ILFunctions live in separate C# declaration spaces (a lambda or local-function body
+					// versus its enclosing method), where reusing an enclosing name is legal and no merge
+					// is needed. Merging across that boundary would move the inner variable's declaration
+					// out into the enclosing scope, so its uses would bind to the enclosing local - which
+					// inside a static local function is illegal (CS8421).
+					if (prev.ILVariable.Function != v.ILVariable.Function)
+						continue;
 					// Go up until both nodes are on the same level:
 					InsertionPoint point1 = prev.InsertionPoint.UpTo(v.InsertionPoint.level);
 					InsertionPoint point2 = v.InsertionPoint.UpTo(prev.InsertionPoint.level);

@@ -120,6 +120,7 @@
     <None Include="TestCases\ILPretty\CallIndirect.il" />
     <None Include="TestCases\ILPretty\QueryExpressionInParameter.il" />
     <None Include="TestCases\ILPretty\OrderByThenByRangeVariable.il" />
+    <None Include="TestCases\ILPretty\StaticLocalFunctionLocalNameCollision.il" />
     <None Include="TestCases\ILPretty\Issue1454.il" />
     <None Include="TestCases\ILPretty\Issue1681.il" />
     <None Include="TestCases\ILPretty\Issue1922.il" />
@@ -214,6 +215,8 @@
     <None Include="TestCases\ILPretty\InitializerConditionalValue.cs" />
     <Compile Remove="TestCases\ILPretty\PatternVariableInJoinBlock.cs" />
     <None Include="TestCases\ILPretty\PatternVariableInJoinBlock.cs" />
+    <Compile Remove="TestCases\ILPretty\StaticLocalFunctionLocalNameCollision.cs" />
+    <None Include="TestCases\ILPretty\StaticLocalFunctionLocalNameCollision.cs" />
     <Compile Remove="TestCases\ILPretty\SelfReferencingDelegate.cs" />
     <None Include="TestCases\ILPretty\SelfReferencingDelegate.cs" />
     <Compile Remove="TestCases\ILPretty\SwitchExpressionThrowHelper.cs" />
