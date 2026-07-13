@@ -1496,7 +1496,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		{
 			foreach (var child in parent.Children)
 			{
-				if (child is LambdaExpression || child is AnonymousMethodExpression)
+				if (child is LambdaExpression || child is AnonymousMethodExpression || child is LocalFunctionDeclarationStatement)
 					continue;
 				if (child is ReturnStatement ret)
 				{
