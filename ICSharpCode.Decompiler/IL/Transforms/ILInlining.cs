@@ -268,7 +268,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				}
 				if (loadInst.OpCode == OpCode.LdLoca)
 				{
-					if (!IsGeneratedTemporaryForAddressOf((LdLoca)loadInst, v, inlinedExpression, options))
+					if (!IsGeneratedTemporaryForAddressOf((LdLoca)loadInst, v, inlinedExpression, options, context))
 						return false;
 				}
 				else
@@ -332,7 +332,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		/// </summary>
 		/// <param name="loadInst">The load instruction (a descendant within 'next')</param>
 		/// <param name="v">The variable being inlined.</param>
-		static bool IsGeneratedTemporaryForAddressOf(LdLoca loadInst, ILVariable v, ILInstruction inlinedExpression, InliningOptions options)
+		static bool IsGeneratedTemporaryForAddressOf(LdLoca loadInst, ILVariable v, ILInstruction inlinedExpression, InliningOptions options, ILTransformContext context)
 		{
 			Debug.Assert(loadInst.Variable == v);
 			if (!options.HasFlag(InliningOptions.AllowInliningOfLdloca))
@@ -412,7 +412,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						throw new InvalidOperationException("invalid expression classification");
 				}
 			}
-			else if (IsUsedAsThisPointerInFieldRead(loadInst))
+			else if (IsUsedAsThisPointerInFieldRead(loadInst, context.Settings.FixedBuffers))
 			{
 				// mcs generated temporaries for field reads on rvalues (#1555)
 				return ClassifyExpression(inlinedExpression) == ExpressionClassification.RValue;
@@ -507,13 +507,20 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			}
 		}
 
-		static bool IsUsedAsThisPointerInFieldRead(LdLoca ldloca)
+		static bool IsUsedAsThisPointerInFieldRead(LdLoca ldloca, bool fixedBuffers)
 		{
 			if (ldloca.Variable.Type.IsReferenceType ?? false)
 				return false;
 			ILInstruction inst = ldloca;
 			while (inst.Parent is LdFlda ldflda)
 			{
+				// A fixed-size buffer element access is emitted as `buffer[index]`, which C# only
+				// permits through a variable or a field, not through a temporary holding an rvalue
+				// (CS1708). Report the temporary as not inlinable so a local receiver survives.
+				// Only relevant while the fixed-buffer syntax is actually emitted; with the setting
+				// off the field is accessed like an ordinary field, where inlining an rvalue is fine.
+				if (fixedBuffers && CSharp.CSharpDecompiler.IsFixedField(ldflda.Field, out _, out _))
+					return false;
 				inst = ldflda;
 			}
 			return inst != ldloca && inst.Parent is LdObj;

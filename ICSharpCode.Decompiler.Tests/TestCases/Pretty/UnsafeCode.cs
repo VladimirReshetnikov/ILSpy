@@ -446,6 +446,17 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
+		private static StructWithFixedSizeMembers ReturnStruct(StructWithFixedSizeMembers m)
+		{
+			return m;
+		}
+
+		public unsafe int ReadFixedMemberFromRValue(StructWithFixedSizeMembers m)
+		{
+			StructWithFixedSizeMembers structWithFixedSizeMembers = ReturnStruct(m);
+			return structWithFixedSizeMembers.Integers[0] & 2;
+		}
+
 		private void UseReference(ref int i)
 		{
 		}
