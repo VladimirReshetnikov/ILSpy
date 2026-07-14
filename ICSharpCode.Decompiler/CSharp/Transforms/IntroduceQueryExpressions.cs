@@ -257,7 +257,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (IsNullConditional(collectionSelector))
 						return null;
 					LambdaExpression? lambda = invocation.Arguments.ElementAt(1) as LambdaExpression;
-					if (lambda != null && lambda.Parameters.Count == 2 && lambda.Body is Expression)
+					if (lambda != null && !lambda.IsAsync && lambda.Parameters.Count == 2 && lambda.Body is Expression)
 					{
 						ParameterDeclaration p1 = lambda.Parameters.ElementAt(0);
 						ParameterDeclaration p2 = lambda.Parameters.ElementAt(1);
@@ -377,7 +377,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (!MatchSimpleLambda(innerLambda, out var element2, out var key2))
 						return null;
 					LambdaExpression? lambda = invocation.Arguments.ElementAt(3) as LambdaExpression;
-					if (lambda != null && lambda.Parameters.Count == 2 && lambda.Body is Expression)
+					if (lambda != null && !lambda.IsAsync && lambda.Parameters.Count == 2 && lambda.Body is Expression)
 					{
 						ParameterDeclaration p1 = lambda.Parameters.ElementAt(0);
 						ParameterDeclaration p2 = lambda.Parameters.ElementAt(1);
@@ -519,7 +519,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// <summary>Matches simple lambdas of the form "a => b"</summary>
 		bool MatchSimpleLambda(Expression expr, [NotNullWhen(true)] out ParameterDeclaration? parameter, [NotNullWhen(true)] out Expression? body)
 		{
-			if (expr is LambdaExpression lambda && lambda.Parameters.Count == 1 && lambda.Body is Expression)
+			// An async lambda must never be folded into a query clause: a clause keeps only the lambda
+			// body and drops the 'async', but 'await' is illegal in every clause position built from a
+			// lambda body (select/where/let/orderby/group and the join key selectors), CS1995. The only
+			// query positions where 'await' is legal -- the initial 'from' source and a 'join' collection
+			// -- come from non-lambda expressions and never route through here. Leaving an async-lambda
+			// Select/Where/etc. as an ordinary method call keeps the result compilable.
+			if (expr is LambdaExpression { IsAsync: false } lambda && lambda.Parameters.Count == 1 && lambda.Body is Expression)
 			{
 				ParameterDeclaration p = lambda.Parameters.Single();
 				if (ValidateParameter(p))

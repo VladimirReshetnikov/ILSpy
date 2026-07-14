@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
@@ -210,6 +211,17 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				   select c.Name into n
 				   where n.Length > 3
 				   select n.ToUpper();
+		}
+
+		private async Task<int> GetOrderCountAsync(Customer c)
+		{
+			await Task.Delay(1);
+			return c.Orders.Count();
+		}
+
+		public IEnumerable<Task<int>> AsyncLambdaSelectStaysMethodCall()
+		{
+			return customers.Where((Customer c) => c.Country == "DE").Select(async (Customer c) => await GetOrderCountAsync(c));
 		}
 
 #if CS60
