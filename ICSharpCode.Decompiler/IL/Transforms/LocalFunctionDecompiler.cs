@@ -150,20 +150,22 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 								localFunction.DeclarationScope = scope;
 							}
 							else if (scope != null
-								&& (GetDeclaringFunction(localFunction) == context.Function || IsNonCapturing(localFunction)))
+								&& (GetDeclaringFunction(localFunction) == context.Function || CapturesAtMostThis(localFunction)))
 							{
-								// Broaden the declaration scope to cover this use-site. A non-capturing
-								// (static) local function captures nothing, so closure analysis never anchors
-								// it to a particular scope; its scope comes only from FindClosestContainer at
-								// the first use-site, which lands it inside whichever lambda happens to call it
-								// first. Sibling use-sites in other lambdas would then see only an undefined
-								// member reference, so the scope must be widened to their common ancestor in
-								// the constructor body. For a capturing function, broadening is limited to
-								// while the scope still lives directly in the constructor body: once closure
-								// analysis has placed it inside a nested local function (e.g. its closure
-								// arrives via a forwarded by-ref display-class struct), pulling the scope up to
-								// a common ancestor with a use-site would move it out of that function and
-								// leave the captured display-class fields without a declaration.
+								// Broaden the declaration scope to cover this use-site. A function that
+								// captures at most the enclosing 'this' has no display-class struct parameter,
+								// so closure analysis never anchors it to a particular scope; its scope comes
+								// only from FindClosestContainer at the first use-site, which lands it inside
+								// whichever lambda or local function happens to call it first. Sibling
+								// use-sites in other lambdas would then see only an undefined member reference
+								// (or an unresolvable name), so the scope must be widened to their common
+								// ancestor in the constructor body. For a function that captures locals via a
+								// display class, broadening is limited to while the scope still lives directly
+								// in the constructor body: once closure analysis has placed it inside a nested
+								// local function (e.g. its closure arrives via a forwarded by-ref display-class
+								// struct), pulling the scope up to a common ancestor with a use-site would move
+								// it out of that function and leave the captured display-class fields without a
+								// declaration.
 								localFunction.DeclarationScope = FindCommonAncestorInstruction<BlockContainer>(scope, localFunction.DeclarationScope);
 								if (localFunction.DeclarationScope == null)
 								{
@@ -449,18 +451,28 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			return null;
 		}
 
-		// A static local function with no display-class parameters captures nothing. Closure analysis
-		// therefore never assigns it a declaration scope, so its only scope is the one FindClosestContainer
-		// pins to the first use-site; broadening that scope to a use-site's common ancestor is always safe
-		// and never overrides a deeper placement chosen to reach a forwarded display class.
-		private bool IsNonCapturing(ILFunction localFunction)
+		// A local function that captures at most the enclosing 'this' has no closure (display-class
+		// struct) parameter, so closure analysis never assigns it a declaration scope; its only scope
+		// is the one FindClosestContainer pins to the first use-site. Broadening that scope to a
+		// use-site's common ancestor is always safe and never overrides a deeper placement chosen to
+		// reach a forwarded display class. A static function captures nothing; an instance function
+		// captures 'this', which -- unless 'this' is itself a display class -- is available throughout
+		// the constructor body, so both can be declared at the common ancestor.
+		private bool CapturesAtMostThis(ILFunction localFunction)
 		{
-			if (!localFunction.Method.IsStatic)
-				return false;
 			foreach (var parameter in localFunction.Method.Parameters)
 			{
 				if (IsClosureParameter(parameter, resolveContext))
 					return false;
+			}
+			// An instance local function declared inside a compiler-generated display class receives
+			// that display class as its 'this' and thereby captures the locals it holds; such a
+			// function is anchored to the scope that builds the display class and must not be broadened.
+			if (!localFunction.Method.IsStatic
+				&& localFunction.Method.DeclaringTypeDefinition is { } declaringType
+				&& declaringType.IsCompilerGenerated())
+			{
+				return false;
 			}
 			return true;
 		}
