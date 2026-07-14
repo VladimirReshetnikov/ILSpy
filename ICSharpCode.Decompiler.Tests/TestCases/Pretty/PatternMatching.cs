@@ -43,6 +43,23 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			IQualifier GetQualifier();
 		}
 
+		public interface IHasIsFrozen
+		{
+			bool IsFrozen { get; }
+		}
+
+		public class ExplicitFreezable : IHasIsFrozen
+		{
+			public bool Frozen;
+
+			bool IHasIsFrozen.IsFrozen => Frozen;
+		}
+
+		public class ImplicitFreezable : IHasIsFrozen
+		{
+			public bool IsFrozen { get; set; }
+		}
+
 		public void SimpleTypePattern(object x)
 		{
 			if (x is string value)
@@ -790,6 +807,40 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public void RecursivePattern_CustomStructNested_Decimal(object obj)
 		{
 			if (obj is S { S2: { D: 3.141m, Obj: null } })
+			{
+				Console.WriteLine("Test " + obj);
+			}
+			else
+			{
+				Console.WriteLine("not Test");
+			}
+		}
+
+		public void RecursivePattern_ExplicitInterfaceProperty(object obj)
+		{
+			// IHasIsFrozen.IsFrozen is implemented explicitly, so it is reachable only through a cast
+			// to the interface. A property pattern would look 'IsFrozen' up on ExplicitFreezable and
+			// fail (CS0117), so this access must stay a conjunction rather than fold into a pattern.
+			if (obj is ExplicitFreezable explicitFreezable && ((IHasIsFrozen)explicitFreezable).IsFrozen)
+			{
+				Console.WriteLine("Test " + explicitFreezable);
+			}
+			else
+			{
+				Console.WriteLine("not Test");
+			}
+		}
+
+		public void RecursivePattern_ImplicitInterfaceProperty(object obj)
+		{
+			// ImplicitFreezable implements IHasIsFrozen.IsFrozen implicitly (a public property of the
+			// same name), so a property pattern can name it directly even though the source cast to the
+			// interface. This access still folds into a property pattern.
+#if EXPECTED_OUTPUT
+			if (obj is ImplicitFreezable { IsFrozen: true })
+#else
+			if (obj is ImplicitFreezable implicitFreezable && ((IHasIsFrozen)implicitFreezable).IsFrozen)
+#endif
 			{
 				Console.WriteLine("Test " + obj);
 			}

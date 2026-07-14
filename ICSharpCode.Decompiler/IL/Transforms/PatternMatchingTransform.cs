@@ -236,11 +236,15 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				}
 				if (MatchInstruction.IsPatternMatch(condition, out var operand, context.Settings))
 				{
-					if (!PropertyOrFieldAccess(operand, out var target, out _))
+					if (!PropertyOrFieldAccess(operand, out var target, out var member))
 					{
 						return null;
 					}
 					if (!target.MatchLdLocRef(parentPattern.Variable))
+					{
+						return null;
+					}
+					if (!CanNameInPropertyPattern(member, parentPattern.Variable.Type))
 					{
 						return null;
 					}
@@ -256,9 +260,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					parentPattern.SubPatterns.Add(condition);
 					context.EndStep(condition);
 				}
-				else if (PropertyOrFieldAccess(condition, out var target, out _))
+				else if (PropertyOrFieldAccess(condition, out var target, out var member))
 				{
 					if (!target.MatchLdLocRef(parentPattern.Variable))
+					{
+						return null;
+					}
+					if (!CanNameInPropertyPattern(member, parentPattern.Variable.Type))
 					{
 						return null;
 					}
@@ -287,6 +295,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					return null;
 				}
 				if (!target.MatchLdLocRef(parentPattern.Variable))
+				{
+					return null;
+				}
+				if (!CanNameInPropertyPattern(member, parentPattern.Variable.Type))
 				{
 					return null;
 				}
@@ -504,6 +516,44 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				member = null;
 				return false;
 			}
+		}
+
+		/// <summary>
+		/// Gets whether <paramref name="member"/> can be named by a property sub-pattern on a value
+		/// of type <paramref name="patternType"/>.
+		/// </summary>
+		/// <remarks>
+		/// A property pattern <c>x is T { Member: ... }</c> performs member lookup for <c>Member</c> on
+		/// <c>T</c>. When the accessed getter/field is declared on a class or struct in the tested value's
+		/// own hierarchy, that lookup names it directly. When it is declared on an interface, the tested
+		/// value was up-cast to that interface for the access (e.g. <c>((IFace)x).Member</c>): the pattern
+		/// can name it only when the pattern type surfaces the member without a cast. An explicit interface
+		/// implementation is unreachable that way, so folding it into a property pattern would produce
+		/// uncompilable C# (CS0117); such accesses must stay a conjunction.
+		/// </remarks>
+		private static bool CanNameInPropertyPattern(IMember member, IType patternType)
+		{
+			ITypeDefinition? declaringTypeDef = member.DeclaringTypeDefinition;
+			if (declaringTypeDef == null || declaringTypeDef.Kind != TypeKind.Interface)
+			{
+				return true;
+			}
+			if (patternType.Kind is TypeKind.Interface or TypeKind.TypeParameter)
+			{
+				// On an interface (or interface-constrained type parameter), member lookup also
+				// considers the members of every base interface.
+				return patternType.GetAllBaseTypes().Any(t => declaringTypeDef.Equals(t.GetDefinition()));
+			}
+			// On a class or struct, an interface member is nameable only when it is implemented
+			// implicitly (a public member of the same name). GetDerivedMember finds that implicit
+			// implementation but returns null for an explicit one (whose metadata name is dotted).
+			if (patternType.GetDefinition() is not { } patternTypeDef
+				|| member.Compilation != patternTypeDef.Compilation)
+			{
+				return false;
+			}
+			IMember? implementation = InheritanceHelper.GetDerivedMember(member, patternTypeDef);
+			return implementation != null && !implementation.IsExplicitInterfaceImplementation;
 		}
 
 		private static bool MatchBlockContainingOneCondition(Block block, [NotNullWhen(true)] out ILInstruction? condition, [NotNullWhen(true)] out ILInstruction? trueInst, [NotNullWhen(true)] out ILInstruction? falseInst)
