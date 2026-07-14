@@ -1175,7 +1175,11 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		protected internal override TranslatedExpression VisitThrow(Throw inst, TranslationContext context)
 		{
-			return new ThrowExpression(Translate(inst.Argument))
+			// The operand of a throw expression has a target type of System.Exception; supply it so
+			// a target-less expression (e.g. a switch expression whose arms are sibling exception
+			// types) is pinned to Exception instead of being anchored to its System.Object stack type.
+			var exception = compilation.FindType(KnownTypeCode.Exception);
+			return new ThrowExpression(Translate(inst.Argument, exception))
 				.WithILInstruction(inst)
 				.WithRR(new ThrowResolveResult());
 		}

@@ -423,7 +423,11 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		protected internal override TranslatedStatement VisitThrow(Throw inst)
 		{
-			return new ThrowStatement(exprBuilder.Translate(inst.Argument)).WithILInstruction(inst);
+			// The operand of a throw statement has a target type of System.Exception; supply it so
+			// a target-less expression (e.g. a switch expression whose arms are sibling exception
+			// types) is pinned to Exception instead of being anchored to its System.Object stack type.
+			var exception = exprBuilder.compilation.FindType(KnownTypeCode.Exception);
+			return new ThrowStatement(exprBuilder.Translate(inst.Argument, exception)).WithILInstruction(inst);
 		}
 
 		protected internal override TranslatedStatement VisitRethrow(Rethrow inst)

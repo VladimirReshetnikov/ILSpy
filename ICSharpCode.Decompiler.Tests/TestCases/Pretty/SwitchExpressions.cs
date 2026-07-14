@@ -182,6 +182,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				_ => null,
 			}) == null;
 		}
+
+		public static void ThrowSwitchExpressionWithoutNaturalType(int kind)
+		{
+			throw kind switch {
+				0 => new InvalidOperationException("zero"),
+				1 => new NotSupportedException("one"),
+				_ => new ArgumentOutOfRangeException("kind"),
+			};
+		}
 #pragma warning disable CS8509 // The switch expression does not handle all possible values of its input type (it is not exhaustive).
 		public static int Issue3382(StringComparison c)
 		{
