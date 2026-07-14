@@ -520,8 +520,16 @@ namespace ICSharpCode.Decompiler.CSharp
 			if (settings.LiftNullables && method.Name == "GetValueOrDefault"
 				&& method.DeclaringType.IsKnownType(KnownTypeCode.NullableOfT)
 				&& method.DeclaringType.TypeArguments[0].IsKnownType(KnownTypeCode.Boolean)
-				&& argumentList.Length == 0)
+				&& argumentList.Length == 0
+				&& !callArguments[0].HasFlag(InstructionFlags.MayUnwrapNull))
 			{
+				// Sugar `nullableBool.GetValueOrDefault()` into `nullableBool == true`.
+				// We must not do this when the target is a pending null-conditional chain
+				// (its instruction can unwrap null into an enclosing NullableRewrap): in real C#
+				// `a?.b == true` terminates the chain and has static type `bool`, whereas the
+				// enclosing rewrap still treats the value as `bool?`. That mismatch would make a
+				// surrounding `?? x` operate on `bool` (CS0019). Leaving the explicit
+				// GetValueOrDefault() call keeps the value `bool?` and the output legal.
 				argumentList.CheckNoNamedOrOptionalArguments();
 				return new BinaryOperatorExpression(
 					target.Expression,

@@ -114,6 +114,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			ITest Next();
 		}
 
+		private class NullableBoolProvider
+		{
+			public bool? ToBoolNullable()
+			{
+				return true;
+			}
+		}
+
 		private int GetInt()
 		{
 			return 9;
@@ -315,6 +323,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		private static dynamic DynamicNullProp(dynamic a)
 		{
 			return a?.b.c(1)?.d[10];
+		}
+
+		private static bool GetValueOrDefaultInChain(NullableBoolProvider p)
+		{
+			// The GetValueOrDefault() must stay explicit: turning it into `p?.ToBoolNullable() == true`
+			// would terminate the null-conditional chain at type `bool`, leaving the surrounding
+			// `?? false` to apply to `bool` (CS0019).
+			return p?.ToBoolNullable().GetValueOrDefault() ?? false;
 		}
 
 		private static string Issue3181()
