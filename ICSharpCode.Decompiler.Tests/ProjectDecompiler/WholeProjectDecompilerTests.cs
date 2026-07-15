@@ -19,6 +19,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Resources;
 
 using ICSharpCode.Decompiler.CSharp.ProjectDecompiler;
 using ICSharpCode.Decompiler.Metadata;
@@ -68,6 +70,96 @@ public sealed class WholeProjectDecompilerTests
 		}
 	}
 
+	[Test]
+	public void StringOnlyResourcesAreConvertedToResX()
+	{
+		string targetDirectory = CreateTemporaryDirectory();
+		try
+		{
+			byte[] input = CreateResources();
+			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
+			using MemoryStream stream = new(input, writable: false);
+
+			ProjectItemInfo item = decompiler.WriteResource(targetDirectory, "Strings.resources", "Test.Strings.resources", stream);
+			string outputFile = Path.Combine(targetDirectory, "Strings.resx");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(item.ItemType, Is.EqualTo("EmbeddedResource"));
+				Assert.That(item.FileName, Is.EqualTo("Strings.resx"));
+				Assert.That(item.AdditionalProperties["LogicalName"], Is.EqualTo("Test.Strings.resources"));
+				Assert.That(File.Exists(outputFile), Is.True);
+				Assert.That(File.Exists(Path.Combine(targetDirectory, "Strings.resources")), Is.False);
+			}
+			Assert.That(File.ReadAllText(outputFile), Does.Contain("<data name=\"Greeting\"").And.Contain("<value>Hello</value>"));
+		}
+		finally
+		{
+			Directory.Delete(targetDirectory, recursive: true);
+		}
+	}
+
+	[TestCase(NonStringResourceKind.ByteArray)]
+	[TestCase(NonStringResourceKind.Stream)]
+	[TestCase(NonStringResourceKind.Integer)]
+	public void ResourcesWithNonStringEntriesStayBinary(NonStringResourceKind resourceKind)
+	{
+		string targetDirectory = CreateTemporaryDirectory();
+		try
+		{
+			byte[] input = CreateResources(resourceKind);
+			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
+			using MemoryStream stream = new(input, writable: false);
+
+			ProjectItemInfo item = decompiler.WriteResource(targetDirectory, "Mixed.resources", "Test.Mixed.resources", stream);
+			string outputFile = Path.Combine(targetDirectory, "Mixed.resources");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(item.ItemType, Is.EqualTo("EmbeddedResource"));
+				Assert.That(item.FileName, Is.EqualTo("Mixed.resources"));
+				Assert.That(item.AdditionalProperties["LogicalName"], Is.EqualTo("Test.Mixed.resources"));
+				Assert.That(File.Exists(outputFile), Is.True);
+				Assert.That(File.Exists(Path.Combine(targetDirectory, "Mixed.resx")), Is.False);
+			}
+			Assert.That(File.ReadAllBytes(outputFile), Is.EqualTo(input));
+		}
+		finally
+		{
+			Directory.Delete(targetDirectory, recursive: true);
+		}
+	}
+
+	static string CreateTemporaryDirectory()
+	{
+		string directory = Path.Combine(TestContext.CurrentContext.WorkDirectory, Path.GetRandomFileName());
+		Directory.CreateDirectory(directory);
+		return directory;
+	}
+
+	static byte[] CreateResources(NonStringResourceKind? resourceKind = null)
+	{
+		MemoryStream output = new();
+		using (ResourceWriter writer = new(output))
+		{
+			writer.AddResource("Greeting", "Hello");
+			switch (resourceKind)
+			{
+				case NonStringResourceKind.ByteArray:
+					writer.AddResource("Binary", new byte[] { 1, 2, 3, 4 });
+					break;
+				case NonStringResourceKind.Stream:
+					writer.AddResource("Binary", new MemoryStream([1, 2, 3, 4]), closeAfterWrite: true);
+					break;
+				case NonStringResourceKind.Integer:
+					writer.AddResource("Number", 42);
+					break;
+			}
+			writer.Generate();
+		}
+		return output.ToArray();
+	}
+
 	static void AssertDirectoryDoesntExist(string directory)
 	{
 		if (Directory.Exists(directory))
@@ -103,5 +195,18 @@ public sealed class WholeProjectDecompilerTests
 		protected override IEnumerable<ProjectItemInfo> WriteMiscellaneousFilesInProject(PEFile module) => [];
 
 		protected override IEnumerable<ProjectItemInfo> WriteResourceFilesInProject(MetadataFile module) => [];
+
+		public ProjectItemInfo WriteResource(string targetDirectory, string fileName, string resourceName, Stream stream)
+		{
+			TargetDirectory = targetDirectory;
+			return WriteResourceToFile(fileName, resourceName, stream).Single();
+		}
+	}
+
+	public enum NonStringResourceKind
+	{
+		ByteArray,
+		Stream,
+		Integer
 	}
 }

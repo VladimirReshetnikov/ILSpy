@@ -422,17 +422,24 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			if (fileName.EndsWith(".resources", StringComparison.OrdinalIgnoreCase))
 			{
 				string resx = Path.ChangeExtension(fileName, ".resx");
+				long initialPosition = entryStream.Position;
 				try
 				{
-					using (FileStream fs = new FileStream(Path.Combine(TargetDirectory, resx), FileMode.Create, FileAccess.Write))
-					using (ResXResourceWriter writer = new ResXResourceWriter(fs))
+					using (ResourcesFile resourcesFile = new ResourcesFile(entryStream))
 					{
-						foreach (var entry in new ResourcesFile(entryStream))
+						if (resourcesFile.All(entry => entry.Value is string))
 						{
-							writer.AddResource(entry.Key, entry.Value);
+							using (FileStream fs = new FileStream(Path.Combine(TargetDirectory, resx), FileMode.Create, FileAccess.Write))
+							using (ResXResourceWriter writer = new ResXResourceWriter(fs))
+							{
+								foreach (var entry in resourcesFile)
+								{
+									writer.AddResource(entry.Key, entry.Value);
+								}
+							}
+							return new[] { new ProjectItemInfo("EmbeddedResource", resx).With("LogicalName", resourceName) };
 						}
 					}
-					return new[] { new ProjectItemInfo("EmbeddedResource", resx).With("LogicalName", resourceName) };
 				}
 				catch (BadImageFormatException)
 				{
@@ -441,6 +448,10 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 				catch (EndOfStreamException)
 				{
 					// if the .resources can't be decoded, just save them as-is
+				}
+				finally
+				{
+					entryStream.Position = initialPosition;
 				}
 			}
 			using (FileStream fs = new FileStream(Path.Combine(TargetDirectory, fileName), FileMode.Create, FileAccess.Write))
