@@ -227,12 +227,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.Playstation
 		public Person(string name, int age, string email)
 			: this(name, age)
 		{
-			if (string.IsNullOrEmpty(email))
-			{
-				throw new ArgumentException("Email cannot be empty");
-			}
-
-			Email = email;
+			Email = ((!string.IsNullOrEmpty(email)) ? email : throw new ArgumentException("Email cannot be empty"));
 			Console.WriteLine("Created person: " + name);
 		}
 	}

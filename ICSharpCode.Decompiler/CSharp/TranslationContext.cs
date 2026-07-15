@@ -32,5 +32,19 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// if no specific type is expected.
 		/// </summary>
 		public IType TypeHint;
+
+		/// <summary>
+		/// Whether <see cref="TypeHint"/> is supplied by a target-typed context that will
+		/// still be present in the emitted C# syntax. A type hint used only for inference
+		/// must not make conversions implicit.
+		/// </summary>
+		public bool TypeHintIsTargetType;
+
+		/// <summary>
+		/// Whether the conversion normally supplied by <see cref="TypeHint"/> will be erased by
+		/// a later syntax rewrite. Such conversions must be made explicit before the rewrite.
+		/// This is distinct from <see cref="TypeHintIsTargetType"/> and the two are mutually exclusive.
+		/// </summary>
+		public bool TypeHintRequiresExplicitConversion;
 	}
 }

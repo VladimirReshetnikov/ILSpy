@@ -82,6 +82,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task AnonymousTypeConditionalPhi()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task CastBetweenTypeParameters()
 		{
 			await Run();

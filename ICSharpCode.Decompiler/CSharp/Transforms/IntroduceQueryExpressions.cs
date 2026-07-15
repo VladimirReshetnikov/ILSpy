@@ -191,6 +191,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			MemberReferenceExpression? mre = invocation.Target as MemberReferenceExpression;
 			if (mre == null || ReceiverChainHasNullConditional(mre.Target))
 				return null;
+			// Query syntax cannot spell generic method type arguments. If call reconstruction
+			// retained them, source inference selected a different specialization and dropping
+			// them here could change the result type or make the query fail to compile.
+			if (mre.TypeArguments.Count > 0)
+				return null;
 			switch (mre.MemberName)
 			{
 				case "Select":

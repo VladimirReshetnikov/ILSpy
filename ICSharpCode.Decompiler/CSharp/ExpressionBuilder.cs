@@ -162,12 +162,16 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 		}
 
-		public TranslatedExpression Translate(ILInstruction inst, IType? typeHint = null)
+		public TranslatedExpression Translate(ILInstruction inst, IType? typeHint = null,
+			bool typeHintIsTargetType = false, bool typeHintRequiresExplicitConversion = false)
 		{
 			Debug.Assert(inst != null);
+			Debug.Assert(!typeHintIsTargetType || !typeHintRequiresExplicitConversion);
 			cancellationToken.ThrowIfCancellationRequested();
 			TranslationContext context = new TranslationContext {
-				TypeHint = typeHint ?? SpecialType.UnknownType
+				TypeHint = typeHint ?? SpecialType.UnknownType,
+				TypeHintIsTargetType = typeHint != null && typeHintIsTargetType,
+				TypeHintRequiresExplicitConversion = typeHint != null && typeHintRequiresExplicitConversion
 			};
 			var cexpr = inst.AcceptVisitor(this, context);
 #if DEBUG
@@ -212,7 +216,8 @@ namespace ICSharpCode.Decompiler.CSharp
 		public TranslatedExpression TranslateCondition(ILInstruction condition, bool negate = false)
 		{
 			Debug.Assert(condition.ResultType == StackType.I4);
-			var expr = Translate(condition, compilation.FindType(KnownTypeCode.Boolean));
+			var expr = Translate(condition, compilation.FindType(KnownTypeCode.Boolean),
+				typeHintIsTargetType: true);
 			if (expr.Type.GetStackType().GetSize() > 4)
 			{
 				expr = expr.ConvertTo(FindType(StackType.I4, expr.Type.GetSign()), this);
@@ -2554,7 +2559,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (body.Statements.Count == 1 && body.Statements.Single() is ReturnStatement { Expression: not null } returnStmt)
 				{
 					lambda.Body = returnStmt.Expression.Detach();
-					inferredReturnType = lambda.Body!.GetResolveResult().Type;
+					inferredReturnType = GetInferredLambdaReturnValue((Expression)lambda.Body!).Type;
 				}
 				else
 				{
@@ -2606,7 +2611,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				{
 					if (ret.Expression is not null)
 					{
-						returnExpressions.Add(ret.Expression.GetResolveResult());
+						returnExpressions.Add(GetInferredLambdaReturnValue(ret.Expression));
 					}
 				}
 				else if (node is LambdaExpression || node is AnonymousMethodExpression)
@@ -3342,6 +3347,30 @@ namespace ICSharpCode.Decompiler.CSharp
 				}
 			}
 			arg = arg.ConvertTo(targetType, this);
+			var typeHint = context.TypeHint;
+			if (!typeHint.IsKnownType(KnownTypeCode.Object)
+				&& typeHint.IsReferenceType == true && !typeHint.ContainsAnonymousType()
+				&& typeHint.Kind is TypeKind.Class or TypeKind.Interface or TypeKind.Delegate
+					or TypeKind.Dynamic or TypeKind.TypeParameter or TypeKind.Array
+				&& CSharpConversions.Get(compilation).ImplicitConversion(targetType, typeHint) is { IsImplicit: true, IsBoxingConversion: true } boxingConversion)
+			{
+				if (context.TypeHintIsTargetType)
+				{
+					// Keep the operand syntax while recording the implicit conversion supplied by
+					// the consumer. This preserves Translate's result-type invariant.
+					arg.Expression.RemoveAnnotations<ResolveResult>();
+					return arg.Expression.WithILInstruction(inst)
+						.WithRR(new ConversionResolveResult(typeHint, arg.ResolveResult, boxingConversion));
+				}
+				if (context.TypeHintRequiresExplicitConversion)
+				{
+					// The hint is semantically useful, but its conversion context will not survive
+					// into the emitted syntax (for example, an anonymous-type metadata constructor
+					// rewritten to an anonymous object initializer). Preserve the intended type with
+					// an explicit conversion instead.
+					return arg.ConvertTo(typeHint, this).WithILInstruction(inst);
+				}
+			}
 			var obj = compilation.FindType(KnownTypeCode.Object);
 			return new CastExpression(ConvertType(obj), arg.Expression)
 				.WithILInstruction(inst)
@@ -3598,7 +3627,8 @@ namespace ICSharpCode.Decompiler.CSharp
 						}
 						else
 						{
-							var value = Translate(info.Values!.Single(), typeHint: memberRR.Type)
+							var value = Translate(info.Values!.Single(), typeHint: memberRR.Type,
+								typeHintIsTargetType: true)
 								.ConvertTo(memberRR.Type, this, allowImplicitConversion: true);
 							var assignment = new NamedExpression(lastElement.Member.Name, value)
 								.WithILInstruction(inst).WithRR(memberRR);
@@ -3721,7 +3751,9 @@ namespace ICSharpCode.Decompiler.CSharp
 				try
 				{
 					astBuilder.UseSpecialConstants = !type.IsCSharpPrimitiveIntegerType() && !type.IsKnownType(KnownTypeCode.Decimal);
-					val = Translate(value, typeHint: type).ConvertTo(type, this, allowImplicitConversion: true);
+					val = Translate(value, typeHint: type,
+						typeHintIsTargetType: !type.ContainsAnonymousType())
+						.ConvertTo(type, this, allowImplicitConversion: true);
 				}
 				finally
 				{
@@ -3824,10 +3856,12 @@ namespace ICSharpCode.Decompiler.CSharp
 				}
 				while (expectedOffset < offset)
 				{
-					initializer.Elements.Add(Translate(IL.Transforms.TransformArrayInitializers.GetNullExpression(elementType), typeHint: elementType));
+					initializer.Elements.Add(Translate(IL.Transforms.TransformArrayInitializers.GetNullExpression(elementType),
+						typeHint: elementType, typeHintIsTargetType: true));
 					expectedOffset++;
 				}
-				var val = Translate(value, typeHint: elementType).ConvertTo(elementType, this, allowImplicitConversion: true);
+				var val = Translate(value, typeHint: elementType, typeHintIsTargetType: true)
+					.ConvertTo(elementType, this, allowImplicitConversion: true);
 				initializer.Elements.Add(val);
 				expectedOffset++;
 			}
@@ -3953,8 +3987,14 @@ namespace ICSharpCode.Decompiler.CSharp
 		protected internal override TranslatedExpression VisitIfInstruction(IfInstruction inst, TranslationContext context)
 		{
 			var condition = TranslateCondition(inst.Condition);
-			var trueBranch = Translate(inst.TrueInst, typeHint: context.TypeHint);
-			var falseBranch = Translate(inst.FalseInst, typeHint: context.TypeHint);
+			var trueBranch = Translate(inst.TrueInst, typeHint: context.TypeHint,
+				typeHintIsTargetType: context.TypeHintIsTargetType,
+				typeHintRequiresExplicitConversion: context.TypeHintRequiresExplicitConversion);
+			var falseBranch = Translate(inst.FalseInst, typeHint: context.TypeHint,
+				typeHintIsTargetType: context.TypeHintIsTargetType,
+				typeHintRequiresExplicitConversion: context.TypeHintRequiresExplicitConversion);
+			trueBranch = UnwrapImplicitTargetBoxing(trueBranch, out var trueTargetBoxing);
+			falseBranch = UnwrapImplicitTargetBoxing(falseBranch, out var falseTargetBoxing);
 			BinaryOperatorType op = BinaryOperatorType.Any;
 			TranslatedExpression rhs = default(TranslatedExpression);
 
@@ -3990,9 +4030,23 @@ namespace ICSharpCode.Decompiler.CSharp
 			falseBranch = AdjustConstantExpressionToType(falseBranch, trueBranch.Type);
 
 			var rr = resolver.ResolveConditional(condition.ResolveResult, trueBranch.ResolveResult, falseBranch.ResolveResult);
+			if (!rr.IsError && TargetBoxingChangesNaturalType(rr.Type, trueTargetBoxing, falseTargetBoxing))
+			{
+				// A natural numeric type can silently move boxing outside the conditional. For example,
+				// `object` arms containing boxed int and long values would become a long conditional and
+				// box both outcomes as long. Keep the original branch-level boxing explicit in that case.
+				var targetType = (trueTargetBoxing ?? falseTargetBoxing)!.Type;
+				Debug.Assert(trueTargetBoxing == null || falseTargetBoxing == null
+					|| trueTargetBoxing.Type.Equals(falseTargetBoxing.Type));
+				trueBranch = trueBranch.ConvertTo(targetType, this);
+				falseBranch = falseBranch.ConvertTo(targetType, this);
+				rr = resolver.ResolveConditional(condition.ResolveResult, trueBranch.ResolveResult, falseBranch.ResolveResult);
+			}
 			if (rr.IsError)
 			{
 				IType targetType;
+				bool supportsTargetTypedConditional = settings.GetMinimumRequiredVersion() >= LanguageVersion.CSharp9_0;
+				bool useTargetTypeHint = false;
 				if (!trueBranch.Type.Equals(SpecialType.NullType) && !falseBranch.Type.Equals(SpecialType.NullType) && !trueBranch.Type.Equals(falseBranch.Type))
 				{
 					targetType = typeInference.GetBestCommonType(new[] { trueBranch.ResolveResult, falseBranch.ResolveResult }, out bool success);
@@ -4002,6 +4056,7 @@ namespace ICSharpCode.Decompiler.CSharp
 						if (context.TypeHint.Kind != TypeKind.Unknown && context.TypeHint.GetStackType() == inst.ResultType)
 						{
 							targetType = context.TypeHint;
+							useTargetTypeHint = supportsTargetTypedConditional && context.TypeHintIsTargetType;
 						}
 						else if (inst.ResultType == StackType.Ref)
 						{
@@ -4030,8 +4085,15 @@ namespace ICSharpCode.Decompiler.CSharp
 				{
 					targetType = trueBranch.Type.Equals(SpecialType.NullType) ? falseBranch.Type : trueBranch.Type;
 				}
-				trueBranch = trueBranch.ConvertTo(targetType, this);
-				falseBranch = falseBranch.ConvertTo(targetType, this);
+				if (supportsTargetTypedConditional && context.TypeHintIsTargetType
+					&& !useTargetTypeHint && targetType.Equals(context.TypeHint))
+				{
+					var conversions = CSharpConversions.Get(compilation);
+					useTargetTypeHint = conversions.ImplicitConversion(trueBranch.ResolveResult, targetType).IsValid
+						&& conversions.ImplicitConversion(falseBranch.ResolveResult, targetType).IsValid;
+				}
+				trueBranch = trueBranch.ConvertTo(targetType, this, allowImplicitConversion: useTargetTypeHint);
+				falseBranch = falseBranch.ConvertTo(targetType, this, allowImplicitConversion: useTargetTypeHint);
 				rr = new ResolveResult(targetType);
 			}
 			if (rr.Type.Kind == TypeKind.ByReference)
@@ -4051,6 +4113,44 @@ namespace ICSharpCode.Decompiler.CSharp
 					.WithILInstruction(inst)
 					.WithRR(rr);
 			}
+
+			static bool TargetBoxingChangesNaturalType(IType naturalType,
+				ConversionResolveResult? trueTargetBoxing, ConversionResolveResult? falseTargetBoxing)
+			{
+				return trueTargetBoxing != null && !trueTargetBoxing.Input.Type.Equals(naturalType)
+					|| falseTargetBoxing != null && !falseTargetBoxing.Input.Type.Equals(naturalType);
+			}
+
+			static TranslatedExpression UnwrapImplicitTargetBoxing(TranslatedExpression branch,
+				out ConversionResolveResult? targetBoxing)
+			{
+				if (branch.Expression is not CastExpression
+					&& branch.ResolveResult is ConversionResolveResult {
+						Conversion.IsBoxingConversion: true
+					} conversion)
+				{
+					targetBoxing = conversion;
+					branch.Expression.RemoveAnnotations<ResolveResult>();
+					return branch.Expression.WithRR(conversion.Input).WithoutILInstruction();
+				}
+				targetBoxing = null;
+				return branch;
+			}
+		}
+
+		static ResolveResult GetInferredLambdaReturnValue(Expression expression)
+		{
+			var resolveResult = expression.GetResolveResult();
+			// Return expressions are translated in the target delegate's return context. The
+			// resulting implicit conversion is necessary to validate that delegate, but it is
+			// not part of the lambda expression's inferred return type used by generic method
+			// inference. Keep conversions that are explicitly present in the emitted syntax.
+			while (expression is not CastExpression
+				&& resolveResult is ConversionResolveResult { Conversion.IsImplicit: true } conversion)
+			{
+				resolveResult = conversion.Input;
+			}
+			return resolveResult;
 		}
 
 		internal (TranslatedExpression, IType, StringToInt?) TranslateSwitchValue(SwitchInstruction inst, bool isExpressionContext)
@@ -4183,7 +4283,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			if (context.TypeHint.Kind != TypeKind.Unknown && context.TypeHint.GetStackType() == inst.ResultType)
 			{
 				resultType = context.TypeHint;
-				resultTypeFromContext = true;
+				resultTypeFromContext = context.TypeHintIsTargetType;
 			}
 			else
 			{
@@ -4200,11 +4300,15 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				if (section == defaultSection)
 					continue;
-				translatedBodies.Add(section, Translate(section.Body, resultType));
+				translatedBodies.Add(section, Translate(section.Body, resultType,
+					typeHintIsTargetType: resultTypeFromContext,
+					typeHintRequiresExplicitConversion: context.TypeHintRequiresExplicitConversion));
 			}
 			if (!defaultSection.IsCompilerGeneratedDefaultSection)
 			{
-				translatedBodies.Add(defaultSection, Translate(defaultSection.Body, resultType));
+				translatedBodies.Add(defaultSection, Translate(defaultSection.Body, resultType,
+					typeHintIsTargetType: resultTypeFromContext,
+					typeHintRequiresExplicitConversion: context.TypeHintRequiresExplicitConversion));
 			}
 
 			// A switch expression has no type of its own: C# gives it the best common type of its
@@ -4815,7 +4919,8 @@ namespace ICSharpCode.Decompiler.CSharp
 			invocation.Target = functionPointer;
 			foreach (var (argInst, (paramType, paramRefKind)) in inst.Arguments.Zip(fpt.ParameterTypes.Zip(fpt.ParameterReferenceKinds)))
 			{
-				var arg = Translate(argInst, typeHint: paramType).ConvertTo(paramType, this, allowImplicitConversion: true);
+				var arg = Translate(argInst, typeHint: paramType, typeHintIsTargetType: true)
+					.ConvertTo(paramType, this, allowImplicitConversion: true);
 				if (paramRefKind != ReferenceKind.None)
 				{
 					arg = ChangeDirectionExpressionTo(arg, paramRefKind, argInst is AddressOf);

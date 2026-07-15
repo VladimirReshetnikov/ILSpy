@@ -377,7 +377,8 @@ namespace ICSharpCode.Decompiler.CSharp
 				else if (!inst.Value.MatchNop())
 				{
 					bool isLambdaOrExprTree = currentFunction.Kind is ILFunctionKind.ExpressionTree or ILFunctionKind.Delegate;
-					var expr = exprBuilder.Translate(inst.Value, typeHint: currentResultType)
+					var expr = exprBuilder.Translate(inst.Value, typeHint: currentResultType,
+						typeHintIsTargetType: true)
 						.ConvertTo(currentResultType, exprBuilder, allowImplicitConversion: true);
 					if (isLambdaOrExprTree && IsPossibleLossOfTypeInformation(expr.Type, currentResultType))
 					{
@@ -427,7 +428,8 @@ namespace ICSharpCode.Decompiler.CSharp
 			// a target-less expression (e.g. a switch expression whose arms are sibling exception
 			// types) is pinned to Exception instead of being anchored to its System.Object stack type.
 			var exception = exprBuilder.compilation.FindType(KnownTypeCode.Exception);
-			return new ThrowStatement(exprBuilder.Translate(inst.Argument, exception)).WithILInstruction(inst);
+			return new ThrowStatement(exprBuilder.Translate(inst.Argument, exception,
+				typeHintIsTargetType: true)).WithILInstruction(inst);
 		}
 
 		protected internal override TranslatedStatement VisitRethrow(Rethrow inst)
@@ -438,7 +440,8 @@ namespace ICSharpCode.Decompiler.CSharp
 		protected internal override TranslatedStatement VisitYieldReturn(YieldReturn inst)
 		{
 			var elementType = currentFunction.ReturnType.GetElementTypeFromIEnumerable(typeSystem, true, out var isGeneric);
-			var expr = exprBuilder.Translate(inst.Value, typeHint: elementType)
+			var expr = exprBuilder.Translate(inst.Value, typeHint: elementType,
+				typeHintIsTargetType: true)
 				.ConvertTo(elementType, exprBuilder, allowImplicitConversion: true);
 			return new YieldReturnStatement {
 				Expression = expr

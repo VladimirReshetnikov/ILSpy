@@ -22,6 +22,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
 
+using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.IL.Transforms
@@ -50,8 +51,121 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		{
 			this.context = context;
 			context.StepStartGroup($"ExpressionTransforms ({block.Label}:{pos})", block.Instructions[pos]);
-			block.Instructions[pos].AcceptVisitor(this);
+			if (!TransformGuardedSetterThrowExpression(block, pos))
+			{
+				block.Instructions[pos].AcceptVisitor(this);
+			}
 			context.StepEndGroup(keepIfEmpty: true);
+		}
+
+		bool TransformGuardedSetterThrowExpression(Block block, int pos)
+		{
+			if (!context.Settings.ThrowExpressions || pos + 1 >= block.Instructions.Count
+				|| block.Instructions[pos] is not IfInstruction guard
+				|| !MatchThrowGuard(guard, out var throwInst, out bool throwsWhenTrue)
+				|| block.Instructions[pos + 1] is not CallInstruction call
+				|| call is not (Call or CallVirt)
+				|| call.ResultType != StackType.Void || call.Arguments.Count == 0
+				|| call.Method.AccessorOwner is not IProperty property || !call.Method.Equals(property.Setter))
+			{
+				return false;
+			}
+
+			bool hasNullCheckedVariable = MatchNullCheckedVariable(guard.Condition, throwsWhenTrue,
+				out var nullCheckedVariable);
+			if (hasNullCheckedVariable && call.Arguments.Take(call.Arguments.Count - 1)
+				.Any(argument => MatchLoadOfVariable(argument, nullCheckedVariable)))
+			{
+				// Leave receiver/index null guards to the null-coalescing transform. Folding
+				// them into the setter value would put the conditional on the assigned value
+				// instead of preserving an idiomatic null-coalescing receiver.
+				return false;
+			}
+
+			// Moving the guard into the final (setter-value) argument delays its evaluation until
+			// after the receiver and any index arguments. Those preceding arguments must therefore
+			// be unobservable and safely reorderable with the condition.
+			for (int i = 0; i < call.Arguments.Count - 1; i++)
+			{
+				var argument = call.Arguments[i];
+				// ldsflda is otherwise classified as pure, but accessing a static field can
+				// trigger a precise type initializer. Moving it ahead of the guard would be
+				// observable when the guard throws.
+				if (argument.Descendants.Any(inst => inst is LdsFlda)
+					|| !SemanticHelper.IsPure(argument.Flags)
+					|| !SemanticHelper.MayReorder(guard.Condition, argument))
+				{
+					return false;
+				}
+			}
+
+			context.Step("Fold guarded throw into property-setter value", guard);
+			var value = call.Arguments.Last();
+			throwInst.resultType = value.ResultType;
+			ILInstruction guardedValue;
+			if (hasNullCheckedVariable && value.ResultType == StackType.O
+				&& MatchLoadOfVariable(value, nullCheckedVariable))
+			{
+				guardedValue = new NullCoalescingInstruction(NullCoalescingKind.Ref, value, throwInst);
+			}
+			else
+			{
+				var condition = throwsWhenTrue ? Comp.LogicNot(guard.Condition) : guard.Condition;
+				guardedValue = new IfInstruction(condition, value, throwInst);
+			}
+			guardedValue.AddILRange(guard);
+			call.Arguments[call.Arguments.Count - 1] = guardedValue;
+			block.Instructions.RemoveAt(pos);
+			context.EndStep(call);
+			context.RequestRerun();
+			return true;
+		}
+
+		static bool MatchNullCheckedVariable(ILInstruction condition, bool throwsWhenTrue,
+			out ILVariable variable)
+		{
+			ILInstruction testedValue;
+			if (throwsWhenTrue ? !condition.MatchCompEqualsNull(out testedValue)
+				: !condition.MatchCompNotEqualsNull(out testedValue))
+			{
+				variable = null;
+				return false;
+			}
+			if (testedValue.MatchBox(out var argument, out _))
+			{
+				testedValue = argument;
+			}
+			return testedValue.MatchLdLoc(out variable);
+		}
+
+		static bool MatchLoadOfVariable(ILInstruction instruction, ILVariable variable)
+		{
+			if (instruction.MatchBox(out var argument, out _))
+			{
+				instruction = argument;
+			}
+			return instruction.MatchLdLoc(variable);
+		}
+
+		static bool MatchThrowGuard(IfInstruction guard, out Throw throwInst, out bool throwsWhenTrue)
+		{
+			var trueInst = Block.Unwrap(guard.TrueInst);
+			var falseInst = Block.Unwrap(guard.FalseInst);
+			if (trueInst is Throw trueThrow && falseInst.MatchNop())
+			{
+				throwInst = trueThrow;
+				throwsWhenTrue = true;
+				return true;
+			}
+			if (falseInst is Throw falseThrow && trueInst.MatchNop())
+			{
+				throwInst = falseThrow;
+				throwsWhenTrue = false;
+				return true;
+			}
+			throwInst = null;
+			throwsWhenTrue = false;
+			return false;
 		}
 
 		protected override void Default(ILInstruction inst)
@@ -598,61 +712,189 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		IfInstruction HandleConditionalOperator(IfInstruction inst)
 		{
 			// if (cond) stloc A(V1) else stloc A(V2) --> stloc A(if (cond) V1 else V2)
-			Block trueInst = inst.TrueInst as Block;
-			if (trueInst == null)
-				return inst;
-			NormalizeConditionalBranch(trueInst);
-			if (trueInst.Instructions.Count != 1)
-				return inst;
-			Block falseInst = inst.FalseInst as Block;
-			if (falseInst == null)
-				return inst;
-			NormalizeConditionalBranch(falseInst);
-			if (falseInst.Instructions.Count != 1)
-				return inst;
-			ILVariable v;
-			ILInstruction value1, value2;
-			if (trueInst.Instructions[0].MatchStLoc(out v, out value1) && falseInst.Instructions[0].MatchStLoc(v, out value2))
+			if (inst.TrueInst is Block trueInst && inst.FalseInst is Block falseInst
+				&& MatchConditionalBranch(trueInst, out var trueStore, out var trueTempStore, out var value1)
+				&& MatchConditionalBranch(falseInst, out var falseStore, out var falseTempStore, out var value2)
+				&& trueStore.Variable == falseStore.Variable
+				&& PrepareConditionalValues(trueStore, trueTempStore, value1, falseStore, falseTempStore, value2))
 			{
-				context.Step("conditional operator", inst);
-				var newIf = new IfInstruction(Comp.LogicNot(inst.Condition), value2, value1);
-				newIf.AddILRange(inst);
-				var stLoc = new StLoc(v, newIf);
-				inst.ReplaceWith(stLoc);
-				context.EndStep(stLoc);
-				context.RequestRerun();  // trigger potential inlining of the newly created StLoc
-				return newIf;
+				return ReplaceWithConditionalStore(inst, trueStore.Variable, value1, value2);
 			}
 			return inst;
 		}
 
-		/// <summary>
-		/// Reduces a conditional branch of the form [stloc tmp(initializerBlock); stloc v(ldloc tmp)]
-		/// to [stloc v(initializerBlock)] by inlining a single-use temporary. The array-initializer
-		/// transform leaves an array/collection/object initializer computed into such a temp, giving
-		/// the branch two instructions, which would stop <see cref="HandleConditionalOperator"/> from
-		/// collapsing the conditional (and the value would not fold into an object initializer).
-		/// Inlining the single-definition, single-use temporary is always sound. This is restricted
-		/// to initializer-block values: collapsing arbitrary conditionals can change the inferred
-		/// type of the resulting ternary (e.g. 'cond ? null : (object)x' widening to object), which
-		/// is harmless as a statement but can break a type-sensitive context such as a using resource.
-		/// </summary>
-		static void NormalizeConditionalBranch(Block block)
+		IfInstruction ReplaceWithConditionalStore(IfInstruction inst, ILVariable variable, ILInstruction value1, ILInstruction value2)
 		{
-			if (block.Instructions.Count != 2)
-				return;
-			if (block.Instructions[0] is not StLoc { Variable: { Kind: VariableKind.StackSlot or VariableKind.Local } tmp } tmpStore)
-				return;
-			if (tmpStore.Value is not Block { Kind: BlockKind.ArrayInitializer or BlockKind.CollectionInitializer or BlockKind.ObjectInitializer or BlockKind.StackAllocInitializer })
-				return;
-			if (!tmp.IsSingleDefinition || tmp.LoadCount != 1)
-				return;
-			if (block.Instructions[1] is not StLoc resultStore)
-				return;
-			if (resultStore.Value is not LdLoc ldloc || ldloc.Variable != tmp)
-				return;
-			resultStore.Value = tmpStore.Value;
-			block.Instructions.RemoveAt(0);
+			context.Step("conditional operator", inst);
+			var newIf = new IfInstruction(Comp.LogicNot(inst.Condition), value2, value1);
+			newIf.AddILRange(inst);
+			var stLoc = new StLoc(variable, newIf);
+			inst.ReplaceWith(stLoc);
+			context.EndStep(stLoc);
+			context.RequestRerun();  // trigger potential inlining of the newly created StLoc
+			return newIf;
+		}
+
+		static bool MatchDirectConditionalStore(ILInstruction branch, out StLoc resultStore, out ILInstruction value)
+		{
+			if (Block.Unwrap(branch) is StLoc store)
+			{
+				resultStore = store;
+				value = store.Value;
+				return true;
+			}
+			resultStore = null;
+			value = null;
+			return false;
+		}
+
+		static bool MatchConditionalBranch(Block block, out StLoc resultStore, out StLoc tempStore, out ILInstruction value)
+		{
+			if (MatchDirectConditionalStore(block, out resultStore, out value))
+			{
+				tempStore = null;
+				return true;
+			}
+			resultStore = null;
+			tempStore = null;
+			value = null;
+			if (block.Instructions.Count != 2
+				|| block.Instructions[0] is not StLoc { Variable: { Kind: VariableKind.StackSlot or VariableKind.Local } temp } firstStore
+				|| block.Instructions[1] is not StLoc secondStore
+				|| secondStore.Value is not LdLoc load || load.Variable != temp)
+			{
+				return false;
+			}
+			if (!temp.IsSingleDefinition || temp.LoadCount != 1 || temp.AddressCount != 0
+				|| temp.StoreInstructions.Count != 1 || temp.StoreInstructions[0] != firstStore
+				|| temp.LoadInstructions[0] != load)
+			{
+				return false;
+			}
+			resultStore = secondStore;
+			tempStore = firstStore;
+			value = firstStore.Value;
+			return true;
+		}
+
+		bool PrepareConditionalValues(StLoc trueStore, StLoc trueTempStore, ILInstruction value1,
+			StLoc falseStore, StLoc falseTempStore, ILInstruction value2)
+		{
+			if (trueTempStore == null && falseTempStore == null)
+				return true;
+			if ((trueTempStore == null || IsInitializerBlock(value1))
+				&& (falseTempStore == null || IsInitializerBlock(value2)))
+			{
+				// Preserve the established initializer-only normalization. Initializer blocks have a
+				// fixed natural type, so removing their single-use materialization temps is safe.
+				return true;
+			}
+
+			var targetType = trueTempStore?.Variable.Type ?? falseTempStore.Variable.Type;
+			if (trueTempStore != null && falseTempStore != null
+				&& !targetType.Equals(falseTempStore.Variable.Type))
+			{
+				return false;
+			}
+			if (!IsSupportedReferenceType(targetType) || !IsSingleUseReferencePhi(trueStore, falseStore, targetType))
+			{
+				return false;
+			}
+			if (targetType.ContainsAnonymousType())
+			{
+				// The target cannot be named in C#, so no branch conversion may depend on
+				// spelling it. Independently typed expressions need no target conversion and
+				// can safely flow through the conditional (for example, two identical
+				// anonymous projections).
+				return HasIndependentNaturalType(value1, targetType)
+					&& HasIndependentNaturalType(value2, targetType);
+			}
+			if (!HasSafeConditionalValue(value1, trueTempStore, targetType)
+				|| !HasSafeConditionalValue(value2, falseTempStore, targetType))
+			{
+				return false;
+			}
+
+			return true;
+		}
+
+		bool HasSafeConditionalValue(ILInstruction value, StLoc tempStore, IType targetType)
+		{
+			// Initializer blocks have a fixed natural type, and storing them in the typed
+			// materialization temp proves CLR reference assignability even when the resolver's
+			// reference set cannot reconstruct every array/interface conversion.
+			return HasSafeConversion(value, targetType)
+				|| tempStore != null && IsInitializerBlock(value) && value.ResultType == StackType.O;
+		}
+
+		static bool IsInitializerBlock(ILInstruction value)
+		{
+			return value is Block {
+				Kind: BlockKind.ArrayInitializer or BlockKind.CollectionInitializer
+					or BlockKind.ObjectInitializer or BlockKind.StackAllocInitializer
+			};
+		}
+
+		static bool IsSupportedReferenceType(IType type)
+		{
+			return type.IsReferenceType == true
+				&& type.Kind is TypeKind.Class or TypeKind.Interface or TypeKind.Delegate
+					or TypeKind.Dynamic or TypeKind.TypeParameter or TypeKind.Array;
+		}
+
+		static bool IsSingleUseReferencePhi(StLoc trueStore, StLoc falseStore, IType targetType)
+		{
+			var variable = trueStore.Variable;
+			return variable == falseStore.Variable
+				&& variable.Kind == VariableKind.StackSlot
+				&& variable.StackType == StackType.O
+				// Anonymous targets flow through an object-typed phi because their metadata type
+				// cannot be named. Named reference targets may use the target type directly; both
+				// forms preserve the same branch conversions checked by the caller.
+				&& (variable.Type.IsKnownType(KnownTypeCode.Object) || variable.Type.Equals(targetType))
+				&& variable.StoreCount == 2
+				&& variable.StoreInstructions.Count == 2
+				&& variable.StoreInstructions.Contains(trueStore)
+				&& variable.StoreInstructions.Contains(falseStore)
+				&& variable.LoadCount == 1
+				&& variable.AddressCount == 0;
+		}
+
+		bool HasSafeConversion(ILInstruction value, IType targetType)
+		{
+			var sourceType = InferConversionSourceType(value);
+			if (sourceType.Kind is TypeKind.Unknown or TypeKind.Null or TypeKind.None)
+				return false;
+			var conversion = CSharpConversions.Get(context.TypeSystem).ImplicitConversion(sourceType, targetType);
+			return conversion.IsImplicit && (value is Box ? conversion.IsBoxingConversion
+				: conversion.IsIdentityConversion || conversion.IsReferenceConversion);
+		}
+
+		bool HasIndependentNaturalType(ILInstruction value, IType targetType)
+		{
+			if (value is Box || !InferConversionSourceType(value).Equals(targetType))
+				return false;
+
+			// InferType alone does not establish that the emitted C# expression has a
+			// natural type. In particular, ILFunction reports its delegate type but is
+			// emitted as a target-dependent lambda with a cast, while NewObj, NewArr and
+			// DefaultValue may spell their result types. Locals and ordinary invocations
+			// get their types from an existing declaration or selected member. Operator
+			// calls are excluded because conversion operators are emitted as casts.
+			return value switch {
+				LdLoc => true,
+				Call call => !call.Method.IsOperator,
+				CallVirt call => !call.Method.IsOperator,
+				_ => false
+			};
+		}
+
+		IType InferConversionSourceType(ILInstruction value)
+		{
+			var source = value is Box box ? box.Argument : value;
+			return source is Block block && IsInitializerBlock(block)
+				? block.FinalInstruction.InferType(context.TypeSystem)
+				: source.InferType(context.TypeSystem);
 		}
 
 		private void HandleSwitchExpression(BlockContainer container, SwitchInstruction switchInst)

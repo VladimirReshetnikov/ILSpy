@@ -950,6 +950,13 @@ namespace ICSharpCode.Decompiler.CSharp
 			int firstParamIndex, IReadOnlyList<ILInstruction> callArguments, IReadOnlyList<int>? argumentToParameterMap)
 		{
 			ArgumentList list = new ArgumentList();
+			// Anonymous metadata constructors are rewritten to `new { ... }`, which erases the
+			// parameter conversion context. Keep that fact separate from target typing: ordinary
+			// invocation arguments participate in overload resolution and must retain their natural
+			// types until the selected call has been reconstructed. Interpolation holes deliberately
+			// stay on the ordinary path: their formatting semantics consume the value's natural type.
+			bool argumentConversionsAreErased = expectedTargetDetails.CallOpCode == OpCode.NewObj
+				&& settings.AnonymousTypes && method.DeclaringType.IsAnonymousType();
 
 			// Translate arguments to the expected parameter types
 			var arguments = new List<TranslatedExpression>(method.Parameters.Count);
@@ -987,7 +994,13 @@ namespace ICSharpCode.Decompiler.CSharp
 				{
 					parameter = method.Parameters[i - firstParamIndex];
 				}
-				var arg = expressionBuilder.Translate(callArguments[i], parameter.Type);
+				// Conditional and switch expressions are target-dependent, but method arguments also
+				// participate in overload resolution. Materialize the selected parameter type inside
+				// those expressions instead of pretending the invocation itself is a target context.
+				bool requiresExplicitTarget = argumentConversionsAreErased
+					|| callArguments[i] is IfInstruction or SwitchInstruction;
+				var arg = expressionBuilder.Translate(callArguments[i], parameter.Type,
+					typeHintRequiresExplicitConversion: requiresExplicitTarget);
 				if (IsPrimitiveValueThatShouldBeNamedArgument(arg, method, parameter))
 				{
 					isPrimitiveValue.Set(arguments.Count);
@@ -1027,7 +1040,8 @@ namespace ICSharpCode.Decompiler.CSharp
 					parameterType = parameter.Type;
 				}
 
-				arg = arg.ConvertTo(parameterType, expressionBuilder, allowImplicitConversion: arg.Type.Kind != TypeKind.Dynamic);
+				arg = arg.ConvertTo(parameterType, expressionBuilder,
+					allowImplicitConversion: arg.Type.Kind != TypeKind.Dynamic);
 
 				if (parameter.ReferenceKind != ReferenceKind.None)
 				{
@@ -1198,6 +1212,8 @@ namespace ICSharpCode.Decompiler.CSharp
 			bool requireTypeArguments;
 			IType[] typeArguments;
 			bool appliedRequireTypeArgumentsShortcut = false;
+			bool typeArgumentsRequiredForSpecialization = false;
+			bool argumentsCasted = false;
 			if (method.TypeParameters.Count > 0 && (allowedTransforms & CallTransformation.RequireTypeArguments) != 0
 				&& !IsPossibleExtensionMethodCallOnNull(method, argumentList.Arguments))
 			{
@@ -1207,15 +1223,30 @@ namespace ICSharpCode.Decompiler.CSharp
 				// that are no longer required once we add the type arguments.
 				// We lend overload resolution a hand by detecting such cases beforehand and requiring type arguments,
 				// if necessary.
-				if (!CanInferTypeArgumentsFromArguments(method, argumentList, expressionBuilder.typeInference))
+				var inferenceResult = InferTypeArgumentsFromArguments(method, argumentList, expressionBuilder.typeInference);
+				if (inferenceResult != TypeArgumentInferenceResult.Exact)
 				{
 					if (settings.AnonymousTypes
 						&& method.TypeArguments.Any(a => a.ContainsAnonymousType())
 						&& PinTypesOfNullArguments(argumentList)
-						&& CanInferTypeArgumentsFromArguments(method, argumentList, expressionBuilder.typeInference))
+						&& InferTypeArgumentsFromArguments(method, argumentList, expressionBuilder.typeInference)
+							== TypeArgumentInferenceResult.Exact)
 					{
 						// Anonymous types cannot be written as explicit type arguments; instead the
 						// null arguments were rewritten so that all type arguments are inferable.
+						requireTypeArguments = false;
+						typeArguments = Empty<IType>.Array;
+					}
+					else if (inferenceResult == TypeArgumentInferenceResult.Different
+						&& settings.AnonymousTypes
+						&& method.TypeArguments.Any(a => a.ContainsAnonymousType()))
+					{
+						// The differing specialization cannot be written because one of its type
+						// arguments is anonymous. Pin lambda return types with explicit conversions
+						// so source inference reconstructs the metadata-selected named arguments.
+						CastArguments(argumentList.Arguments, argumentList.ExpectedParameters);
+						argumentList.UseImplicitlyTypedOut = false;
+						argumentsCasted = true;
 						requireTypeArguments = false;
 						typeArguments = Empty<IType>.Array;
 					}
@@ -1224,6 +1255,7 @@ namespace ICSharpCode.Decompiler.CSharp
 						requireTypeArguments = true;
 						typeArguments = method.TypeArguments.ToArray();
 						appliedRequireTypeArgumentsShortcut = true;
+						typeArgumentsRequiredForSpecialization = inferenceResult == TypeArgumentInferenceResult.Different;
 					}
 				}
 				else
@@ -1239,7 +1271,6 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 
 			bool targetCasted = false;
-			bool argumentsCasted = false;
 			bool originalRequireTarget = requireTarget;
 			bool skipTargetCast = method.Accessibility <= Accessibility.Protected && expressionBuilder.IsBaseTypeOfCurrentType(method.DeclaringTypeDefinition);
 			OverloadResolutionErrors errors;
@@ -1286,7 +1317,7 @@ namespace ICSharpCode.Decompiler.CSharp
 						{
 							// If we added type arguments beforehand, but that didn't make the code any better,
 							// undo that decision and add casts first.
-							if (appliedRequireTypeArgumentsShortcut)
+							if (appliedRequireTypeArgumentsShortcut && !typeArgumentsRequiredForSpecialization)
 							{
 								requireTypeArguments = false;
 								typeArguments = Empty<IType>.Array;
@@ -1379,12 +1410,22 @@ namespace ICSharpCode.Decompiler.CSharp
 			return method.IsExtensionMethod && arguments.Count > 0 && arguments[0].Expression is NullReferenceExpression;
 		}
 
-		static bool CanInferTypeArgumentsFromArguments(IMethod method, ArgumentList argumentList, TypeInference typeInference)
+		enum TypeArgumentInferenceResult
 		{
-			if (method.TypeParameters.Count == 0)
-				return true;
-			// always use unspecialized member, otherwise type inference fails
+			Exact,
+			Failed,
+			Different
+		}
+
+		static TypeArgumentInferenceResult InferTypeArgumentsFromArguments(IMethod method, ArgumentList argumentList,
+			TypeInference typeInference)
+		{
+			var expectedMethod = method;
 			method = (IMethod)method.MemberDefinition;
+			if (method.TypeParameters.Count == 0)
+				return TypeArgumentInferenceResult.Exact;
+			// Always infer against the unspecialized definition; a specialized method exposes
+			// no remaining TypeParameters even though its TypeArguments still matter.
 			IReadOnlyList<IType> paramTypesInArgumentOrder;
 			if (argumentList.ArgumentToParameterMap == null)
 				paramTypesInArgumentOrder = method.Parameters.SelectReadOnlyArray(p => p.Type);
@@ -1393,10 +1434,28 @@ namespace ICSharpCode.Decompiler.CSharp
 					.SelectReadOnlyArray(
 						index => index >= 0 ? method.Parameters[index].Type : SpecialType.UnknownType
 					);
-			typeInference.InferTypeArguments(method.TypeParameters,
+			var inferredTypes = typeInference.InferTypeArguments(method.TypeParameters,
 				argumentList.Arguments.SelectReadOnlyArray(a => a.ResolveResult), paramTypesInArgumentOrder,
 				out bool success);
-			return success;
+			if (!success)
+				return TypeArgumentInferenceResult.Failed;
+			return HasSameTypeArguments(expectedMethod.TypeArguments, inferredTypes)
+				? TypeArgumentInferenceResult.Exact
+				: TypeArgumentInferenceResult.Different;
+		}
+
+		static bool HasSameTypeArguments(IReadOnlyList<IType> expected, IReadOnlyList<IType> actual)
+		{
+			if (expected.Count != actual.Count)
+				return false;
+			for (int i = 0; i < expected.Count; i++)
+			{
+				if (!NormalizeTypeVisitor.TypeErasure.EquivalentTypes(expected[i], actual[i]))
+				{
+					return false;
+				}
+			}
+			return true;
 		}
 
 		/// <summary>
@@ -1653,6 +1712,16 @@ namespace ICSharpCode.Decompiler.CSharp
 			foundMember = or.GetBestCandidateWithSubstitutedTypeArguments();
 			if (!IsAppropriateCallTarget(expectedTargetDetails, method, foundMember))
 				return OverloadResolutionErrors.AmbiguousMatch;
+			if (typeArguments.Length == 0
+				&& method.MemberDefinition is IMethod { TypeParameters.Count: > 0 }
+				&& (foundMember is not IMethod inferredMethod
+					|| !HasSameTypeArguments(method.TypeArguments, inferredMethod.TypeArguments)))
+			{
+				// Member identity uses type erasure, but source inference can still select a
+				// different specialization. Generic arguments may affect the method body even when
+				// they do not occur in its signature, so preserve metadata's exact specialization.
+				return OverloadResolutionErrors.TypeInferenceFailed;
+			}
 			var map = or.GetArgumentToParameterMap();
 			for (int i = 0; i < arguments.Length; i++)
 			{

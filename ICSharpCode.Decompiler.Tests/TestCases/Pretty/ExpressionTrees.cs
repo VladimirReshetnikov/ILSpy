@@ -467,7 +467,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void MethodGroupAsExtensionMethod()
 		{
-			ToCode(X(), (Expression<Func<Func<bool>>>)(() => ((IEnumerable<int>)new int[4] { 2000, 2004, 2008, 2012 }).Any<int>));
+			ToCode<Func<bool>>(X(), () => ((IEnumerable<int>)new int[4] { 2000, 2004, 2008, 2012 }).Any<int>);
 		}
 
 		public void MethodGroupConstant()
@@ -504,7 +504,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void CurriedLambda()
 		{
-			ToCode(X(), (Expression<Func<int, Func<int, Func<int, int>>>>)((int a) => (int b) => (int c) => a + b + c));
+			ToCode<int, Func<int, Func<int, int>>>(X(), (int a) => (int b) => (int c) => a + b + c);
 		}
 
 		private bool Fizz(Func<int, bool> a)

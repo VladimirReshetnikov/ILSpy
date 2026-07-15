@@ -102,6 +102,7 @@
     <None Include="TestCases\Disassembler\Pretty\SortMembers.expected.il" />
     <None Include="TestCases\Disassembler\Pretty\SortMembers.il" />
     <None Include="TestCases\IsolatedDecompilation\IsolatedStaticCtor.il" />
+    <None Include="TestCases\ILPretty\AnonymousTypeConditionalPhi.il" />
     <None Include="TestCases\ILPretty\ExtensionEncodingV2.il" />
     <None Include="testcases\ilpretty\ExtensionEncodingV1.il" />
     <None Include="TestCases\ILPretty\GuessAccessors.il" />
@@ -192,6 +193,8 @@
     <Compile Remove="TestCases\PdbGen\*.cs" />
     <Compile Remove="TestCases\Correctness\ComInterop.cs" />
     <None Include="TestCases\Correctness\ComInterop.cs" />
+    <Compile Remove="TestCases\ILPretty\AnonymousTypeConditionalPhi.cs" />
+    <None Include="TestCases\ILPretty\AnonymousTypeConditionalPhi.cs" />
     <Compile Remove="TestCases\ILPretty\CS1xSwitch_Debug.cs" />
     <None Include="TestCases\ILPretty\CS1xSwitch_Debug.cs" />
     <Compile Remove="TestCases\ILPretty\CastBetweenTypeParameters.cs" />
