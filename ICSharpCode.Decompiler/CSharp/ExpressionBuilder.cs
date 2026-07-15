@@ -4118,8 +4118,8 @@ namespace ICSharpCode.Decompiler.CSharp
 			static bool TargetBoxingChangesNaturalType(IType naturalType,
 				ConversionResolveResult? trueTargetBoxing, ConversionResolveResult? falseTargetBoxing)
 			{
-				return trueTargetBoxing != null && !trueTargetBoxing.Input.Type.Equals(naturalType)
-					|| falseTargetBoxing != null && !falseTargetBoxing.Input.Type.Equals(naturalType);
+				return trueTargetBoxing != null && !trueTargetBoxing.Type.Equals(naturalType)
+					|| falseTargetBoxing != null && !falseTargetBoxing.Type.Equals(naturalType);
 			}
 
 			static TranslatedExpression UnwrapImplicitTargetBoxing(TranslatedExpression branch,

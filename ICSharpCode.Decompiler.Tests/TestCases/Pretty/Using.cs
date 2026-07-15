@@ -138,6 +138,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
+		public void UsingConditionalExpression(bool condition)
+		{
+			using (condition ? new UsingStruct(3) : GetEmptyDisposable())
+			{
+				Console.WriteLine("using-body");
+			}
+		}
+
+		private static IDisposable GetEmptyDisposable()
+		{
+			return new MemoryStream();
+		}
+
 		private void UsingStatementOnNullableStruct(UsingStruct? us)
 		{
 			using (us)

@@ -538,7 +538,8 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		protected internal override TranslatedStatement VisitUsingInstruction(UsingInstruction inst)
 		{
-			var translatedResource = exprBuilder.Translate(inst.ResourceExpression);
+			var translatedResource = exprBuilder.Translate(inst.ResourceExpression,
+				typeHint: inst.Variable.Type, typeHintIsTargetType: true);
 			var resource = translatedResource.Expression;
 			var transformed = TransformToForeach(inst, resource);
 			if (transformed != null)
