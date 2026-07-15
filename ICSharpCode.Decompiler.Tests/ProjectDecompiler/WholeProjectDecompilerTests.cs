@@ -70,6 +70,38 @@ public sealed class WholeProjectDecompilerTests
 		}
 	}
 
+	[TestCase(true, true)]
+	[TestCase(true, false)]
+	[TestCase(false, true)]
+	[TestCase(false, false)]
+	public void ProjectWriterEmitsNullableContextWhenEnabled(bool useSdkStyleProjectFormat, bool nullableReferenceTypes)
+	{
+		UniversalAssemblyResolver assemblyResolver = new(null, false, null);
+		TestProjectInfoProvider project = new(assemblyResolver, nullableReferenceTypes);
+		IProjectFileWriter writer = useSdkStyleProjectFormat ? ProjectFileWriterSdkStyle.Create() : ProjectFileWriterDefault.Create();
+		using StringWriter output = new();
+		writer.Write(output, project, [], new PEFile("ICSharpCode.Decompiler.dll"));
+		string projectFile = output.ToString();
+		if (nullableReferenceTypes)
+		{
+			Assert.That(projectFile, Does.Contain("<Nullable>annotations</Nullable>"));
+		}
+		else
+		{
+			Assert.That(projectFile, Does.Not.Contain("<Nullable>"));
+		}
+	}
+
+	[TestCase(true)]
+	[TestCase(false)]
+	public void WholeProjectDecompilerProvidesNullableReferenceTypeSetting(bool nullableReferenceTypes)
+	{
+		DecompilerSettings settings = new() { NullableReferenceTypes = nullableReferenceTypes };
+		WholeProjectDecompiler decompiler = new(settings, new UniversalAssemblyResolver(null, false, null),
+			projectWriter: null, assemblyReferenceClassifier: null, debugInfoProvider: null);
+		Assert.That(((INullableProjectInfoProvider)decompiler).NullableReferenceTypes, Is.EqualTo(nullableReferenceTypes));
+	}
+
 	[Test]
 	public void StringOnlyResourcesAreConvertedToResX()
 	{
@@ -201,6 +233,25 @@ public sealed class WholeProjectDecompilerTests
 			TargetDirectory = targetDirectory;
 			return WriteResourceToFile(fileName, resourceName, stream).Single();
 		}
+	}
+
+	sealed class TestProjectInfoProvider(IAssemblyResolver assemblyResolver, bool nullableReferenceTypes) : IProjectInfoProvider, INullableProjectInfoProvider
+	{
+		public IAssemblyResolver AssemblyResolver => assemblyResolver;
+
+		public AssemblyReferenceClassifier AssemblyReferenceClassifier { get; } = new();
+
+		public CSharp.LanguageVersion LanguageVersion => CSharp.LanguageVersion.CSharp14_0;
+
+		public bool CheckForOverflowUnderflow => false;
+
+		public bool NullableReferenceTypes => nullableReferenceTypes;
+
+		public Guid ProjectGuid { get; } = Guid.NewGuid();
+
+		public string TargetDirectory => Environment.CurrentDirectory;
+
+		public string StrongNameKeyFile => null;
 	}
 
 	public enum NonStringResourceKind

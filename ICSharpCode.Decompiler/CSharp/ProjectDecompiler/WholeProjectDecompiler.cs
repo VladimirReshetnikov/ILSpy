@@ -45,7 +45,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 	/// <summary>
 	/// Decompiles an assembly into a visual studio project file.
 	/// </summary>
-	public class WholeProjectDecompiler : IProjectInfoProvider
+	public class WholeProjectDecompiler : IProjectInfoProvider, INullableProjectInfoProvider
 	{
 		const int maxSegmentLength = 255;
 
@@ -69,6 +69,8 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		}
 
 		bool IProjectInfoProvider.CheckForOverflowUnderflow => Settings.CheckForOverflowUnderflow;
+
+		bool INullableProjectInfoProvider.NullableReferenceTypes => Settings.NullableReferenceTypes;
 
 		public IAssemblyResolver AssemblyResolver { get; }
 

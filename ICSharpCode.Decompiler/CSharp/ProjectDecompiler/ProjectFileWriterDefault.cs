@@ -98,6 +98,10 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 
 				w.WriteElementString("OutputType", outputType);
 				w.WriteElementString("LangVersion", project.LanguageVersion.ToString().Replace("CSharp", "").Replace('_', '.'));
+				if (project is INullableProjectInfoProvider { NullableReferenceTypes: true })
+				{
+					w.WriteElementString("Nullable", "annotations");
+				}
 				w.WriteElementString("CheckForOverflowUnderflow", project.CheckForOverflowUnderflow ? "true" : "false");
 
 				w.WriteElementString("AssemblyName", module.Name);

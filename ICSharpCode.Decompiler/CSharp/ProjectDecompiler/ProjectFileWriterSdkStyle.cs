@@ -191,6 +191,10 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		static void WriteProjectInfo(XmlTextWriter xml, IProjectInfoProvider project)
 		{
 			xml.WriteElementString("LangVersion", project.LanguageVersion.ToString().Replace("CSharp", "").Replace('_', '.'));
+			if (project is INullableProjectInfoProvider { NullableReferenceTypes: true })
+			{
+				xml.WriteElementString("Nullable", "annotations");
+			}
 			xml.WriteElementString("AllowUnsafeBlocks", TrueString);
 			xml.WriteElementString("CheckForOverflowUnderflow", project.CheckForOverflowUnderflow ? TrueString : FalseString);
 
