@@ -7,7 +7,6 @@
 set -eu
 
 DOTNET_FORMAT_VERSION=10.0.100-rtm.25531.102
-DOTNET_FORMAT_SOURCE="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet10-transport/nuget/v3/index.json"
 export OPENSSL_ENABLE_SHA1_SIGNATURES=1
 
 # Per-OS tool cache location + binary suffix. Windows uses %LOCALAPPDATA% and a .exe
@@ -28,7 +27,9 @@ esac
 DOTNET_PATH="$DOTNET_CACHE_ROOT/ICSharpCode/ILSpy/dotnet-format-$DOTNET_FORMAT_VERSION"
 if [ ! -d "$DOTNET_PATH" ]; then
  echo "Downloading dotnet-format $DOTNET_FORMAT_VERSION..."
- dotnet tool install --tool-path "$DOTNET_PATH" dotnet-format --version "$DOTNET_FORMAT_VERSION" --add-source "$DOTNET_FORMAT_SOURCE"
+ # NuGet.config owns the package source and mapping. Passing --add-source is
+ # rejected when package source mapping is enabled.
+ dotnet tool install --tool-path "$DOTNET_PATH" dotnet-format --version "$DOTNET_FORMAT_VERSION"
 fi
 
 DOTNET_FORMAT="$DOTNET_PATH/dotnet-format$EXE_SUFFIX"

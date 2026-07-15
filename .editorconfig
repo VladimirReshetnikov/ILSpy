@@ -280,3 +280,8 @@ dotnet_diagnostic.MEF006.severity = silent
 # Files vendored from dotnet/runtime keep their upstream formatting so future syncs diff cleanly.
 [ICSharpCode.Decompiler/Util/Sha1ForNonSecretPurposes.cs]
 generated_code = true
+
+# This Pretty fixture is a golden file for ILSpy's switch-label indentation.
+# Keep the repository formatter from rewriting the expected decompiler output.
+[ICSharpCode.Decompiler.Tests/TestCases/Pretty/ExpressionTreeInSwitch.cs]
+csharp_indent_switch_labels = false
