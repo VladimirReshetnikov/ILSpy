@@ -376,6 +376,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task TupleNamesFromConsumerLambdas()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task OrderByThenByRangeVariable()
 		{
 			await Run();

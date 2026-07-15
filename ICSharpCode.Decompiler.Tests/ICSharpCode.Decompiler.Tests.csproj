@@ -120,6 +120,7 @@
     <None Include="TestCases\ILPretty\EvalOrder.il" />
     <None Include="TestCases\ILPretty\CallIndirect.il" />
     <None Include="TestCases\ILPretty\QueryExpressionInParameter.il" />
+    <None Include="TestCases\ILPretty\TupleNamesFromConsumerLambdas.il" />
     <None Include="TestCases\ILPretty\OrderByThenByRangeVariable.il" />
     <None Include="TestCases\ILPretty\StaticLocalFunctionLocalNameCollision.il" />
     <None Include="TestCases\ILPretty\Issue1454.il" />
@@ -241,6 +242,8 @@
     <None Include="TestCases\ILPretty\CallIndirect.cs" />
     <Compile Remove="TestCases\ILPretty\QueryExpressionInParameter.cs" />
     <None Include="TestCases\ILPretty\QueryExpressionInParameter.cs" />
+    <Compile Remove="TestCases\ILPretty\TupleNamesFromConsumerLambdas.cs" />
+    <None Include="TestCases\ILPretty\TupleNamesFromConsumerLambdas.cs" />
     <Compile Remove="TestCases\ILPretty\OrderByThenByRangeVariable.cs" />
     <None Include="TestCases\ILPretty\OrderByThenByRangeVariable.cs" />
     <Compile Remove="TestCases\ILPretty\EmptyBodies.cs" />

@@ -749,7 +749,11 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				case RequiredGetCurrentTransformation.UseExistingVariable:
 					if (foreachVariable!.Type.Kind != TypeKind.Dynamic)
-						foreachVariable.Type = type;
+					{
+						// Earlier IL transforms may have recovered tuple names from consumers of the
+						// existing variable. Do not erase that evidence again with get_Current's type.
+						foreachVariable.Type = TupleType.MergeTupleElementNames(type, foreachVariable.Type) ?? type;
+					}
 					foreachVariable.Kind = VariableKind.ForeachLocal;
 					foreachVariable.Name = AssignVariableNames.GenerateForeachVariableName(currentFunction, collectionExpr.Annotation<ILInstruction>(), decompileRun.UsingScope, foreachVariable);
 					break;
@@ -760,6 +764,7 @@ namespace ICSharpCode.Decompiler.CSharp
 					);
 					instToReplace.ReplaceWith(new LdLoc(foreachVariable));
 					body.Instructions.Insert(0, new StLoc(foreachVariable, instToReplace));
+					IntroduceTupleElementNamesOnLocals.IntroduceTupleElementNamesFromConsumers(foreachVariable);
 					break;
 				case RequiredGetCurrentTransformation.IntroduceNewVariableAndLocalCopy:
 					foreachVariable = currentFunction.RegisterVariable(
@@ -773,6 +778,8 @@ namespace ICSharpCode.Decompiler.CSharp
 					instToReplace.Parent!.ReplaceWith(new LdLoca(localCopyVariable));
 					body.Instructions.Insert(0, new StLoc(localCopyVariable, new LdLoc(foreachVariable)));
 					body.Instructions.Insert(0, new StLoc(foreachVariable, instToReplace));
+					IntroduceTupleElementNamesOnLocals.IntroduceTupleElementNamesFromConsumers(localCopyVariable);
+					foreachVariable.Type = TupleType.MergeTupleElementNames(foreachVariable.Type, localCopyVariable.Type) ?? foreachVariable.Type;
 					break;
 				case RequiredGetCurrentTransformation.Deconstruction:
 					useVar = true;
