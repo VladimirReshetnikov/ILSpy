@@ -120,6 +120,14 @@ namespace ICSharpCode.Decompiler.CSharp
 					.ToArray();
 			}
 
+			public IReadOnlyList<int>? GetArgumentToParameterMap(int skipCount = 0)
+			{
+				return ArgumentToParameterMap?
+					.Skip(skipCount)
+					.Take(GetActualArgumentCount())
+					.ToArray();
+			}
+
 			public IEnumerable<Expression> GetArgumentExpressions(int skipCount = 0)
 			{
 				var argumentNames = GetArgumentNames(skipCount);
@@ -409,9 +417,14 @@ namespace ICSharpCode.Decompiler.CSharp
 
 			if (localFunction != null)
 			{
+				if (TryGetLocalFunctionTupleNameSource(method, argumentList, out var tupleNameSource))
+				{
+					PreserveTupleElementNamesInDefaultArguments(tupleNameSource, ref argumentList);
+				}
 				return new InvocationExpression(target, argumentList.GetArgumentExpressions())
 					.WithRR(new CSharpInvocationResolveResult(target.ResolveResult, method,
-						argumentList.GetArgumentResolveResults(), isExpandedForm: argumentList.IsExpandedForm));
+						argumentList.GetArgumentResolveResults(), isExpandedForm: argumentList.IsExpandedForm,
+						argumentToParameterMap: argumentList.GetArgumentToParameterMap()));
 			}
 
 			if (method is VarArgInstanceMethod)
@@ -450,7 +463,8 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				return new InvocationExpression(target, argumentList.GetArgumentExpressions())
 					.WithRR(new CSharpInvocationResolveResult(target.ResolveResult, method,
-						argumentList.GetArgumentResolveResults(), isExpandedForm: argumentList.IsExpandedForm, isDelegateInvocation: true));
+						argumentList.GetArgumentResolveResults(), isExpandedForm: argumentList.IsExpandedForm, isDelegateInvocation: true,
+						argumentToParameterMap: argumentList.GetArgumentToParameterMap()));
 			}
 
 			if (settings.StringInterpolation && IsInterpolatedStringCreation(method, argumentList))
@@ -472,7 +486,8 @@ namespace ICSharpCode.Decompiler.CSharp
 				argumentList.CheckNoNamedOrOptionalArguments();
 				return HandleDelegateEqualityComparison(method, argumentList.Arguments)
 					.WithRR(new CSharpInvocationResolveResult(target.ResolveResult, method,
-						argumentList.GetArgumentResolveResults(), isExpandedForm: argumentList.IsExpandedForm));
+						argumentList.GetArgumentResolveResults(), isExpandedForm: argumentList.IsExpandedForm,
+						argumentToParameterMap: argumentList.GetArgumentToParameterMap()));
 			}
 
 			if (method.IsOperator && method.Name == "op_Implicit" && argumentList.Length == 1)
@@ -536,13 +551,15 @@ namespace ICSharpCode.Decompiler.CSharp
 					BinaryOperatorType.Equality,
 					new PrimitiveExpression(true))
 					.WithRR(new CSharpInvocationResolveResult(target.ResolveResult, method,
-						argumentList.GetArgumentResolveResults(), isExpandedForm: argumentList.IsExpandedForm));
+						argumentList.GetArgumentResolveResults(), isExpandedForm: argumentList.IsExpandedForm,
+						argumentToParameterMap: argumentList.GetArgumentToParameterMap()));
 			}
 
 			var transform = GetRequiredTransformationsForCall(expectedTargetDetails, method, ref target,
 				ref argumentList, CallTransformation.All, out IParameterizedMember? foundMethod);
 			// GetRequiredTransformationsForCall always assigns foundMethod (the resolved overload or 'method').
 			Debug.Assert(foundMethod != null);
+			PreserveTupleElementNamesInDefaultArguments(foundMethod!, ref argumentList);
 
 			// Note: after this, 'method' and 'foundMethod' may differ,
 			// but as far as allowed by IsAppropriateCallTarget().
@@ -597,7 +614,8 @@ namespace ICSharpCode.Decompiler.CSharp
 				typeArgumentList.AddRange(method.TypeArguments.Select(expressionBuilder.ConvertType));
 			return new InvocationExpression(targetExpr, argumentList.GetArgumentExpressions())
 				.WithRR(new CSharpInvocationResolveResult(target.ResolveResult, foundMethod,
-					argumentList.GetArgumentResolveResultsDirect(), isExpandedForm: argumentList.IsExpandedForm));
+					argumentList.GetArgumentResolveResultsDirect(), isExpandedForm: argumentList.IsExpandedForm,
+					argumentToParameterMap: argumentList.GetArgumentToParameterMap()));
 		}
 
 		private ExpressionWithResolveResult HandleStringInterpolation(IMethod method, ArgumentList argumentList)
@@ -730,7 +748,8 @@ namespace ICSharpCode.Decompiler.CSharp
 
 			return new ArrayInitializerExpression(argumentList.GetArgumentExpressions(skipCount))
 				.WithRR(new CSharpInvocationResolveResult(target, method, argumentList.GetArgumentResolveResults(skipCount).ToArray(),
-					isExtensionMethodInvocation: method.IsExtensionMethod, isExpandedForm: argumentList.IsExpandedForm));
+					isExtensionMethodInvocation: method.IsExtensionMethod, isExpandedForm: argumentList.IsExpandedForm,
+					argumentToParameterMap: argumentList.GetArgumentToParameterMap(skipCount)));
 		}
 
 		public ExpressionWithResolveResult BuildDictionaryInitializerExpression(OpCode callOpCode, IMethod method,
@@ -1056,13 +1075,155 @@ namespace ICSharpCode.Decompiler.CSharp
 			list.Arguments = arguments.ToArray();
 			list.ParameterNames = expectedParameters.SelectArray(p => p.Name);
 			list.ArgumentNames = argumentNames;
-			list.ArgumentToParameterMap = argumentToParameterMap;
+			// The incoming map uses call-instruction coordinates and therefore includes the
+			// receiver sentinel for instance calls. All ArgumentList consumers operate on the
+			// translated C# argument list, so normalize the map once at this boundary.
+			list.ArgumentToParameterMap = argumentToParameterMap?
+				.Skip(firstParamIndex)
+				.Take(arguments.Count)
+				.ToArray();
 			list.IsExpandedForm = isExpandedForm;
 			list.IsPrimitiveValue = isPrimitiveValue;
 			list.FirstOptionalArgumentIndex = firstOptionalArgumentIndex;
 			list.UseImplicitlyTypedOut = true;
 			list.AddNamesToPrimitiveValues = expressionBuilder.settings.NamedArguments && expressionBuilder.settings.NonTrailingNamedArguments;
 			return list;
+		}
+
+		private void PreserveTupleElementNamesInDefaultArguments(IParameterizedMember resolvedMethod,
+			ref ArgumentList argumentList)
+		{
+			if (!settings.TupleTypes)
+			{
+				return;
+			}
+
+			int repairableArgumentCount = Math.Min(argumentList.Arguments.Length, argumentList.ExpectedParameters.Length);
+			if (argumentList.IsExpandedForm)
+			{
+				// Named calls are never expanded by BuildArgumentList. In positional expanded
+				// calls, arguments before the final params parameter still have a one-to-one
+				// correspondence with the original call instructions; expanded elements do not.
+				if (argumentList.ArgumentToParameterMap != null || resolvedMethod.Parameters.Count == 0
+					|| !resolvedMethod.Parameters[resolvedMethod.Parameters.Count - 1].IsParams)
+				{
+					return;
+				}
+				repairableArgumentCount = Math.Min(repairableArgumentCount, resolvedMethod.Parameters.Count - 1);
+			}
+
+			for (int argumentIndex = 0; argumentIndex < repairableArgumentCount; argumentIndex++)
+			{
+				var defaultValue = GetAnnotatedDefaultValue(argumentList.Arguments[argumentIndex]);
+				if (defaultValue == null)
+					continue;
+
+				int parameterIndex;
+				if (argumentList.ArgumentToParameterMap != null)
+				{
+					if (argumentIndex >= argumentList.ArgumentToParameterMap.Count)
+						continue;
+					parameterIndex = argumentList.ArgumentToParameterMap[argumentIndex];
+				}
+				else
+				{
+					parameterIndex = argumentIndex;
+				}
+				if (parameterIndex < 0 || parameterIndex >= resolvedMethod.Parameters.Count)
+					continue;
+
+				var expectedParameter = argumentList.ExpectedParameters[argumentIndex];
+				var resolvedParameter = resolvedMethod.Parameters[parameterIndex];
+				// A valid ref/out/in argument cannot be a bare DefaultValue instruction. Keep
+				// this guard for malformed IL and direction-sensitive lowering: retranslation
+				// here deliberately does not attempt to reconstruct a byref wrapper.
+				if (expectedParameter.ReferenceKind != ReferenceKind.None
+					|| resolvedParameter.ReferenceKind != ReferenceKind.None
+					|| !NormalizeTypeVisitor.TypeErasure.EquivalentTypes(defaultValue.Type, expectedParameter.Type))
+				{
+					continue;
+				}
+
+				var mergedType = TupleType.MergeTupleElementNames(defaultValue.Type, resolvedParameter.Type);
+				if (mergedType == null || mergedType.Equals(defaultValue.Type))
+					continue;
+
+				argumentList.Arguments[argumentIndex] = expressionBuilder.Translate(defaultValue, resolvedParameter.Type)
+					.ConvertTo(mergedType, expressionBuilder, allowImplicitConversion: true);
+			}
+		}
+
+		static DefaultValue? GetAnnotatedDefaultValue(TranslatedExpression argument)
+		{
+			// Argument-list transformations can change syntax position, but IL annotations
+			// remain attached to the translated expression that originated from this value.
+			return argument.ILInstructions.OfType<DefaultValue>().FirstOrDefault();
+		}
+
+		private bool TryGetLocalFunctionTupleNameSource(IMethod method, ArgumentList argumentList,
+			[NotNullWhen(true)] out IParameterizedMember? tupleNameSource)
+		{
+			tupleNameSource = null;
+			if (!settings.TupleTypes || method.TypeParameters.Count == 0
+				|| !argumentList.Arguments.Any(argument =>
+					GetAnnotatedDefaultValue(argument) is DefaultValue defaultValue
+					&& TupleType.ContainsTupleType(defaultValue.Type)))
+				return false;
+
+			// Local-function calls bypass the normal lookup path below, and their MethodSpec
+			// type arguments do not carry tuple-element-name attributes. Perform inference
+			// against the one already-selected local-function definition solely to recover
+			// those names. The validation below prevents this from changing overload choice,
+			// argument association, expanded form, or any name-erased type information.
+			var methodDefinition = (IMethod)method.MemberDefinition;
+			var methodGroup = new MethodGroupResolveResult(
+				targetResult: null,
+				method.Name,
+				new[] {
+					new MethodListWithDeclaringType(
+						method.DeclaringType,
+						new IParameterizedMember[] { methodDefinition })
+				},
+				Empty<IType>.Array);
+
+			var arguments = argumentList.GetArgumentResolveResults().ToArray();
+			var argumentNames = argumentList.GetArgumentNames();
+			if (argumentNames != null)
+				argumentNames = argumentNames.Take(arguments.Length).ToArray();
+			var overloadResolution = methodGroup.PerformOverloadResolution(
+				resolver.Compilation,
+				arguments,
+				argumentNames,
+				allowExtensionMethods: false,
+				conversions: resolver.conversions);
+			if (!overloadResolution.FoundApplicableCandidate
+				|| overloadResolution.BestCandidateErrors != OverloadResolutionErrors.None
+				|| overloadResolution.IsAmbiguous
+				|| overloadResolution.BestCandidateIsExpandedForm != argumentList.IsExpandedForm
+				|| overloadResolution.GetBestCandidateWithSubstitutedTypeArguments() is not IMethod inferredMethod
+				|| !method.Equals(inferredMethod, NormalizeTypeVisitor.TypeErasure))
+			{
+				return false;
+			}
+
+			var inferredMap = overloadResolution.GetArgumentToParameterMap();
+			var emittedMap = argumentList.GetArgumentToParameterMap();
+			if (inferredMap == null || inferredMap.Count != arguments.Length
+				|| emittedMap != null && emittedMap.Count != arguments.Length)
+			{
+				return false;
+			}
+			for (int i = 0; i < arguments.Length; i++)
+			{
+				int expectedParameterIndex = emittedMap != null
+					? emittedMap[i]
+					: argumentList.IsExpandedForm ? Math.Min(i, inferredMethod.Parameters.Count - 1) : i;
+				if (inferredMap[i] != expectedParameterIndex)
+					return false;
+			}
+
+			tupleNameSource = inferredMethod;
+			return true;
 		}
 
 		private bool IsPrimitiveValueThatShouldBeNamedArgument(TranslatedExpression arg, IMethod method, IParameter p)
@@ -1933,7 +2094,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				}
 				return atce.WithRR(new CSharpInvocationResolveResult(
 					target, method, argumentList.GetArgumentResolveResults(),
-					isExpandedForm: argumentList.IsExpandedForm, argumentToParameterMap: argumentList.ArgumentToParameterMap
+					isExpandedForm: argumentList.IsExpandedForm, argumentToParameterMap: argumentList.GetArgumentToParameterMap()
 				));
 			}
 			else
@@ -1973,7 +2134,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				).WithRR(new CSharpInvocationResolveResult(
 					target, method, argumentList.GetArgumentResolveResults().ToArray(),
 					isExpandedForm: argumentList.IsExpandedForm,
-					argumentToParameterMap: argumentList.ArgumentToParameterMap,
+					argumentToParameterMap: argumentList.GetArgumentToParameterMap(),
 					returnTypeOverride: returnTypeOverride
 				));
 			}

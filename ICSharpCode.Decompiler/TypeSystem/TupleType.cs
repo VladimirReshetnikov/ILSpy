@@ -73,6 +73,169 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Returns a copy of <paramref name="target"/> whose tuple element names are taken from
+		/// <paramref name="source"/> wherever target lacks a name and source provides one. All other
+		/// type information is preserved from target. Returns null if the name-erased types differ or
+		/// if both types specify conflicting names.
+		/// </summary>
+#nullable enable
+		internal static IType? MergeTupleElementNames(IType target, IType source)
+		{
+			if (!NormalizeTypeVisitor.TypeErasure.EquivalentTypes(target, source))
+				return null;
+			switch (target)
+			{
+				case TupleType targetTuple when source is TupleType sourceTuple
+					&& targetTuple.ElementTypes.Length == sourceTuple.ElementTypes.Length:
+				{
+					var newElementTypes = ImmutableArray.CreateBuilder<IType>(targetTuple.ElementTypes.Length);
+					var newElementNames = ImmutableArray.CreateBuilder<string>(targetTuple.ElementTypes.Length);
+					bool changed = false;
+					for (int i = 0; i < targetTuple.ElementTypes.Length; i++)
+					{
+						var mergedElement = MergeTupleElementNames(targetTuple.ElementTypes[i], sourceTuple.ElementTypes[i]);
+						if (mergedElement == null)
+							return null;
+						if (!mergedElement.Equals(targetTuple.ElementTypes[i]))
+							changed = true;
+						newElementTypes.Add(mergedElement);
+
+						string? targetName = targetTuple.ElementNames[i];
+						string? sourceName = sourceTuple.ElementNames[i];
+						if (targetName == null && sourceName != null)
+						{
+							newElementNames.Add(sourceName);
+							changed = true;
+						}
+						else if (targetName != null && sourceName != null && targetName != sourceName)
+						{
+							return null;
+						}
+						else
+						{
+							newElementNames.Add(targetName!);
+						}
+					}
+					if (!changed)
+						return target;
+					return new TupleType(
+						targetTuple.Compilation,
+						newElementTypes.MoveToImmutable(),
+						newElementNames.MoveToImmutable(),
+						targetTuple.GetDefinition()?.ParentModule);
+				}
+				case ParameterizedType targetPt when source is ParameterizedType sourcePt
+					&& targetPt.TypeArguments.Count == sourcePt.TypeArguments.Count
+					&& NormalizeTypeVisitor.TypeErasure.EquivalentTypes(targetPt.GenericType, sourcePt.GenericType):
+				{
+					var newArguments = new IType[targetPt.TypeArguments.Count];
+					bool changed = false;
+					for (int i = 0; i < targetPt.TypeArguments.Count; i++)
+					{
+						var mergedArgument = MergeTupleElementNames(targetPt.TypeArguments[i], sourcePt.TypeArguments[i]);
+						if (mergedArgument == null)
+							return null;
+						if (!mergedArgument.Equals(targetPt.TypeArguments[i]))
+							changed = true;
+						newArguments[i] = mergedArgument;
+					}
+					if (!changed)
+						return target;
+					return new ParameterizedType(targetPt.GenericType, newArguments);
+				}
+				case ArrayType targetArray when source is ArrayType sourceArray
+					&& targetArray.Dimensions == sourceArray.Dimensions:
+				{
+					var mergedElement = MergeTupleElementNames(targetArray.ElementType, sourceArray.ElementType);
+					if (mergedElement == null)
+						return null;
+					if (mergedElement.Equals(targetArray.ElementType))
+						return target;
+					return new ArrayType(targetArray.Compilation, mergedElement, targetArray.Dimensions, targetArray.Nullability);
+				}
+				case ByReferenceType targetByRef when source is ByReferenceType sourceByRef:
+				{
+					var mergedElement = MergeTupleElementNames(targetByRef.ElementType, sourceByRef.ElementType);
+					if (mergedElement == null)
+						return null;
+					if (mergedElement.Equals(targetByRef.ElementType))
+						return target;
+					return new ByReferenceType(mergedElement);
+				}
+				case PointerType targetPointer when source is PointerType sourcePointer:
+				{
+					var mergedElement = MergeTupleElementNames(targetPointer.ElementType, sourcePointer.ElementType);
+					if (mergedElement == null)
+						return null;
+					if (mergedElement.Equals(targetPointer.ElementType))
+						return target;
+					return new PointerType(mergedElement);
+				}
+				case FunctionPointerType targetFunctionPointer when source is FunctionPointerType sourceFunctionPointer
+					&& targetFunctionPointer.CallingConvention == sourceFunctionPointer.CallingConvention
+					&& targetFunctionPointer.CustomCallingConventions.SequenceEqual(sourceFunctionPointer.CustomCallingConventions)
+					&& targetFunctionPointer.ReturnIsRefReadOnly == sourceFunctionPointer.ReturnIsRefReadOnly
+					&& targetFunctionPointer.ParameterReferenceKinds.SequenceEqual(sourceFunctionPointer.ParameterReferenceKinds)
+					&& targetFunctionPointer.ParameterTypes.Length == sourceFunctionPointer.ParameterTypes.Length:
+				{
+					var mergedReturnType = MergeTupleElementNames(targetFunctionPointer.ReturnType, sourceFunctionPointer.ReturnType);
+					if (mergedReturnType == null)
+						return null;
+					var mergedParameterTypes = ImmutableArray.CreateBuilder<IType>(targetFunctionPointer.ParameterTypes.Length);
+					bool changed = !mergedReturnType.Equals(targetFunctionPointer.ReturnType);
+					for (int i = 0; i < targetFunctionPointer.ParameterTypes.Length; i++)
+					{
+						var mergedParameterType = MergeTupleElementNames(
+							targetFunctionPointer.ParameterTypes[i], sourceFunctionPointer.ParameterTypes[i]);
+						if (mergedParameterType == null)
+							return null;
+						if (!mergedParameterType.Equals(targetFunctionPointer.ParameterTypes[i]))
+							changed = true;
+						mergedParameterTypes.Add(mergedParameterType);
+					}
+					if (!changed)
+						return target;
+					return targetFunctionPointer.WithSignature(mergedReturnType, mergedParameterTypes.MoveToImmutable());
+				}
+				case ModifiedType targetModified when source is ModifiedType sourceModified
+					&& targetModified.Kind == sourceModified.Kind
+					&& targetModified.Modifier.Equals(sourceModified.Modifier):
+				{
+					var mergedElement = MergeTupleElementNames(targetModified.ElementType, sourceModified.ElementType);
+					if (mergedElement == null)
+						return null;
+					if (mergedElement.Equals(targetModified.ElementType))
+						return target;
+					return new ModifiedType(targetModified.Modifier, mergedElement, targetModified.Kind == TypeKind.ModReq);
+				}
+				default:
+					// Type erasure deliberately ignores several decorations. For an unsupported
+					// composite containing a tuple, silently returning target would lose names while
+					// pretending the merge succeeded. Bail out unless this is a tuple-free leaf.
+					return ContainsTupleType(target) || ContainsTupleType(source) ? null : target;
+			}
+		}
+
+		internal static bool ContainsTupleType(IType type)
+		{
+			var visitor = new TuplePresenceVisitor();
+			type.AcceptVisitor(visitor);
+			return visitor.Found;
+		}
+
+		sealed class TuplePresenceVisitor : TypeVisitor
+		{
+			public bool Found { get; private set; }
+
+			public override IType VisitTupleType(TupleType type)
+			{
+				Found = true;
+				return type;
+			}
+		}
+#nullable restore
+
 		static ParameterizedType CreateUnderlyingType(ICompilation compilation, ImmutableArray<IType> elementTypes, IModule valueTupleAssembly)
 		{
 			int remainder = (elementTypes.Length - 1) % (RestPosition - 1) + 1;

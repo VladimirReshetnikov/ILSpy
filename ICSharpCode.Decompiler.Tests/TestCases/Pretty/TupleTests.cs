@@ -23,6 +23,29 @@ using System.Linq;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
+	internal static class TupleTestExtensions
+	{
+		public static TValue ValueOrDefault<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key, TValue defaultValue)
+		{
+			return defaultValue;
+		}
+
+		public static TValue StaticValueOrDefault<TKey, TValue>(IDictionary<TKey, TValue> dictionary, TKey key, TValue defaultValue)
+		{
+			return defaultValue;
+		}
+
+		public static TValue StaticValueOrDefaultWithMiddleDefault<TKey, TValue>(IDictionary<TKey, TValue> dictionary, TValue defaultValue, TKey key)
+		{
+			return defaultValue;
+		}
+
+		public static TValue ValueOrDefault<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key, TValue defaultValue, params int[] ignored)
+		{
+			return defaultValue;
+		}
+	}
+
 	public class TupleTests
 	{
 		private abstract class OverloadResolution
@@ -254,6 +277,78 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		private static IReadOnlyList<(int value, int variance)> NamedTupleSource2()
 		{
 			return new List<(int, int)>();
+		}
+
+		public int TupleElementNameThroughGenericDefault(IDictionary<int, (int value, int fallback)> dictionary)
+		{
+			return dictionary.ValueOrDefault(0, default((int value, int fallback))).value;
+		}
+
+		public int TupleElementNameThroughGenericDefaultBeforeExpandedParams(IDictionary<int, (int value, int fallback)> dictionary)
+		{
+			return dictionary.ValueOrDefault(0, default((int value, int fallback)), 1, 2).value;
+		}
+
+		public int TupleElementNameThroughGenericLocalFunctionDefault(IDictionary<int, (int value, int fallback)> dictionary)
+		{
+#if EXPECTED_OUTPUT
+			return LocalValueOrDefault<int, (int, int)>(dictionary, 0, default((int value, int fallback))).Item1;
+#else
+			return LocalValueOrDefault(dictionary, 0, default((int value, int fallback))).value;
+#endif
+#if ROSLYN3
+			static TValue LocalValueOrDefault<TKey, TValue>(IDictionary<TKey, TValue> values, TKey key, TValue defaultValue)
+#else
+			TValue LocalValueOrDefault<TKey, TValue>(IDictionary<TKey, TValue> values, TKey key, TValue defaultValue)
+#endif
+			{
+				return defaultValue;
+			}
+		}
+
+		private static T Identity<T>(T value)
+		{
+			return value;
+		}
+
+		public int TupleElementNameThroughGenericDefaultWithReorderedNamedArguments(IDictionary<int, (int value, int fallback)> dictionary)
+		{
+#if EXPECTED_OUTPUT
+			int key = Identity(0);
+			return TupleTestExtensions.StaticValueOrDefault(Identity(dictionary), key, default((int value, int fallback))).value;
+#else
+			return TupleTestExtensions.StaticValueOrDefault(key: Identity(0), dictionary: Identity(dictionary), defaultValue: default((int value, int fallback))).value;
+#endif
+		}
+
+		public int TupleElementNameThroughGenericMiddleDefaultWithReorderedNamedArguments(IDictionary<int, (int value, int fallback)> dictionary)
+		{
+#if EXPECTED_OUTPUT
+			int key = Identity(0);
+			return TupleTestExtensions.StaticValueOrDefaultWithMiddleDefault(Identity(dictionary), default((int value, int fallback)), key).value;
+#else
+			return TupleTestExtensions.StaticValueOrDefaultWithMiddleDefault(key: Identity(0), dictionary: Identity(dictionary), defaultValue: default((int value, int fallback))).value;
+#endif
+		}
+
+		private static (int first, int second) FirstTupleNames()
+		{
+			return default((int first, int second));
+		}
+
+		private static (int left, int right) AlternativeTupleNames()
+		{
+			return default((int left, int right));
+		}
+
+		public int ConflictingTupleElementNamesOnLocal(bool useAlternative)
+		{
+			(int, int) tuple = FirstTupleNames();
+			if (useAlternative)
+			{
+				tuple = AlternativeTupleNames();
+			}
+			return tuple.Item1;
 		}
 	}
 }

@@ -34,6 +34,20 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
+		private static TValue ValueOrDefault<TKey, TValue>(IDictionary<TKey, TValue> dictionary, TKey key, TValue defaultValue)
+		{
+			return defaultValue;
+		}
+
+		public int TupleElementNamesInNullableNestedGenericDefault(IDictionary<int, KeyValuePair<List<(int value, int fallback)>?, int>> dictionary)
+		{
+#if EXPECTED_OUTPUT
+			return ValueOrDefault(dictionary, 0, default(KeyValuePair<List<(int value, int fallback)>, int>)).Key?[0].value ?? (-1);
+#else
+			return ValueOrDefault(dictionary, 0, default(KeyValuePair<List<(int value, int fallback)>?, int>)).Key?[0].value ?? (-1);
+#endif
+		}
+
 		public int GetLength1(string[] arr)
 		{
 			return field_string.Length + arr.Length;

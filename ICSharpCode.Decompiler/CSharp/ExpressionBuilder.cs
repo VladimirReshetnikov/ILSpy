@@ -635,7 +635,8 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		protected internal override TranslatedExpression VisitDefaultValue(DefaultValue inst, TranslationContext context)
 		{
-			return GetDefaultValueExpression(inst.Type).WithILInstruction(inst);
+			var type = TupleType.MergeTupleElementNames(inst.Type, context.TypeHint) ?? inst.Type;
+			return GetDefaultValueExpression(type).WithILInstruction(inst);
 		}
 
 		internal ExpressionWithResolveResult GetDefaultValueExpression(IType type)
