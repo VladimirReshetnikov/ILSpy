@@ -250,8 +250,9 @@ namespace ICSharpCode.Decompiler.Roundtrip
 			Regex errorRegex = new Regex(@"^[\w\d.\\-]+\(\d+,\d+\):");
 			string suffix = $" [{projectFile}]";
 
-			var command = Cli.Wrap(await Tester.FindMSBuild())
-				.WithArguments($"/nologo /v:minimal /restore /p:OutputPath=\"{outputDir}\" \"{projectFile}\"")
+			var (msbuildFileName, msbuildArgumentsPrefix) = await Tester.FindMSBuild();
+			var command = Cli.Wrap(msbuildFileName)
+				.WithArguments($"{msbuildArgumentsPrefix}/nologo /v:minimal /restore /p:OutputPath=\"{outputDir}\" \"{projectFile}\"")
 				.WithValidation(CommandResultValidation.None)
 				.WithStandardOutputPipe(PipeTarget.ToDelegate(PrintLine));
 			Console.WriteLine($"\"{command.TargetFilePath}\" {command.Arguments}");

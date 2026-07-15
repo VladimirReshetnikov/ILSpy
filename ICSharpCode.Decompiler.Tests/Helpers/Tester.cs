@@ -1122,7 +1122,7 @@ namespace System.Runtime.CompilerServices
 			}
 		}
 
-		public static async Task<string> FindMSBuild()
+		public static async Task<(string FileName, string ArgumentsPrefix)> FindMSBuild()
 		{
 			if (!OperatingSystem.IsWindows())
 				Assert.Ignore("FindMSBuild uses vswhere.exe to locate Visual Studio's MSBuild; not available on this platform.");
@@ -1132,9 +1132,13 @@ namespace System.Runtime.CompilerServices
 				.WithArguments(@"-latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe")
 				.WithValidation(CommandResultValidation.None)
 				.ExecuteBufferedAsync().ConfigureAwait(false);
-			if (result.ExitCode != 0)
-				throw new InvalidOperationException("Could not find MSBuild");
-			return result.StandardOutput.TrimEnd();
+			if (result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.StandardOutput))
+				return (result.StandardOutput.TrimEnd(), "");
+
+			string dotnetHostPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+			if (string.IsNullOrWhiteSpace(dotnetHostPath))
+				dotnetHostPath = "dotnet";
+			return (dotnetHostPath, "msbuild ");
 		}
 	}
 
