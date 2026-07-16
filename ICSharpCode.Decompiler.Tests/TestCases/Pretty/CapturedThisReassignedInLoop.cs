@@ -32,7 +32,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			do
 			{
 				int snapshot = current.Value;
+#if CS70
 				if (current.Children.TryGetValue(key, out var value))
+#else
+				CapturedThisReassignedInLoop value;
+				if (current.Children.TryGetValue(key, out value))
+#endif
 				{
 					current = value;
 					return () => current.Value + snapshot;
