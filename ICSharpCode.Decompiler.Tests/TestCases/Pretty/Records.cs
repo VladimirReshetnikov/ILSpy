@@ -301,6 +301,23 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public string Value { get; init; } = Value;
 		}
 
+		public readonly record struct PrimaryCtorWithReadonlyFields(int Value, string Text)
+		{
+			public readonly int Value = Value;
+
+			public readonly string Text = Text;
+		}
+
+		public class GenericContainer<T>
+		{
+			private readonly record struct PrimaryCtorWithReadonlyFields(T Value, int Version)
+			{
+				public readonly T Value = Value;
+
+				public readonly int Version = Version;
+			}
+		}
+
 		public record struct MultipleCtorsNoPrimaryCtor
 		{
 			public Guid Id { get; }

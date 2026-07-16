@@ -48,6 +48,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		readonly Dictionary<IField, IProperty> backingFieldToAutoProperty = new Dictionary<IField, IProperty>();
 		readonly Dictionary<IProperty, IField> autoPropertyToBackingField = new Dictionary<IProperty, IField>();
 		readonly Dictionary<IParameter, IProperty> primaryCtorParameterToAutoProperty = new Dictionary<IParameter, IProperty>();
+		readonly Dictionary<IParameter, IField> primaryCtorParameterToExplicitField = new Dictionary<IParameter, IField>();
 		readonly Dictionary<IProperty, IParameter> autoPropertyToPrimaryCtorParameter = new Dictionary<IProperty, IParameter>();
 
 		public RecordDecompiler(IDecompilerTypeSystem dts, ITypeDefinition recordTypeDef, DecompilerSettings settings, CancellationToken cancellationToken)
@@ -244,6 +245,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			if (guessedPrimaryCtor == null)
 			{
 				primaryCtorParameterToAutoProperty.Clear();
+				primaryCtorParameterToExplicitField.Clear();
 			}
 
 			foreach (var (parameter, property) in primaryCtorParameterToAutoProperty.ToArray())
@@ -255,6 +257,14 @@ namespace ICSharpCode.Decompiler.CSharp
 				else
 				{
 					autoPropertyToPrimaryCtorParameter.Add(property, parameter);
+				}
+			}
+
+			foreach (var (parameter, _) in primaryCtorParameterToExplicitField.ToArray())
+			{
+				if (!parameter.Owner!.Equals(guessedPrimaryCtor))
+				{
+					primaryCtorParameterToExplicitField.Remove(parameter);
 				}
 			}
 
@@ -301,9 +311,6 @@ namespace ICSharpCode.Decompiler.CSharp
 						return false;
 					if (!target.MatchLdThis())
 						return false;
-					// allow assignments to fields that are not backing fields of auto-properties
-					if (!backingFieldToAutoProperty.TryGetValue(field, out var property))
-						continue;
 					if (valueInst.MatchLdLoc(out var v))
 					{
 						if (!ValidateParameter(v, parameterIndex))
@@ -325,6 +332,26 @@ namespace ICSharpCode.Decompiler.CSharp
 						continue;
 					}
 					IParameter parameter = unspecializedMethod.Parameters[parameterIndex];
+					// An explicit public field can satisfy a positional record parameter just like
+					// an auto-property. Remember the association so generated members that read the
+					// field can be recognized, but keep the field declaration itself in the output.
+					if (!backingFieldToAutoProperty.TryGetValue(field, out var property))
+					{
+						IType parameterType = parameter.ReferenceKind == ReferenceKind.None
+							? parameter.Type
+							: parameter.Type.UnwrapByRef();
+						if (!field.IsStatic
+							&& field.Accessibility == Accessibility.Public
+							&& field.Name == parameter.Name
+							&& NormalizeTypeVisitor.TypeErasure.EquivalentTypes(parameterType, field.ReturnType))
+						{
+							if (!primaryCtorParameterToExplicitField.ContainsKey(parameter))
+							{
+								primaryCtorParameterToExplicitField.Add(parameter, field);
+							}
+						}
+						continue;
+					}
 					if (primaryCtorParameterToAutoProperty.ContainsKey(parameter))
 					{
 						continue;
@@ -1205,7 +1232,9 @@ namespace ICSharpCode.Decompiler.CSharp
 
 			for (int i = 0; i < body.Instructions.Count - 1; i++)
 			{
+				var ctor = primaryCtor.Parameters[i];
 				// stobj T(ldloc parameter, call getter(ldloc this))
+				// or: stobj T(ldloc parameter, ldfld member(ldloc this))
 				if (!body.Instructions[i].MatchStObj(out var targetInst, out var getter, out _))
 					return false;
 				if (!targetInst.MatchLdLoc(out var target))
@@ -1213,17 +1242,26 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (!(target.Kind == VariableKind.Parameter && target.Index == i))
 					return false;
 
-				if (getter is not Call call || call.Arguments.Count != 1)
-					return false;
-				if (!call.Arguments[0].MatchLdThis())
-					return false;
-
-				if (!call.Method.IsAccessor)
-					return false;
-				var autoProperty = (IProperty)call.Method.AccessorOwner;
-				if (!autoPropertyToBackingField.ContainsKey(autoProperty))
+				if (getter is Call call)
 				{
-					if (autoProperty.DeclaringTypeDefinition == recordTypeDef)
+					if (call.Arguments.Count != 1 || !call.Arguments[0].MatchLdThis())
+						return false;
+					if (!call.Method.IsAccessor)
+						return false;
+					var autoProperty = (IProperty)call.Method.AccessorOwner;
+					if (!autoPropertyToBackingField.ContainsKey(autoProperty))
+					{
+						if (autoProperty.DeclaringTypeDefinition == recordTypeDef)
+							return false;
+					}
+				}
+				else
+				{
+					if (!getter.MatchLdFld(out var instance, out var field) || !instance.MatchLdThis())
+						return false;
+					if (!primaryCtorParameterToExplicitField.TryGetValue(ctor, out var expectedField))
+						return false;
+					if (!(field.MemberDefinition ?? field).Equals(expectedField.MemberDefinition ?? expectedField))
 						return false;
 				}
 			}

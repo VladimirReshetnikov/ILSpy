@@ -305,7 +305,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				MemberToDeclaringSyntaxNodeMap = members
 					.Select(m => (symbol: m.GetSymbol(), entity: (EntityDeclaration)m))
 					.Where(_ => _.symbol is IMember)
-					.ToDictionary(_ => (IMember)_.symbol!, _ => _.entity);
+					.ToDictionary(_ => ((IMember)_.symbol!).MemberDefinition ?? (IMember)_.symbol!, _ => _.entity);
 
 				List<ConstructorDeclaration> constructorsNotChainedWithThis = [];
 				List<ConstructorDeclaration> allCtors = [];
