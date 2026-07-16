@@ -177,6 +177,31 @@ public interface IOrdinaryAccessorNames
 
 	void set_Number(int value);
 }
+public class OrdinaryNamedPropertyAccessors
+{
+	private int m_read;
+
+	private int m_write;
+
+	public int Value {
+		get {
+			return m_read;
+		}
+		set {
+			m_write = value;
+		}
+	}
+
+	public int read()
+	{
+		return this.Value;
+	}
+
+	public void write(int value)
+	{
+		this.Value = value;
+	}
+}
 public class PropertyAccessors : IOrdinaryAccessorNames
 {
 	private int value;

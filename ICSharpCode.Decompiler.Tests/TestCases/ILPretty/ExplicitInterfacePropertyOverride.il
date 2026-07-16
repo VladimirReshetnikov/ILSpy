@@ -224,6 +224,46 @@
 	}
 }
 
+.class public auto ansi beforefieldinit OrdinaryNamedPropertyAccessors
+	extends [mscorlib]System.Object
+{
+	// Obfuscators may rename property accessors without setting SpecialName. The methods remain
+	// callable metadata entry points even though C# cannot control a property's accessor names.
+	.field private int32 'read'
+	.field private int32 'write'
+
+	.method public hidebysig
+		instance int32 read () cil managed
+	{
+		ldarg.0
+		ldfld int32 OrdinaryNamedPropertyAccessors::'read'
+		ret
+	}
+
+	.method public hidebysig
+		instance void write (int32 'value') cil managed
+	{
+		ldarg.0
+		ldarg.1
+		stfld int32 OrdinaryNamedPropertyAccessors::'write'
+		ret
+	}
+
+	.property instance int32 Value ()
+	{
+		.get instance int32 OrdinaryNamedPropertyAccessors::read()
+		.set instance void OrdinaryNamedPropertyAccessors::write(int32)
+	}
+
+	.method public hidebysig specialname rtspecialname
+		instance void .ctor () cil managed
+	{
+		ldarg.0
+		call instance void [mscorlib]System.Object::.ctor()
+		ret
+	}
+}
+
 .class interface public abstract auto ansi IImplicitAccessors
 {
 	.method public hidebysig specialname newslot abstract virtual

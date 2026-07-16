@@ -43,6 +43,7 @@ using ICSharpCode.Decompiler.IL.Transforms;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
+using ICSharpCode.Decompiler.TypeSystem.Implementation;
 using ICSharpCode.Decompiler.Util;
 
 using SRM = System.Reflection.Metadata;
@@ -1592,6 +1593,82 @@ namespace ICSharpCode.Decompiler.CSharp
 				&& NormalizeTypeVisitor.TypeErasure.EquivalentTypes(implementation.ReturnType, declaration.ReturnType);
 		}
 
+		IEnumerable<MethodDeclaration> CreateOrdinaryNamedAccessorHelpers(
+			IProperty property, TypeSystemAstBuilder astBuilder)
+		{
+			if (property.Getter is { } getter && NeedsHelper(getter, "get_" + property.Name))
+				yield return CreateHelper(getter, isGetter: true);
+			if (property.Setter is { } setter && NeedsHelper(setter, "set_" + property.Name))
+				yield return CreateHelper(setter, isGetter: false);
+
+			bool NeedsHelper(IMethod accessor, string csharpAccessorName)
+			{
+				if (!accessor.HasBody || accessor.IsVirtual || accessor.IsAbstract || accessor.TypeParameters.Count != 0
+					|| accessor.Accessibility is not (Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal)
+					|| accessor.Name == csharpAccessorName
+					|| accessor.MetadataToken.Kind != HandleKind.MethodDefinition
+					|| metadata.GetMethodDefinition((MethodDefinitionHandle)accessor.MetadataToken)
+						.HasFlag(System.Reflection.MethodAttributes.SpecialName))
+				{
+					return false;
+				}
+				if (string.IsNullOrEmpty(accessor.Name)
+					|| accessor.Name == accessor.DeclaringTypeDefinition?.Name
+					|| accessor.Name[0] != '_' && !char.IsLetter(accessor.Name[0]))
+				{
+					return false;
+				}
+				return accessor.Name.Skip(1).All(ch => ch == '_' || char.IsLetterOrDigit(ch));
+			}
+
+			MethodDeclaration CreateHelper(IMethod accessor, bool isGetter)
+			{
+				var fakeMethod = new FakeMethod(typeSystem, SymbolKind.Method) {
+					Name = accessor.Name,
+					DeclaringType = accessor.DeclaringType,
+					ReturnType = accessor.ReturnType,
+					Accessibility = accessor.Accessibility,
+					IsStatic = accessor.IsStatic,
+					Parameters = accessor.Parameters,
+					TypeParameters = accessor.TypeParameters,
+				};
+				var declaration = (MethodDeclaration)astBuilder.ConvertEntity(fakeMethod);
+				declaration.RemoveAnnotations<ResolveResult>();
+				declaration.AddAnnotation(new MemberResolveResult(null, accessor));
+				declaration.Body = new BlockStatement();
+
+				Expression target;
+				ResolveResult targetResolveResult;
+				if (property.IsStatic)
+				{
+					target = new TypeReferenceExpression(astBuilder.ConvertType(property.DeclaringType));
+					targetResolveResult = new TypeResolveResult(property.DeclaringType);
+				}
+				else
+				{
+					target = new ThisReferenceExpression();
+					targetResolveResult = new ThisResolveResult(property.DeclaringType);
+				}
+				var arguments = declaration.Parameters.Take(property.Parameters.Count).Select(ForwardParameter);
+				Expression access = property.IsIndexer
+					? new IndexerExpression(target, arguments)
+					: new MemberReferenceExpression(target, property.Name);
+				access.AddAnnotation(new MemberResolveResult(targetResolveResult, property));
+				if (isGetter)
+				{
+					if (accessor.ReturnType.Kind == TypeKind.ByReference)
+						access = new DirectionExpression(FieldDirection.Ref, access);
+					declaration.Body.Add(new ReturnStatement(access));
+				}
+				else
+				{
+					var value = new IdentifierExpression(declaration.Parameters.Last().Name!);
+					declaration.Body.Add(new AssignmentExpression(access, value));
+				}
+				return declaration;
+			}
+		}
+
 		EntityDeclaration? CreateInterfaceAccessorImplHelper(
 			IMethod method, IMember interfaceMember,
 			TypeSystemAstBuilder astBuilder)
@@ -2219,6 +2296,10 @@ namespace ICSharpCode.Decompiler.CSharp
 						}
 						entityDecl = DoDecompile(property, decompileRun, decompilationContext.WithCurrentMember(property), null);
 						entityMap.Add(property, entityDecl);
+						foreach (var helper in CreateOrdinaryNamedAccessorHelpers(property, typeSystemAstBuilder))
+						{
+							entityMap.Add(property, helper);
+						}
 						foreach (var helper in AddInterfaceImplHelpers(entityDecl, property, typeSystemAstBuilder))
 						{
 							entityMap.Add(property, helper);
