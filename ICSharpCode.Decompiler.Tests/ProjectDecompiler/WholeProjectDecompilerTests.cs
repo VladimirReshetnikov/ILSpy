@@ -159,6 +159,45 @@ public sealed class WholeProjectDecompilerTests
 	}
 
 	[Test]
+	public async Task ProjectNullableContextPreservesObliviousExtensionMarkerName()
+	{
+		string sourceFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "ObliviousExtensionBlock.cs");
+		CompilerResults original = await Tester.CompileCSharp(sourceFile,
+			CompilerOptions.UseRoslynLatest | CompilerOptions.Preview | CompilerOptions.Library);
+		CompilerResults rebuilt = null;
+		string decompiledSourceFile = null;
+		try
+		{
+			using PEFile module = new(original.PathToAssembly);
+			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(original.PathToAssembly, false, null));
+			using StringWriter project = new();
+			decompiler.DecompileProject(module, Path.GetRandomFileName(), project);
+			string source = decompiler.SourceContaining("extension(string value)");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(source, Does.Contain("#nullable disable annotations"));
+				Assert.That(source, Does.Contain("#nullable restore annotations"));
+			}
+
+			decompiledSourceFile = Path.Combine(Path.GetTempPath(), $"ObliviousExtensionBlock-{Guid.NewGuid():N}.cs");
+			File.WriteAllText(decompiledSourceFile, source);
+			rebuilt = await Tester.CompileCSharp(decompiledSourceFile,
+				CompilerOptions.UseRoslynLatest | CompilerOptions.Preview | CompilerOptions.NullableEnable | CompilerOptions.Library);
+
+			using PEFile rebuiltModule = new(rebuilt.PathToAssembly);
+			Assert.That(GetExtensionMarkerTypeNames(rebuiltModule), Is.EqualTo(GetExtensionMarkerTypeNames(module)));
+		}
+		finally
+		{
+			rebuilt?.DeleteTempFiles();
+			original.DeleteTempFiles();
+			if (decompiledSourceFile != null && File.Exists(decompiledSourceFile))
+				File.Delete(decompiledSourceFile);
+		}
+	}
+
+	[Test]
 	public void StringOnlyResourcesAreConvertedToResX()
 	{
 		string targetDirectory = CreateTemporaryDirectory();
@@ -257,6 +296,16 @@ public sealed class WholeProjectDecompilerTests
 		}
 	}
 
+	static string[] GetExtensionMarkerTypeNames(PEFile module)
+	{
+		var metadata = module.Metadata;
+		return metadata.TypeDefinitions
+			.Select(handle => metadata.GetString(metadata.GetTypeDefinition(handle).Name))
+			.Where(name => name.StartsWith("<M>$", StringComparison.Ordinal))
+			.Order()
+			.ToArray();
+	}
+
 	sealed class TestFriendlyProjectDecompiler(IAssemblyResolver assemblyResolver) : WholeProjectDecompiler(assemblyResolver)
 	{
 		public Dictionary<string, StringWriter> Files { get; } = [];
@@ -264,6 +313,8 @@ public sealed class WholeProjectDecompilerTests
 		public List<ProjectItemInfo> ResourceItems { get; } = [];
 
 		public bool ContainsSource(string text) => Files.Values.Any(writer => writer.ToString().Contains(text));
+
+		public string SourceContaining(string text) => Files.Values.Select(writer => writer.ToString()).Single(source => source.Contains(text));
 
 		protected override TextWriter CreateFile(string path)
 		{

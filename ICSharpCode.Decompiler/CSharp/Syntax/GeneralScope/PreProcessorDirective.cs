@@ -45,7 +45,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		Error = 9,
 		Warning = 10,
 		Pragma = 11,
-		Line = 12
+		Line = 12,
+		Nullable = 13
 	}
 
 	/// <summary>

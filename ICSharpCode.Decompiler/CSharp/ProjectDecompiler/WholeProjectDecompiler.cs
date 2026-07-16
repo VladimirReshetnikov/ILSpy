@@ -36,6 +36,7 @@ using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.Solution;
 using ICSharpCode.Decompiler.TypeSystem;
+using ICSharpCode.Decompiler.TypeSystem.Implementation;
 using ICSharpCode.Decompiler.Util;
 
 using static ICSharpCode.Decompiler.Metadata.MetadataExtensions;
@@ -306,6 +307,10 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 							decompiler.CancellationToken = cancellationToken;
 							var declaredTypes = file.ToArray();
 							var syntaxTree = decompiler.DecompileTypes(declaredTypes);
+							if (Settings.NullableReferenceTypes)
+							{
+								PreserveObliviousExtensionReceivers(syntaxTree);
+							}
 
 							foreach (var node in syntaxTree.Descendants)
 							{
@@ -342,6 +347,41 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 						progressReporter?.Report(progress);
 					});
 			}
+		}
+
+		static void PreserveObliviousExtensionReceivers(SyntaxTree syntaxTree)
+		{
+			foreach (var extension in syntaxTree.Descendants.OfType<ExtensionDeclaration>())
+			{
+				var receiverType = extension.ReceiverParameters.Single().Type.GetResolveResult()?.Type;
+				if (receiverType == null || !ContainsObliviousReferenceType(receiverType))
+					continue;
+
+				extension.AddLeadingTrivia(new PreProcessorDirective(PreProcessorDirectiveType.Nullable, "disable annotations"));
+				var restore = new PreProcessorDirective(PreProcessorDirectiveType.Nullable, "restore annotations");
+				if (extension.Members.FirstOrDefault() is { } firstMember)
+				{
+					firstMember.AddLeadingTrivia(restore);
+				}
+				else
+				{
+					extension.AddTrailingTrivia(restore);
+				}
+			}
+		}
+
+		static bool ContainsObliviousReferenceType(IType type)
+		{
+			if (type.Nullability == Nullability.Oblivious && type.IsReferenceType != false)
+				return true;
+			if (type is TypeWithElementType typeWithElementType
+				&& ContainsObliviousReferenceType(typeWithElementType.ElementType))
+			{
+				return true;
+			}
+			if (type is TupleType tuple && tuple.ElementTypes.Any(ContainsObliviousReferenceType))
+				return true;
+			return type.TypeArguments.Any(ContainsObliviousReferenceType);
 		}
 		#endregion
 
