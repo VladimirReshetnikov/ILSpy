@@ -139,6 +139,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task SwitchTupleNaturalType()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task InitializerConditionalValue()
 		{
 			await Run();

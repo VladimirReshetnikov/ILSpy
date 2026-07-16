@@ -4369,8 +4369,10 @@ namespace ICSharpCode.Decompiler.CSharp
 			// converts to) - not a synthesized common base. When the surrounding context supplies a
 			// target type, resultType comes from context.TypeHint and that context pins the type at
 			// the use site, so no natural type is required. Otherwise resultType is only the stack
-			// type (e.g. System.Object for a reference switch); if the arms then also have no
-			// natural type - as when each arm yields a distinct sibling interface - the printed
+			// type (e.g. System.Object for a reference switch). Prefer the natural arm type when one
+			// exists; retaining only the stack type would lose value-type identity and can turn later
+			// field loads into unsafe reinterpretations of an object-reference slot. If the arms have
+			// no natural type - as when each arm yields a distinct sibling interface - the printed
 			// switch expression fails to compile (CS8506), e.g. when inlined into '... == null'. In
 			// that case anchor the type explicitly with a cast around the whole expression.
 			bool anchorResultType = false;
@@ -4389,7 +4391,14 @@ namespace ICSharpCode.Decompiler.CSharp
 					// GetBestCommonType can synthesize a common base type that no arm actually has;
 					// C#'s natural-type rule would reject it, so require the result to match an arm.
 					bool hasNaturalType = success && armResults.Any(r => r.Type.Equals(bestCommonType));
-					anchorResultType = !hasNaturalType;
+					if (hasNaturalType && bestCommonType.GetStackType() == inst.ResultType)
+					{
+						resultType = bestCommonType;
+					}
+					else
+					{
+						anchorResultType = !hasNaturalType;
+					}
 				}
 			}
 

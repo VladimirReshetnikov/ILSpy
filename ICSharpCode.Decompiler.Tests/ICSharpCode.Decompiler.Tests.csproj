@@ -231,6 +231,8 @@
     <None Include="TestCases\ILPretty\SelfReferencingDelegate.cs" />
     <Compile Remove="TestCases\ILPretty\SwitchExpressionThrowHelper.cs" />
     <None Include="TestCases\ILPretty\SwitchExpressionThrowHelper.cs" />
+    <Compile Remove="TestCases\ILPretty\SwitchTupleNaturalType.cs" />
+    <None Include="TestCases\ILPretty\SwitchTupleNaturalType.cs" />
     <Compile Remove="TestCases\VBPretty\OutParameterDefiniteAssignment.cs" />
     <None Include="TestCases\VBPretty\OutParameterDefiniteAssignment.cs" />
     <Compile Remove="TestCases\ILPretty\VBByRefOutParameterOverride.cs" />
