@@ -22,7 +22,10 @@ using System.Linq;
 using System.Reflection.Metadata;
 
 using ICSharpCode.Decompiler.CSharp;
+using ICSharpCode.Decompiler.CSharp.Resolver;
+using ICSharpCode.Decompiler.IL.ControlFlow;
 using ICSharpCode.Decompiler.TypeSystem;
+using ICSharpCode.Decompiler.TypeSystem.Implementation;
 
 namespace ICSharpCode.Decompiler.IL.Transforms
 {
@@ -45,7 +48,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				activeMethods.Push((MethodDefinitionHandle)function.Method.MetadataToken);
 				this.context = context;
-				this.decompilationContext = new SimpleTypeResolveContext(function.Method);
+				// Recursive runs transform functions that will still be emitted inside the
+				// original caller. Keep accessibility checks relative to that caller rather
+				// than the generated helper method currently being inlined.
+				this.decompilationContext = prevDecompilationContext ?? new SimpleTypeResolveContext(function.Method);
 				var cancellationToken = context.CancellationToken;
 				foreach (var inst in function.Descendants)
 				{
@@ -173,6 +179,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			ILInstruction value, IMethod targetMethod,
 			ILInstruction target, IType delegateType)
 		{
+			// If async reconstruction failed, preserve method groups inside the generated
+			// state-machine struct. Inlining them can make a C# anonymous function capture
+			// the struct instance, which is illegal (CS1673).
+			if (IsCompilerGeneratedStateMachine(decompilationContext.CurrentTypeDefinition))
+				return null;
 			if (!IsAnonymousMethod(decompilationContext.CurrentTypeDefinition, targetMethod))
 				return null;
 			if (targetMethod.MetadataToken.IsNil)
@@ -181,6 +192,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return null;
 			if (!ValidateDelegateTarget(target))
 				return null;
+			// Inlining a method whose target is the current value-type instance would make the
+			// resulting anonymous function capture struct 'this', which C# forbids (CS1673).
+			if (target.Descendants.OfType<IInstructionWithVariableOperand>()
+				.Any(inst => inst.Variable.IsThis() && inst.Variable.Type.IsReferenceType == false))
+			{
+				return null;
+			}
 			var handle = (MethodDefinitionHandle)targetMethod.MetadataToken;
 			if (activeMethods.Contains(handle))
 			{
@@ -210,6 +228,16 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 			var nestedContext = new ILTransformContext(context, function);
 			function.RunTransforms(CSharpDecompiler.GetILTransforms().TakeWhile(t => !(t is DelegateConstruction)).Concat(GetTransforms()), nestedContext);
+			// Obfuscated assemblies sometimes expose a compiler-generated helper while keeping
+			// implementation details used by its body private. The original method group remains
+			// legal, but moving surviving references from that body into the caller makes those
+			// details inaccessible (CS0122). Inspect after the initial transforms because async and
+			// iterator reconstruction removes their private generated state-machine implementation.
+			if (targetMethod.Accessibility != Accessibility.Private && ReferencesInaccessibleEntities(function))
+			{
+				function.ReplaceWith(value);
+				return null;
+			}
 			InlineVBLambdaRelay(function, targetMethod, nestedContext);
 			nestedContext.Step("DelegateConstruction (ReplaceDelegateTargetVisitor)", function);
 			function.AcceptVisitor(new ReplaceDelegateTargetVisitor(target, function.Variables.SingleOrDefault(VariableKindExtensions.IsThis)));
@@ -222,6 +250,84 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (value is Call call)
 				function.AddILRange(call.Arguments[1]);
 			return function;
+		}
+
+		private bool ReferencesInaccessibleEntities(ILFunction function)
+		{
+			ITypeDefinition currentType = decompilationContext.CurrentTypeDefinition;
+			if (currentType == null)
+				return true;
+			var lookup = new MemberLookup(currentType, currentType.ParentModule);
+			foreach (ILVariable variable in function.Variables
+				.Where(variable => variable.LoadCount + variable.StoreCount + variable.AddressCount > 0))
+			{
+				if (!IsTypeAccessible(variable.Type, lookup))
+					return true;
+			}
+			foreach (ILInstruction inst in function.Descendants)
+			{
+				if (inst is IInstructionWithTypeOperand typeOperand
+					&& !IsTypeAccessible(typeOperand.Type, lookup))
+				{
+					return true;
+				}
+				if (inst is IInstructionWithFieldOperand fieldOperand
+					&& !IsMemberAccessible(fieldOperand.Field, lookup))
+				{
+					return true;
+				}
+				if (inst is IInstructionWithMethodOperand methodOperand && methodOperand.Method != null
+					&& !IsMemberAccessible(methodOperand.Method, lookup))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		private bool IsMemberAccessible(IMember member, MemberLookup lookup)
+		{
+			return (lookup.IsAccessible(member, allowProtectedAccess: true)
+					|| IsPotentialClosureType(member.DeclaringTypeDefinition))
+				&& IsTypeAccessible(member.DeclaringType, lookup)
+				&& IsTypeAccessible(member.ReturnType, lookup);
+		}
+
+		private bool IsTypeAccessible(IType type, MemberLookup lookup)
+		{
+			switch (type)
+			{
+				case ParameterizedType parameterizedType:
+					return IsTypeAccessible(parameterizedType.GenericType, lookup)
+						&& parameterizedType.TypeArguments.All(argument => IsTypeAccessible(argument, lookup));
+				case TypeWithElementType typeWithElementType:
+					return IsTypeAccessible(typeWithElementType.ElementType, lookup);
+				case TupleType tupleType:
+					return tupleType.ElementTypes.All(element => IsTypeAccessible(element, lookup));
+				case FunctionPointerType functionPointerType:
+					return IsTypeAccessible(functionPointerType.ReturnType, lookup)
+						&& functionPointerType.ParameterTypes.All(parameter => IsTypeAccessible(parameter, lookup));
+			}
+			ITypeDefinition definition = type.GetDefinition();
+			return definition == null || lookup.IsAccessible(definition, allowProtectedAccess: true)
+				|| IsPotentialClosureType(definition);
+		}
+
+		private bool IsPotentialClosureType(ITypeDefinition type)
+		{
+			return type != null && !IsCompilerGeneratedStateMachine(type)
+				&& (type.Kind == TypeKind.Class || type.IsCompilerGenerated())
+				&& TransformDisplayClassUsage.IsPotentialClosure(
+				decompilationContext.CurrentTypeDefinition, type);
+		}
+
+		private bool IsCompilerGeneratedStateMachine(ITypeDefinition type)
+		{
+			return type != null
+				&& type.ParentModule?.MetadataFile == context.PEFile
+				&& type.MetadataToken.Kind == HandleKind.TypeDefinition
+				&& AsyncAwaitDecompiler.IsCompilerGeneratedStateMachine(
+					(TypeDefinitionHandle)type.MetadataToken, context.PEFile.Metadata);
 		}
 
 		/// <summary>

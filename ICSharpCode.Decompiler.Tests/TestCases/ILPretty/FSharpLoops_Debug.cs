@@ -85,23 +85,25 @@ public static class Program
 			pc = 2;
 		}
 
-		public bool get_CheckClose()
-		{
-			switch (pc)
-			{
-				default:
-					return false;
-				case 0:
-				case 2:
-					return false;
+		public override bool CheckClose {
+			get {
+				switch (pc)
+				{
+					default:
+						return false;
+					case 0:
+					case 2:
+						return false;
+				}
 			}
 		}
 
-		[DebuggerNonUserCode]
-		[CompilerGenerated]
-		public int get_LastGenerated()
-		{
-			return current;
+		public override int LastGenerated {
+			[DebuggerNonUserCode]
+			[CompilerGenerated]
+			get {
+				return current;
+			}
 		}
 
 		[DebuggerNonUserCode]

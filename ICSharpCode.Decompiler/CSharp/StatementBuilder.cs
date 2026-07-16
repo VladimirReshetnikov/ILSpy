@@ -43,6 +43,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		internal readonly DecompileRun decompileRun;
 		readonly DecompilerSettings settings;
 		readonly CancellationToken cancellationToken;
+		internal readonly LabelAllocator labelAllocator;
 
 		internal BlockContainer currentReturnContainer;
 		internal IType currentResultType;
@@ -52,7 +53,7 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		public StatementBuilder(IDecompilerTypeSystem typeSystem, ITypeResolveContext decompilationContext,
 			ILFunction currentFunction, DecompilerSettings settings, DecompileRun decompileRun,
-			CancellationToken cancellationToken)
+			CancellationToken cancellationToken, LabelAllocator? labelAllocator = null)
 		{
 			Debug.Assert(typeSystem != null && decompilationContext != null);
 			this.exprBuilder = new ExpressionBuilder(
@@ -74,6 +75,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			this.settings = settings;
 			this.decompileRun = decompileRun;
 			this.cancellationToken = cancellationToken;
+			this.labelAllocator = labelAllocator ?? new LabelAllocator();
 		}
 
 		public Statement Convert(ILInstruction inst)
@@ -407,16 +409,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 			if (!endContainerLabels.TryGetValue(inst.TargetContainer, out string? label))
 			{
-				label = "end_" + inst.TargetLabel;
-				if (!duplicateLabels.TryGetValue(label, out int count))
-				{
-					duplicateLabels.Add(label, 1);
-				}
-				else
-				{
-					duplicateLabels[label]++;
-					label += "_" + (count + 1);
-				}
+				label = labelAllocator.GetUniqueLabel("end_" + inst.TargetLabel);
 				endContainerLabels.Add(inst.TargetContainer, label);
 			}
 			return new GotoStatement(label).WithILInstruction(inst);
@@ -1469,7 +1462,8 @@ namespace ICSharpCode.Decompiler.CSharp
 						function,
 						settings,
 						decompileRun,
-						cancellationToken
+						cancellationToken,
+						labelAllocator
 					);
 
 					method.Body = nestedBuilder.ConvertAsBlock(function.Body);
@@ -1549,22 +1543,35 @@ namespace ICSharpCode.Decompiler.CSharp
 		}
 
 		readonly Dictionary<Block, string> labels = new Dictionary<Block, string>();
-		readonly Dictionary<string, int> duplicateLabels = new Dictionary<string, int>();
 
 		string EnsureUniqueLabel(Block block)
 		{
 			if (labels.TryGetValue(block, out string? label))
 				return label;
-			if (!duplicateLabels.TryGetValue(block.Label, out int count))
-			{
-				labels.Add(block, block.Label);
-				duplicateLabels.Add(block.Label, 1);
-				return block.Label;
-			}
-			label = $"{block.Label}_{count + 1}";
-			duplicateLabels[block.Label]++;
+			label = labelAllocator.GetUniqueLabel(block.Label);
 			labels.Add(block, label);
 			return label;
+		}
+
+		internal sealed class LabelAllocator
+		{
+			readonly HashSet<string> usedLabels = new HashSet<string>();
+			readonly Dictionary<string, int> nextSuffixes = new Dictionary<string, int>();
+
+			public string GetUniqueLabel(string label)
+			{
+				if (usedLabels.Add(label))
+					return label;
+				if (!nextSuffixes.TryGetValue(label, out int suffix))
+					suffix = 2;
+				string candidate;
+				do
+				{
+					candidate = $"{label}_{suffix++}";
+				} while (!usedLabels.Add(candidate));
+				nextSuffixes[label] = suffix;
+				return candidate;
+			}
 		}
 
 		static bool IsFinalLeave(Leave leave)

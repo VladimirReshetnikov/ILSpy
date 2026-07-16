@@ -959,6 +959,18 @@ namespace System.Runtime.CompilerServices
 
 		public static Task<string> DecompileCSharp(string assemblyFileName, DecompilerSettings settings = null)
 		{
+			return DecompileCSharp(assemblyFileName, null, settings);
+		}
+
+		public static Task<string> DecompileCSharpType(string assemblyFileName, FullTypeName typeName,
+			DecompilerSettings settings = null)
+		{
+			return DecompileCSharp(assemblyFileName, typeName, settings);
+		}
+
+		static Task<string> DecompileCSharp(string assemblyFileName, FullTypeName? typeName,
+			DecompilerSettings settings)
+		{
 			if (settings == null)
 				settings = new DecompilerSettings();
 			using (var file = new FileStream(assemblyFileName, FileMode.Open, FileAccess.Read))
@@ -980,7 +992,9 @@ namespace System.Runtime.CompilerServices
 				var xmlDocFileName = Path.ChangeExtension(assemblyFileName, ".xml");
 				if (File.Exists(xmlDocFileName))
 					decompiler.DocumentationProvider = new XmlDocumentationProvider(xmlDocFileName);
-				var syntaxTree = decompiler.DecompileWholeModuleAsSingleFile(sortTypes: true);
+				var syntaxTree = typeName.HasValue
+					? decompiler.DecompileType(typeName.Value)
+					: decompiler.DecompileWholeModuleAsSingleFile(sortTypes: true);
 
 				StringWriter output = new StringWriter();
 				CSharpFormattingOptions formattingPolicy = CreateFormattingPolicyForTests();

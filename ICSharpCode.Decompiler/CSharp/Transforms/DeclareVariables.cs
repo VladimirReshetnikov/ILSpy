@@ -121,8 +121,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			public VariableToDeclare(ILVariable variable, InsertionPoint insertionPoint, IdentifierExpression firstUse, int sourceOrder)
 			{
 				this.ILVariable = variable;
-				if (variable.UsesInitialValue)
+				if (variable.UsesInitialValue
+					|| (variable.StoreCount == 0 && variable.AddressCount == 0 && variable.LoadCount > 0))
 				{
+					// Earlier transforms can remove a closure local's sole definition while a
+					// preserved nested method still captures it. Such cross-function loads are
+					// not always reflected in UsesInitialValue, but C# still requires a definite
+					// assignment before the nested function can read the local (CS0165).
 					if (variable.InitialValueIsInitialized)
 					{
 						this.DefaultInitialization = VariableInitKind.NeedsDefaultValue;
@@ -156,6 +161,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				variableDict.Clear();
 				EnsureExpressionStatementsAreValid(rootNode);
 				FindInsertionPoints(rootNode, 0);
+				MoveDeclarationsOutsideGotoRanges(rootNode);
 				ResolveCollisions();
 				InsertDeconstructionVariableDeclarations();
 				InsertVariableDeclarations(context);
@@ -176,6 +182,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		{
 			variableDict.Clear();
 			FindInsertionPoints(rootNode, 0);
+			MoveDeclarationsOutsideGotoRanges(rootNode);
 			ResolveCollisions();
 		}
 
@@ -390,6 +397,68 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			{
 				if (scope != null)
 					scopeTracking.RemoveAt(scopeTracking.Count - 1);
+			}
+		}
+
+		void MoveDeclarationsOutsideGotoRanges(AstNode rootNode)
+		{
+			var nodes = rootNode.DescendantsAndSelf.ToList();
+			var sourceOrder = nodes.Select((node, index) => (node, index))
+				.ToDictionary(item => item.node, item => item.index);
+			var labels = nodes.OfType<LabelStatement>()
+				.ToDictionary(label => (Scope: GetControlFlowScope(label), label.Label));
+			var branches = nodes.OfType<GotoStatement>()
+				.Where(gotoStatement => gotoStatement.Label != null
+					&& labels.ContainsKey((GetControlFlowScope(gotoStatement), gotoStatement.Label)))
+				.Select(gotoStatement => (Goto: gotoStatement,
+					Target: labels[(GetControlFlowScope(gotoStatement), gotoStatement.Label!)]))
+				.ToList();
+
+			foreach (var variable in variableDict.Values)
+			{
+				while (true)
+				{
+					bool moved = false;
+					AstNode variableScope = GetControlFlowScope(variable.InsertionPoint.nextNode);
+					foreach (var branch in branches.Where(branch => GetControlFlowScope(branch.Goto) == variableScope))
+					{
+						int declarationOrder = sourceOrder[variable.InsertionPoint.nextNode];
+						int gotoOrder = sourceOrder[branch.Goto];
+						int targetOrder = sourceOrder[branch.Target];
+						int firstOrder = Math.Min(gotoOrder, targetOrder);
+						int lastOrder = Math.Max(gotoOrder, targetOrder);
+						if (declarationOrder <= firstOrder || declarationOrder >= lastOrder)
+							continue;
+
+						AstNode firstNode = gotoOrder < targetOrder ? branch.Goto : branch.Target;
+						var firstPoint = new InsertionPoint {
+							level = GetNodeLevel(firstNode),
+							nextNode = firstNode
+						};
+						variable.InsertionPoint = FindCommonParent(firstPoint, variable.InsertionPoint);
+						variable.DefaultInitialization = variable.ILVariable.InitialValueIsInitialized
+							? VariableInitKind.NeedsDefaultValue
+							: VariableInitKind.NeedsSkipInit;
+						moved = true;
+						break;
+					}
+					if (!moved)
+						break;
+				}
+			}
+
+			AstNode GetControlFlowScope(AstNode node)
+			{
+				return node.AncestorsAndSelf.FirstOrDefault(ancestor => ancestor is LambdaExpression
+					or AnonymousMethodExpression or LocalFunctionDeclarationStatement or EntityDeclaration) ?? rootNode;
+			}
+
+			static int GetNodeLevel(AstNode node)
+			{
+				int level = 0;
+				for (AstNode? parent = node.Parent; parent != null; parent = parent.Parent)
+					level++;
+				return level;
 			}
 		}
 

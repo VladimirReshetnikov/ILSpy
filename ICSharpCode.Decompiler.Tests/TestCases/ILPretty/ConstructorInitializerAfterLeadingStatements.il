@@ -42,6 +42,15 @@
         call instance void [CORE_ASSEMBLY]System.Object::.ctor()
         ret
     }
+
+    .method public hidebysig specialname rtspecialname
+        instance void .ctor (class [CORE_ASSEMBLY]System.Func`1<int32> factory) cil managed
+    {
+        .maxstack 8
+        ldarg.0
+        call instance void [CORE_ASSEMBLY]System.Object::.ctor()
+        ret
+    }
 }
 
 // A temporary read twice (ternary form) feeds the base-ctor argument; its
@@ -160,6 +169,62 @@
         ldloc.0
         call instance void BaseType::.ctor(string)
 
+        ret
+    }
+}
+
+.class public auto ansi beforefieldinit Closure
+    extends [CORE_ASSEMBLY]System.Object
+{
+    .field public int32 X
+
+    .method public hidebysig specialname rtspecialname
+        instance void .ctor () cil managed
+    {
+        .maxstack 8
+        ldarg.0
+        call instance void [CORE_ASSEMBLY]System.Object::.ctor()
+        ret
+    }
+
+    .method public hidebysig instance int32 Invoke () cil managed
+    {
+        .maxstack 8
+        ldarg.0
+        ldfld int32 Closure::X
+        ret
+    }
+}
+
+// A closure-like object is initialized before the base call, supplies a method group to
+// the call, and is read again afterwards. The setup must move into the ctor initializer.
+.class public auto ansi beforefieldinit InitializedObjectTemporary
+    extends BaseType
+{
+    .field public int32 Copy
+
+    .method public hidebysig specialname rtspecialname
+        instance void .ctor (int32 x) cil managed
+    {
+        .maxstack 3
+        .locals init (class Closure V_0)
+
+        newobj instance void Closure::.ctor()
+        stloc.0
+        ldloc.0
+        ldarg.1
+        stfld int32 Closure::X
+
+        ldarg.0
+        ldloc.0
+        ldftn instance int32 Closure::Invoke()
+        newobj instance void class [CORE_ASSEMBLY]System.Func`1<int32>::.ctor(object, native int)
+        call instance void BaseType::.ctor(class [CORE_ASSEMBLY]System.Func`1<int32>)
+
+        ldarg.0
+        ldloc.0
+        ldfld int32 Closure::X
+        stfld int32 InitializedObjectTemporary::Copy
         ret
     }
 }

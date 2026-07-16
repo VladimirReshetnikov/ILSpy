@@ -633,7 +633,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						.OfType<IdentifierExpression>()
 						.Count(id => id.GetILVariable() == variable);
 					if (totalUses != uses.Count)
+					{
+						if (TryFoldInitializedObjectTemporary(body, callStatement, invocation, variable, declaration, initializer))
+							continue;
 						return false;
+					}
 
 					// A temporary read by more than one argument is inlined into each use even though
 					// that re-evaluates the initializer. A constructor initializer cannot be preceded
@@ -649,6 +653,99 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 
 				return true;
+			}
+
+			private static bool TryFoldInitializedObjectTemporary(BlockStatement body, Statement callStatement,
+				AstNode invocation, ILVariable variable, VariableDeclarationStatement declaration, Expression initializer)
+			{
+				if (initializer is not ObjectCreateExpression objectCreation)
+					return false;
+
+				var fieldInitializers = new Dictionary<IMember,
+					(string Name, AstNode AnnotationSource, MemberReferenceExpression? SetupAccess, Expression Value, Statement? Statement)>();
+				foreach (var namedExpression in objectCreation.Initializer?.Elements.OfType<NamedExpression>() ?? [])
+				{
+					if (namedExpression.GetSymbol() is not IField field || !IsMovableClosureFieldValue(namedExpression.Expression))
+						return false;
+					IMember definition = field.MemberDefinition ?? field;
+					if (fieldInitializers.ContainsKey(definition))
+						return false;
+					fieldInitializers.Add(definition,
+						(namedExpression.Name, namedExpression, null, namedExpression.Expression, null));
+				}
+				for (Statement? statement = declaration.GetNextStatement(); statement != null && statement != callStatement;
+					statement = statement.GetNextStatement())
+				{
+					if (statement is not ExpressionStatement {
+						Expression: AssignmentExpression {
+							Operator: AssignmentOperatorType.Assign,
+							Left: MemberReferenceExpression { Target: IdentifierExpression target } access,
+							Right: var value
+						}
+					} || target.GetILVariable() != variable)
+					{
+						continue;
+					}
+					if (access.GetSymbol() is not IField field || !IsMovableClosureFieldValue(value))
+						return false;
+					IMember definition = field.MemberDefinition ?? field;
+					if (fieldInitializers.ContainsKey(definition))
+						return false;
+					fieldInitializers.Add(definition, (access.MemberName, access, access, value, statement));
+				}
+				if (fieldInitializers.Count == 0)
+					return false;
+
+				var fieldReads = new List<(MemberReferenceExpression Access, Expression Value)>();
+				IdentifierExpression? identityUse = null;
+				foreach (var use in body.DescendantsAndSelf.OfType<IdentifierExpression>()
+					.Where(identifier => identifier.GetILVariable() == variable).ToList())
+				{
+					if (use.Parent is not MemberReferenceExpression access || access.Target != use)
+						return false;
+					if (fieldInitializers.Values.Any(initializer => initializer.SetupAccess == access))
+						continue;
+					if (access.GetSymbol() is IField field
+						&& fieldInitializers.TryGetValue(field.MemberDefinition ?? field, out var fieldInitializer))
+					{
+						fieldReads.Add((access, fieldInitializer.Value));
+						continue;
+					}
+					if (access.GetSymbol() is not IMethod || identityUse != null
+						|| !invocation.GetChildren(Slots.Argument)
+							.Any(argument => argument.DescendantsAndSelf.Contains(access)))
+					{
+						return false;
+					}
+					identityUse = use;
+				}
+				if (identityUse == null)
+					return false;
+
+				objectCreation = (ObjectCreateExpression)objectCreation.Detach();
+				objectCreation.Initializer ??= new ArrayInitializerExpression();
+				foreach (var fieldInitializer in fieldInitializers.Values.Where(initializer => initializer.Statement != null))
+				{
+					var namedExpression = new NamedExpression(fieldInitializer.Name, fieldInitializer.Value.Clone());
+					namedExpression.CopyAnnotationsFrom(fieldInitializer.AnnotationSource);
+					objectCreation.Initializer.Elements.Add(namedExpression);
+				}
+				identityUse.ReplaceWith(objectCreation);
+				foreach (var (access, value) in fieldReads)
+					access.ReplaceWith(value.Clone());
+				foreach (var fieldInitializer in fieldInitializers.Values.Where(initializer => initializer.Statement != null))
+					fieldInitializer.Statement!.Remove();
+				declaration.Remove();
+				return true;
+
+				static bool IsMovableClosureFieldValue(Expression expression)
+				{
+					return expression switch {
+						IdentifierExpression identifier => identifier.GetILVariable() is { Kind: VariableKind.Parameter },
+						PrimitiveExpression or NullReferenceExpression or DefaultValueExpression or TypeOfExpression => true,
+						_ => false
+					};
+				}
 			}
 
 			/// <summary>

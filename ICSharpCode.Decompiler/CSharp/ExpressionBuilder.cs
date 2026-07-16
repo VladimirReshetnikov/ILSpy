@@ -2480,7 +2480,8 @@ namespace ICSharpCode.Decompiler.CSharp
 				function,
 				settings,
 				statementBuilder.decompileRun,
-				cancellationToken
+				cancellationToken,
+				statementBuilder.labelAllocator
 			);
 			var body = builder.ConvertAsBlock(function.Body);
 
@@ -2859,6 +2860,10 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		protected internal override TranslatedExpression VisitLdObj(LdObj inst, TranslationContext context)
 		{
+			if (inst.Target is LdsFlda ldsflda && IsUnexpressibleExternalStaticField(ldsflda.Field))
+			{
+				return CreateReflectionFieldRead(ldsflda.Field, inst);
+			}
 			IType loadType = inst.Type;
 			bool loadTypeUsedInGeneric = inst.UnalignedPrefix != 0 || inst.Target.ResultType == StackType.Ref;
 			if (context.TypeHint.Kind != TypeKind.Unknown
@@ -2892,6 +2897,40 @@ namespace ICSharpCode.Decompiler.CSharp
 			//if (target.Type.IsSmallIntegerType() && loadType.IsSmallIntegerType() && target.Type.GetSign() != loadType.GetSign())
 			//	return result.ConvertTo(loadType, this);
 			return result.WithILInstruction(inst);
+		}
+
+		bool IsUnexpressibleExternalStaticField(IField field)
+		{
+			var declaringType = field.DeclaringTypeDefinition;
+			return field.IsStatic
+				&& declaringType != null
+				&& declaringType.ParentModule != typeSystem.MainModule
+				&& declaringType.GetMembers(
+					member => member.Name == field.Name && member.SymbolKind != SymbolKind.Field,
+					GetMemberOptions.IgnoreInheritedMembers).Any();
+		}
+
+		TranslatedExpression CreateReflectionFieldRead(IField field, ILInstruction inst)
+		{
+			var systemType = compilation.FindType(KnownTypeCode.Type);
+			var fieldInfoType = compilation.FindType(new FullTypeName("System.Reflection.FieldInfo"));
+			var bindingFlagsType = compilation.FindType(new FullTypeName("System.Reflection.BindingFlags"));
+			var objectType = compilation.FindType(KnownTypeCode.Object);
+			var typeofExpression = new TypeOfExpression(ConvertType(field.DeclaringType))
+				.WithRR(new TypeOfResolveResult(systemType, field.DeclaringType));
+			var bindingFlags = new CastExpression(ConvertType(bindingFlagsType), new PrimitiveExpression(58))
+				.WithRR(new ResolveResult(bindingFlagsType));
+			var getFieldCall = new InvocationExpression(
+				new MemberReferenceExpression(typeofExpression, "GetField"),
+				new PrimitiveExpression(field.Name), bindingFlags)
+				.WithRR(new ResolveResult(fieldInfoType));
+			var getValueCall = new InvocationExpression(
+				new MemberReferenceExpression(getFieldCall, "GetValue"),
+				new NullReferenceExpression())
+				.WithRR(new ResolveResult(objectType));
+			return new CastExpression(ConvertType(field.Type), getValueCall)
+				.WithRR(new ResolveResult(field.Type))
+				.WithILInstruction(inst);
 		}
 
 		ExpressionWithResolveResult LdObj(ILInstruction address, IType loadType)
@@ -4206,6 +4245,19 @@ namespace ICSharpCode.Decompiler.CSharp
 					Debug.Assert(inst.Value.ResultType == StackType.O);
 					Debug.Assert(inst.IsLifted);
 					Debug.Assert(inst.Type == governingType);
+				}
+			}
+
+			if (strToInt == null && !inst.IsLifted && governingType.IsKnownType(KnownTypeCode.Boolean))
+			{
+				var booleanValues = new LongSet(new LongInterval(0, 2));
+				var defaultSection = inst.GetDefaultSection();
+				if (inst.Sections.Any(section => section != defaultSection
+					&& !section.Labels.IsSubsetOf(booleanValues)))
+				{
+					// Raw IL switches can contain unreachable labels outside the Boolean domain.
+					// Keep those distinct instead of collapsing every non-zero label to `true`.
+					governingType = compilation.FindType(KnownTypeCode.Int32);
 				}
 			}
 

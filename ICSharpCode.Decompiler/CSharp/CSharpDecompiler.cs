@@ -1454,7 +1454,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				yield break; // cannot create forwarder for extern method
 			}
 			var handledAccessorOwners = new HashSet<IMember>();
-			foreach (IMethod m in GetInterfaceMethodImplementations(method))
+			foreach (IMethod m in GetInterfaceAccessorImplementations(method))
 			{
 				if (m.IsAccessor && m.AccessorOwner is IMember accessorOwner && accessorOwner is IProperty or IEvent)
 				{
@@ -1486,8 +1486,10 @@ namespace ICSharpCode.Decompiler.CSharp
 				commentStatement.AddTrailingTrivia(new Comment(
 					"ILSpy generated this explicit interface implementation from .override directive in " + memberDecl.Name));
 				methodDecl.Body.Add(commentStatement);
-				var forwardingCall = new InvocationExpression(new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name,
-					methodDecl.TypeParameters.Select(tp => new SimpleType(tp.Name))),
+				var forwardingTarget = new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name,
+					methodDecl.TypeParameters.Select(tp => new SimpleType(tp.Name)));
+				forwardingTarget.AddAnnotation(new MemberResolveResult(new ThisResolveResult(method.DeclaringType), method));
+				var forwardingCall = new InvocationExpression(forwardingTarget,
 					methodDecl.Parameters.Select(ForwardParameter)
 				);
 				if (m.ReturnType.IsKnownType(KnownTypeCode.Void))
@@ -1519,6 +1521,77 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 		}
 
+		IEnumerable<IMethod> GetInterfaceAccessorImplementations(IMethod method)
+		{
+			foreach (IMethod declaration in GetInterfaceMethodImplementations(method))
+				yield return declaration;
+			foreach (IMethod declaration in GetImplicitInterfaceAccessorImplementations(method))
+				yield return declaration;
+		}
+
+		IEnumerable<IMethod> GetImplicitInterfaceAccessorImplementations(IMethod method)
+		{
+			return GetImplicitInterfaceImplementations(method, interfaceAccessors: true);
+		}
+
+		IEnumerable<IMethod> GetInterfaceOrdinaryMethodImplementations(IMethod method)
+		{
+			foreach (IMethod declaration in GetInterfaceMethodImplementations(method))
+			{
+				if (!declaration.IsAccessor)
+					yield return declaration;
+			}
+			foreach (IMethod declaration in GetImplicitInterfaceImplementations(method, interfaceAccessors: false))
+				yield return declaration;
+		}
+
+		IEnumerable<IMethod> GetImplicitInterfaceImplementations(IMethod method, bool interfaceAccessors)
+		{
+			// CLR interface mapping is based on method name/signature, independently of Property/Event
+			// metadata rows and the SpecialName flag. Thus ordinary methods can fill accessor slots and
+			// accessors can fill ordinary-method slots, while C# rejects those mappings (CS0470/CS0686).
+			if (method.IsStatic
+				|| method.Accessibility != Accessibility.Public || method.IsExplicitInterfaceImplementation)
+			{
+				yield break;
+			}
+			if (interfaceAccessors ? method.SymbolKind != SymbolKind.Method : method.SymbolKind != SymbolKind.Accessor)
+				yield break;
+			var methodDefinition = metadata.GetMethodDefinition((MethodDefinitionHandle)method.MetadataToken);
+			if ((methodDefinition.Attributes & System.Reflection.MethodAttributes.Virtual) == 0)
+				yield break;
+			if (method.DeclaringTypeDefinition is not { } declaringType)
+				yield break;
+
+			var seen = new HashSet<IMethod>();
+			foreach (IType directInterface in declaringType.DirectBaseTypes.Where(t => t.Kind == TypeKind.Interface))
+			{
+				foreach (IType interfaceType in directInterface.GetAllBaseTypes().Where(t => t.Kind == TypeKind.Interface))
+				{
+					IEnumerable<IMethod> candidates = interfaceAccessors
+						? interfaceType.GetAccessors(a => a.Name == method.Name, GetMemberOptions.IgnoreInheritedMembers)
+						: interfaceType.GetMethods(m => m.Name == method.Name, GetMemberOptions.IgnoreInheritedMembers);
+					foreach (IMethod candidate in candidates)
+					{
+						if (!HaveSameRuntimeSignature(method, candidate))
+						{
+							continue;
+						}
+						if (seen.Add(candidate))
+							yield return candidate;
+					}
+				}
+			}
+		}
+
+		static bool HaveSameRuntimeSignature(IMethod implementation, IMethod declaration)
+		{
+			return implementation.Name == declaration.Name
+				&& implementation.TypeParameters.Count == declaration.TypeParameters.Count
+				&& ParameterListComparer.Instance.Equals(implementation.Parameters, declaration.Parameters)
+				&& NormalizeTypeVisitor.TypeErasure.EquivalentTypes(implementation.ReturnType, declaration.ReturnType);
+		}
+
 		EntityDeclaration? CreateInterfaceAccessorImplHelper(
 			IMethod method, IMember interfaceMember,
 			TypeSystemAstBuilder astBuilder)
@@ -1526,7 +1599,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			IMethod? getter = null, setter = null, adder = null, remover = null;
 			foreach (IMethod sibling in method.DeclaringTypeDefinition?.Methods ?? [])
 			{
-				foreach (IMethod declaration in GetInterfaceMethodImplementations(sibling))
+				foreach (IMethod declaration in GetInterfaceAccessorImplementations(sibling))
 				{
 					if (!declaration.IsAccessor || !interfaceMember.Equals(declaration.AccessorOwner))
 						continue;
@@ -1603,7 +1676,8 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (returnByRef)
 					call = new DirectionExpression(FieldDirection.Ref, call);
 				var returnStatement = new ReturnStatement(call);
-				returnStatement.AddLeadingTrivia(InterfaceImplComment(implementation.Name));
+				if (HasMethodImplOverride(implementation, interfaceMember))
+					returnStatement.AddLeadingTrivia(InterfaceImplComment(implementation.Name));
 				var accessor = new Accessor { Body = new BlockStatement() };
 				accessor.Body.Add(returnStatement);
 				return accessor;
@@ -1613,7 +1687,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				var arguments = parameters.Select(ForwardParameter).Append(new IdentifierExpression("value"));
 				var statement = new ExpressionStatement(CreateForwardingCall(implementation, arguments));
-				if (isFirstAccessor)
+				if (isFirstAccessor && HasMethodImplOverride(implementation, interfaceMember))
 					statement.AddLeadingTrivia(InterfaceImplComment(implementation.Name));
 				var accessor = new Accessor { Body = new BlockStatement() };
 				accessor.Body.Add(statement);
@@ -1624,7 +1698,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				var statement = new ExpressionStatement(CreateForwardingCall(
 					implementation, new[] { new IdentifierExpression("value") }));
-				if (isFirstAccessor)
+				if (isFirstAccessor && HasMethodImplOverride(implementation, interfaceMember))
 					statement.AddLeadingTrivia(InterfaceImplComment(implementation.Name));
 				var accessor = new Accessor { Body = new BlockStatement() };
 				accessor.Body.Add(statement);
@@ -1633,8 +1707,15 @@ namespace ICSharpCode.Decompiler.CSharp
 
 			InvocationExpression CreateForwardingCall(IMethod implementation, IEnumerable<Expression> arguments)
 			{
-				return new InvocationExpression(
-					new MemberReferenceExpression(new ThisReferenceExpression(), implementation.Name), arguments);
+				var target = new MemberReferenceExpression(new ThisReferenceExpression(), implementation.Name);
+				target.AddAnnotation(new MemberResolveResult(new ThisResolveResult(implementation.DeclaringType), implementation));
+				return new InvocationExpression(target, arguments);
+			}
+
+			bool HasMethodImplOverride(IMethod implementation, IMember targetMember)
+			{
+				return GetInterfaceMethodImplementations(implementation)
+					.Any(declaration => targetMember.Equals(declaration.AccessorOwner));
 			}
 		}
 
@@ -1677,6 +1758,8 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				yield break; // cannot create forwarder for extern property
 			}
+			foreach (EntityDeclaration helper in AddInterfaceMethodImplHelpers(memberDecl, property, astBuilder))
+				yield return helper;
 			if (property.IsIndexer)
 			{
 				yield break; // forwarder generation for indexers is not implemented
@@ -1697,8 +1780,9 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (interfaceProperty.CanGet)
 				{
 					var getter = new Accessor { Body = new BlockStatement() };
-					var returnStatement = new ReturnStatement(
-						new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name));
+					var propertyReference = new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name);
+					propertyReference.AddAnnotation(new MemberResolveResult(new ThisResolveResult(property.DeclaringType), property));
+					var returnStatement = new ReturnStatement(propertyReference);
 					// Attach the comment as trivia rather than as a statement of its own, so a
 					// single-return getter still collapses to an expression-bodied property.
 					returnStatement.AddLeadingTrivia(InterfaceImplComment(memberDecl.Name));
@@ -1709,8 +1793,10 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (interfaceProperty.CanSet)
 				{
 					var setter = new Accessor { Body = new BlockStatement() };
+					var propertyReference = new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name);
+					propertyReference.AddAnnotation(new MemberResolveResult(new ThisResolveResult(property.DeclaringType), property));
 					var assignmentStatement = new ExpressionStatement(new AssignmentExpression(
-						new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name),
+						propertyReference,
 						new IdentifierExpression("value")));
 					if (!commentEmitted)
 						assignmentStatement.AddLeadingTrivia(InterfaceImplComment(memberDecl.Name));
@@ -1718,6 +1804,54 @@ namespace ICSharpCode.Decompiler.CSharp
 					propertyDecl.Setter = setter;
 				}
 				yield return propertyDecl;
+			}
+		}
+
+		IEnumerable<EntityDeclaration> AddInterfaceMethodImplHelpers(
+			EntityDeclaration memberDecl, IProperty property,
+			TypeSystemAstBuilder astBuilder)
+		{
+			foreach (IMethod accessor in new[] { property.Getter, property.Setter }.OfType<IMethod>())
+			{
+				foreach (IMethod interfaceMethod in GetInterfaceOrdinaryMethodImplementations(accessor))
+				{
+					var methodDecl = new MethodDeclaration {
+						ReturnType = astBuilder.ConvertType(interfaceMethod.ReturnType),
+						PrivateImplementationType = astBuilder.ConvertType(interfaceMethod.DeclaringType),
+						Name = interfaceMethod.Name,
+						Body = new BlockStatement(),
+					};
+					methodDecl.Parameters.AddRange(interfaceMethod.Parameters.Select(astBuilder.ConvertParameter));
+
+					Expression propertyAccess;
+					if (property.IsIndexer)
+					{
+						propertyAccess = new IndexerExpression(new ThisReferenceExpression(),
+							methodDecl.Parameters.Take(property.Parameters.Count).Select(ForwardParameter));
+					}
+					else
+					{
+						propertyAccess = new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name);
+					}
+					propertyAccess.AddAnnotation(new MemberResolveResult(new ThisResolveResult(property.DeclaringType), property));
+
+					Statement statement;
+					if (accessor.AccessorKind == System.Reflection.MethodSemanticsAttributes.Getter)
+					{
+						if (interfaceMethod.ReturnType.Kind == TypeKind.ByReference)
+							propertyAccess = new DirectionExpression(FieldDirection.Ref, propertyAccess);
+						statement = new ReturnStatement(propertyAccess);
+					}
+					else
+					{
+						statement = new ExpressionStatement(new AssignmentExpression(
+							propertyAccess, new IdentifierExpression(methodDecl.Parameters.Last().Name!)));
+					}
+					if (GetInterfaceMethodImplementations(accessor).Any(m => m.Equals(interfaceMethod)))
+						statement.AddLeadingTrivia(InterfaceImplComment(memberDecl.Name));
+					methodDecl.Body.Add(statement);
+					yield return methodDecl;
+				}
 			}
 		}
 
@@ -1750,15 +1884,19 @@ namespace ICSharpCode.Decompiler.CSharp
 				eventDecl.PrivateImplementationType = astBuilder.ConvertType(interfaceEvent.DeclaringType);
 				eventDecl.Name = interfaceEvent.Name;
 				var addAccessor = new Accessor { Body = new BlockStatement() };
+				var addReference = new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name);
+				addReference.AddAnnotation(new MemberResolveResult(new ThisResolveResult(@event.DeclaringType), @event));
 				var addStatement = new ExpressionStatement(new AssignmentExpression(
-					new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name),
+					addReference,
 					AssignmentOperatorType.Add, new IdentifierExpression("value")));
 				addStatement.AddLeadingTrivia(InterfaceImplComment(memberDecl.Name));
 				addAccessor.Body.Add(addStatement);
 				eventDecl.AddAccessor = addAccessor;
 				var removeAccessor = new Accessor { Body = new BlockStatement() };
+				var removeReference = new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name);
+				removeReference.AddAnnotation(new MemberResolveResult(new ThisResolveResult(@event.DeclaringType), @event));
 				removeAccessor.Body.Add(new ExpressionStatement(new AssignmentExpression(
-					new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name),
+					removeReference,
 					AssignmentOperatorType.Subtract, new IdentifierExpression("value"))));
 				eventDecl.RemoveAccessor = removeAccessor;
 				yield return eventDecl;
@@ -2090,6 +2228,24 @@ namespace ICSharpCode.Decompiler.CSharp
 						if (recordDecompiler?.MethodIsGenerated(method) == true)
 						{
 							return;
+						}
+						if (TryGetBaseAccessorMember(method, out var baseMember, out var basePrimaryAccessor))
+						{
+							// A virtual method can override a base property accessor by CLR slot even when
+							// the derived type has no property row. C# must represent that slot as an
+							// override property, so emit the accessor body through a fake member.
+							if (!method.Equals(basePrimaryAccessor))
+								return;
+							entityDecl = DoDecompile((IProperty)baseMember, decompileRun,
+								decompilationContext.WithCurrentMember(baseMember), null);
+							foreach (var accessor in entityDecl.Children.OfType<Accessor>())
+								RemoveAttribute(accessor, KnownAttribute.SpecialName);
+							entityDecl.Modifiers &= ~(Modifiers.New | Modifiers.Virtual | Modifiers.Abstract);
+							entityDecl.Modifiers |= Modifiers.Override;
+							if (basePrimaryAccessor.IsSealed)
+								entityDecl.Modifiers |= Modifiers.Sealed;
+							entityMap.Add(method, entityDecl);
+							break;
 						}
 						if (TryGetExplicitInterfaceAccessorMember(method, out var fakeMember, out var primaryAccessor))
 						{
@@ -2804,6 +2960,78 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				watch.Stop();
 				Instrumentation.DecompilerEventSource.Log.DoDecompileEvent(ev.FullName, watch.ElapsedMilliseconds);
+			}
+		}
+
+		/// <summary>
+		/// Detects a method without a property row that overrides a base property accessor by CLR
+		/// virtual slot. C# cannot express that override as a method, so returns a fake property that
+		/// uses the original implementing methods as its accessor bodies.
+		/// </summary>
+		bool TryGetBaseAccessorMember(IMethod method, [NotNullWhen(true)] out IMember? fakeMember, [NotNullWhen(true)] out IMethod? primaryAccessor)
+		{
+			fakeMember = null;
+			primaryAccessor = null;
+			if (method.SymbolKind != SymbolKind.Method || !method.IsOverride)
+				return false;
+			if (FindBaseAccessor(method) is not { AccessorOwner: IProperty baseProperty } baseAccessor)
+				return false;
+
+			IMethod? getter = null, setter = null;
+			foreach (IMethod sibling in method.DeclaringTypeDefinition?.Methods ?? [])
+			{
+				if (sibling.SymbolKind != SymbolKind.Method || !sibling.IsOverride)
+					continue;
+				if (FindBaseAccessor(sibling) is not { AccessorOwner: IProperty siblingBaseProperty } siblingBaseAccessor
+					|| !baseProperty.Equals(siblingBaseProperty))
+				{
+					continue;
+				}
+				switch (siblingBaseAccessor.AccessorKind)
+				{
+					case System.Reflection.MethodSemanticsAttributes.Getter:
+						getter ??= sibling;
+						break;
+					case System.Reflection.MethodSemanticsAttributes.Setter:
+						setter ??= sibling;
+						break;
+				}
+			}
+			if (getter == null && setter == null)
+				return false;
+
+			IMethod valueAccessor = (getter ?? setter)!;
+			fakeMember = new ICSharpCode.Decompiler.TypeSystem.Implementation.FakeProperty(typeSystem) {
+				Name = baseProperty.Name,
+				DeclaringType = method.DeclaringType,
+				IsStatic = method.IsStatic,
+				Accessibility = valueAccessor.Accessibility,
+				ReturnType = getter != null ? getter.ReturnType : setter!.Parameters.Last().Type,
+				ReturnTypeIsRefReadOnly = getter != null && getter.ReturnTypeIsRefReadOnly,
+				Getter = getter,
+				Setter = setter,
+				IsIndexer = baseProperty.IsIndexer,
+				Parameters = valueAccessor.Parameters
+					.Take(getter != null ? getter.Parameters.Count : setter!.Parameters.Count - 1)
+					.ToArray(),
+			};
+			primaryAccessor = valueAccessor;
+			return true;
+
+			IMethod? FindBaseAccessor(IMethod implementation)
+			{
+				foreach (IType baseType in implementation.DeclaringType.GetNonInterfaceBaseTypes().Reverse())
+				{
+					if (baseType.GetDefinition()?.Equals(implementation.DeclaringTypeDefinition) == true)
+						continue;
+					foreach (IMethod candidate in baseType.GetAccessors(
+						a => a.Name == implementation.Name, GetMemberOptions.IgnoreInheritedMembers))
+					{
+						if (HaveSameRuntimeSignature(implementation, candidate))
+							return candidate;
+					}
+				}
+				return null;
 			}
 		}
 

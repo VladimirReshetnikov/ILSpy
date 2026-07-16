@@ -70,6 +70,43 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ExternalFieldNameCollision()
+		{
+			var libraryFile = Path.Combine(TestCasePath, "ExternalFieldNameCollision.Library.il");
+			var library = await Tester.AssembleIL(libraryFile, AssemblerOptions.Library).ConfigureAwait(false);
+			try
+			{
+				await Run();
+			}
+			finally
+			{
+				Tester.RepeatOnIOError(() => File.Delete(library));
+			}
+		}
+
+		[Test]
+		public async Task CrossRootMemberCollision()
+		{
+			var ilFile = Path.Combine(TestCasePath, "CrossRootMemberCollision.il");
+			var csFile = Path.Combine(TestCasePath, "CrossRootMemberCollision.cs");
+			var executable = await Tester.AssembleIL(ilFile, AssemblerOptions.Library).ConfigureAwait(false);
+			var decompiled = await Tester.DecompileCSharpType(executable,
+				new ICSharpCode.Decompiler.TypeSystem.FullTypeName("CrossRootConsumer"),
+				new DecompilerSettings { FileScopedNamespaces = false }).ConfigureAwait(false);
+			CodeAssert.FilesAreEqual(csFile, decompiled, ["EXPECTED_OUTPUT"]);
+			Tester.RepeatOnIOError(() => File.Delete(decompiled));
+		}
+
+		[Test]
+		public void SharedLabelAllocatorAvoidsNestedFunctionCollisions()
+		{
+			var allocator = new ICSharpCode.Decompiler.CSharp.StatementBuilder.LabelAllocator();
+			Assert.That(allocator.GetUniqueLabel("IL_0000"), Is.EqualTo("IL_0000"));
+			Assert.That(allocator.GetUniqueLabel("IL_0000_2"), Is.EqualTo("IL_0000_2"));
+			Assert.That(allocator.GetUniqueLabel("IL_0000"), Is.EqualTo("IL_0000_3"));
+		}
+
+		[Test]
 		public async Task FieldKeywordCtorBackingFieldWrite()
 		{
 			await Run();

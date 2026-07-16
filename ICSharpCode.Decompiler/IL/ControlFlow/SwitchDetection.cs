@@ -426,6 +426,15 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 
 			// ControlFlowSimplification runs early (before any other control flow transforms).
 			// Any switch instructions will only have branch instructions in the sections.
+			if (sw.Value.MatchLdcI(out long constantValue))
+			{
+				var matchingSection = sw.Sections.Single(section => section.Labels.Contains(constantValue));
+				context.Step("Simplify switch with constant value", sw);
+				var replacement = matchingSection.Body.Clone();
+				replacement.AddILRange(sw);
+				sw.ReplaceWith(replacement);
+				return;
+			}
 
 			// Combine sections with identical branch target:
 			var dict = new Dictionary<Block, SwitchSection>(); // branch target -> switch section

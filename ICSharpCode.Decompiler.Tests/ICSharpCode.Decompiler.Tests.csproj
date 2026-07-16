@@ -202,8 +202,12 @@
     <None Include="TestCases\ILPretty\CastBetweenTypeParameters.cs" />
     <Compile Remove="TestCases\ILPretty\ConstructorInitializerAfterLeadingStatements.cs" />
     <None Include="TestCases\ILPretty\ConstructorInitializerAfterLeadingStatements.cs" />
+    <Compile Remove="TestCases\ILPretty\CrossRootMemberCollision.cs" />
+    <None Include="TestCases\ILPretty\CrossRootMemberCollision.cs" />
     <Compile Remove="TestCases\ILPretty\ExplicitInterfacePropertyOverride.cs" />
     <None Include="TestCases\ILPretty\ExplicitInterfacePropertyOverride.cs" />
+    <Compile Remove="TestCases\ILPretty\ExternalFieldNameCollision.cs" />
+    <None Include="TestCases\ILPretty\ExternalFieldNameCollision.cs" />
     <Compile Remove="TestCases\ILPretty\ExpressionTreeDeinlinedInArrayInitializer.cs" />
     <None Include="TestCases\ILPretty\ExpressionTreeDeinlinedInArrayInitializer.cs" />
     <Compile Remove="TestCases\ILPretty\FieldKeywordCollision.cs" />

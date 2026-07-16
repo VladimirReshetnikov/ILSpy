@@ -2,6 +2,10 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 
+public abstract class BaseWithProperty
+{
+	public abstract string Name { get; }
+}
 public class C : IHasToken
 {
 	object IHasToken.Token => null;
@@ -20,6 +24,10 @@ public class C : IHasToken
 		remove {
 		}
 	}
+}
+public class DerivedAccessor : BaseWithProperty
+{
+	public override string Name => "derived";
 }
 public class ForwardingC : IHasToken
 {
@@ -135,4 +143,60 @@ public interface IHasToken
 	string this[int index] { get; set; }
 
 	event EventHandler Changed;
+}
+public interface IImplicitAccessors
+{
+	int Number { get; set; }
+}
+public class ImplicitAccessors : IImplicitAccessors
+{
+	private int value;
+
+	public int get_Number()
+	{
+		return value;
+	}
+
+	int IImplicitAccessors.Number {
+		get {
+			return this.get_Number();
+		}
+		set {
+			this.set_Number(value);
+		}
+	}
+
+	public void set_Number(int value)
+	{
+		this.value = value;
+	}
+}
+public interface IOrdinaryAccessorNames
+{
+	int get_Number();
+
+	void set_Number(int value);
+}
+public class PropertyAccessors : IOrdinaryAccessorNames
+{
+	private int value;
+
+	public int Number {
+		get {
+			return value;
+		}
+		set {
+			this.value = value;
+		}
+	}
+
+	int IOrdinaryAccessorNames.get_Number()
+	{
+		return this.Number;
+	}
+
+	void IOrdinaryAccessorNames.set_Number(int value)
+	{
+		this.Number = value;
+	}
 }

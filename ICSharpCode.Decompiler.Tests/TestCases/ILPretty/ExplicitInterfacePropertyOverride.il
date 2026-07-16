@@ -224,6 +224,146 @@
 	}
 }
 
+.class interface public abstract auto ansi IImplicitAccessors
+{
+	.method public hidebysig specialname newslot abstract virtual
+		instance int32 get_Number () cil managed
+	{
+	}
+
+	.method public hidebysig specialname newslot abstract virtual
+		instance void set_Number (int32 'value') cil managed
+	{
+	}
+
+	.property instance int32 Number ()
+	{
+		.get instance int32 IImplicitAccessors::get_Number()
+		.set instance void IImplicitAccessors::set_Number(int32)
+	}
+}
+
+.class public auto ansi beforefieldinit ImplicitAccessors
+	extends [mscorlib]System.Object
+	implements IImplicitAccessors
+{
+	// CLR interface mapping uses the method names and signatures even though these methods are
+	// not accessors and the implementing type has no property metadata row. C# requires a helper.
+	.field private int32 'value'
+
+	.method public final hidebysig newslot virtual
+		instance int32 get_Number () cil managed
+	{
+		ldarg.0
+		ldfld int32 ImplicitAccessors::'value'
+		ret
+	}
+
+	.method public final hidebysig newslot virtual
+		instance void set_Number (int32 'value') cil managed
+	{
+		ldarg.0
+		ldarg.1
+		stfld int32 ImplicitAccessors::'value'
+		ret
+	}
+
+	.method public hidebysig specialname rtspecialname
+		instance void .ctor () cil managed
+	{
+		ldarg.0
+		call instance void [mscorlib]System.Object::.ctor()
+		ret
+	}
+}
+
+.class interface public abstract auto ansi IOrdinaryAccessorNames
+{
+	.method public hidebysig newslot abstract virtual
+		instance int32 get_Number () cil managed
+	{
+	}
+
+	.method public hidebysig newslot abstract virtual
+		instance void set_Number (int32 'value') cil managed
+	{
+	}
+}
+
+.class public auto ansi beforefieldinit PropertyAccessors
+	extends [mscorlib]System.Object
+	implements IOrdinaryAccessorNames
+{
+	// This is the mirror image of ImplicitAccessors: the implementing methods are accessors,
+	// while the interface slots are ordinary methods. CLR accepts the mapping; C# needs helpers.
+	.field private int32 'value'
+
+	.method public final hidebysig specialname newslot virtual
+		instance int32 get_Number () cil managed
+	{
+		ldarg.0
+		ldfld int32 PropertyAccessors::'value'
+		ret
+	}
+
+	.method public final hidebysig specialname newslot virtual
+		instance void set_Number (int32 'value') cil managed
+	{
+		ldarg.0
+		ldarg.1
+		stfld int32 PropertyAccessors::'value'
+		ret
+	}
+
+	.property instance int32 Number ()
+	{
+		.get instance int32 PropertyAccessors::get_Number()
+		.set instance void PropertyAccessors::set_Number(int32)
+	}
+
+	.method public hidebysig specialname rtspecialname
+		instance void .ctor () cil managed
+	{
+		ldarg.0
+		call instance void [mscorlib]System.Object::.ctor()
+		ret
+	}
+}
+
+.class public abstract auto ansi beforefieldinit BaseWithProperty
+	extends [mscorlib]System.Object
+{
+	.method public hidebysig specialname newslot abstract virtual
+		instance string get_Name () cil managed
+	{
+	}
+
+	.property instance string Name ()
+	{
+		.get instance string BaseWithProperty::get_Name()
+	}
+}
+
+.class public auto ansi beforefieldinit DerivedAccessor
+	extends BaseWithProperty
+{
+	// The virtual slot overrides a base property accessor but has no property row in this type.
+	.method public hidebysig specialname virtual
+		instance string get_Name () cil managed
+	{
+		ldstr "derived"
+		ret
+	}
+
+	.method public hidebysig specialname rtspecialname
+		instance void .ctor () cil managed
+	{
+		ldarg.0
+		call instance void BaseWithProperty::.ctor()
+		ret
+	}
+}
+
 // The type system adds a synthetic parameterless constructor to this nested generic struct.
 // That FakeMethod has no MethodDefinition row, so MethodImpl lookup must ignore it.
 .class public auto ansi beforefieldinit GenericContainer`1<class T>

@@ -4,6 +4,7 @@
 // local function; declaring it in the enclosing method would make its uses bind to the enclosing
 // local, which is illegal inside a static local function (CS8421).
 using System;
+using System.Reflection;
 
 public class Repro
 {
@@ -16,9 +17,9 @@ public class Repro
 		}
 		if (type.IsNested)
 		{
-			return Present(type2 ?? type.DeclaringType) + "." + type.Name;
+			return Present(type2 ?? ((MemberInfo)type).DeclaringType) + "." + ((MemberInfo)type).Name;
 		}
-		return type.Name;
+		return ((MemberInfo)type).Name;
 		static Type FindInherited(Type type)
 		{
 			if (!type.IsNested)
@@ -30,7 +31,7 @@ public class Repro
 				return null;
 			}
 			Type genericTypeDefinition = type.GetGenericTypeDefinition();
-			Type declaringType = genericTypeDefinition.DeclaringType;
+			Type declaringType = ((MemberInfo)genericTypeDefinition).DeclaringType;
 			if ((object)declaringType == null)
 			{
 				return null;
@@ -45,7 +46,7 @@ public class Repro
 			{
 				Type type2 = genericArguments[i];
 				Type type3 = genericArguments2[i];
-				if (type2.Name != type3.Name)
+				if (((MemberInfo)type2).Name != ((MemberInfo)type3).Name)
 				{
 					return null;
 				}

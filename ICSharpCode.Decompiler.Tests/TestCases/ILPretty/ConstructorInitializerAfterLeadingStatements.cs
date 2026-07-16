@@ -13,6 +13,19 @@ public class BaseType
 	public BaseType(int mode)
 	{
 	}
+
+	public BaseType(Func<int> factory)
+	{
+	}
+}
+public class Closure
+{
+	public int X;
+
+	public int Invoke()
+	{
+		return X;
+	}
 }
 public class DoubleUseTemporary : BaseType
 {
@@ -48,6 +61,18 @@ public class GuardBeforeBaseCall : BaseType
 public class Holder
 {
 	public string Name;
+}
+public class InitializedObjectTemporary : BaseType
+{
+	public int Copy;
+
+	public InitializedObjectTemporary(int x)
+		: base(new Closure {
+			X = x
+		}.Invoke)
+	{
+		Copy = x;
+	}
 }
 public class SingleUseTemporary : BaseType
 {
