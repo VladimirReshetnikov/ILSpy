@@ -89,7 +89,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						renamedSymbols[GetSymbolDefinition(variableSymbol)] = newName;
 						usedMemberNames.Add(newName);
 					}
-					else if (member.Name == typeDecl.Name && member.GetSymbol() is ISymbol symbol)
+					else if (member is not EnumMemberDeclaration
+						&& member.Name == typeDecl.Name && member.GetSymbol() is ISymbol symbol)
 					{
 						string newName = PickNewMemberName(usedMemberNames, member.Name);
 						context.Step($"Rename member '{member.Name}' to '{newName}'", member);
@@ -261,7 +262,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				var typeParameterNames = finalTypeParameterNames.ToHashSet();
 
 				var usedNames = names.Values.Append(outputTypeName).Concat(typeParameterNames).ToHashSet();
-				foreach (ISymbol symbol in symbols.Where(symbol => names[GetSymbolDefinition(symbol)] == outputTypeName))
+				foreach (ISymbol symbol in symbols.Where(symbol =>
+					names[GetSymbolDefinition(symbol)] == outputTypeName
+					&& !(typeDefinition.Kind == TypeKind.Enum && symbol is IField)))
 				{
 					ISymbol definition = GetSymbolDefinition(symbol);
 					string newName = PickNewMemberName(usedNames, names[definition]);

@@ -219,6 +219,24 @@
   }
 }
 
+.class public auto ansi sealed ICSharpCode.Decompiler.Tests.TestCases.ILPretty.CollisionMode
+       extends [mscorlib]System.Enum
+{
+  .field public specialname rtspecialname int32 value__
+  .field public static literal valuetype ICSharpCode.Decompiler.Tests.TestCases.ILPretty.CollisionMode None = int32(0)
+  .field public static literal valuetype ICSharpCode.Decompiler.Tests.TestCases.ILPretty.CollisionMode CollisionMode = int32(1)
+}
+
+.class public auto ansi abstract sealed beforefieldinit ICSharpCode.Decompiler.Tests.TestCases.ILPretty.CollisionModeConsumer
+       extends [mscorlib]System.Object
+{
+  .method public hidebysig static valuetype ICSharpCode.Decompiler.Tests.TestCases.ILPretty.CollisionMode Read() cil managed
+  {
+    ldsfld valuetype ICSharpCode.Decompiler.Tests.TestCases.ILPretty.CollisionMode ICSharpCode.Decompiler.Tests.TestCases.ILPretty.CollisionMode::CollisionMode
+    ret
+  }
+}
+
 .class public auto ansi beforefieldinit ICSharpCode.Decompiler.Tests.TestCases.ILPretty.DelegateOwner
        extends [mscorlib]System.Object
 {

@@ -19,6 +19,20 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 		}
 	}
 
+	public enum CollisionMode
+	{
+		None,
+		CollisionMode
+	}
+
+	public static class CollisionModeConsumer
+	{
+		public static CollisionMode Read()
+		{
+			return CollisionMode.CollisionMode;
+		}
+	}
+
 	public class CollisionShapes
 	{
 		internal class Hidden

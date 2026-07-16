@@ -33,6 +33,14 @@
   }
 }
 
+.class public auto ansi sealed CrossRootMode
+       extends [mscorlib]System.Enum
+{
+  .field public specialname rtspecialname int32 value__
+  .field public static literal valuetype CrossRootMode None = int32(0)
+  .field public static literal valuetype CrossRootMode CrossRootMode = int32(1)
+}
+
 .class public auto ansi abstract sealed beforefieldinit CrossRootConsumer
        extends [mscorlib]System.Object
 {
@@ -40,6 +48,12 @@
   {
     ldarg.0
     ldfld int32 CrossRootOwner::a
+    ret
+  }
+
+  .method public hidebysig static valuetype CrossRootMode ReadMode() cil managed
+  {
+    ldsfld valuetype CrossRootMode CrossRootMode::CrossRootMode
     ret
   }
 }

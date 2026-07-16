@@ -4,4 +4,9 @@ public static class CrossRootConsumer
 	{
 		return owner.a2;
 	}
+
+	public static CrossRootMode ReadMode()
+	{
+		return CrossRootMode.CrossRootMode;
+	}
 }
