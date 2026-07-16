@@ -11,6 +11,9 @@
   .publickeytoken = (B7 7A 5C 56 19 34 E0 89 )
   .ver 4:0:0:0
 }
+.assembly extern System.Runtime
+{
+}
 .assembly FieldKeywordCtorBackingFieldWrite
 {
   .ver 1:0:0:0
@@ -22,6 +25,7 @@
 {
   .field private string '<Text>k__BackingField'
   .custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = ( 01 00 00 00 )
+  .custom instance void [System.Runtime]System.Diagnostics.CodeAnalysis.AllowNullAttribute::.ctor() = ( 01 00 00 00 )
   .field private string '<ExternallyWritten>k__BackingField'
   .custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = ( 01 00 00 00 )
   .field public initonly string Fallback

@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 {
 	public class FieldKeywordCtorBackingFieldWrite<T>
@@ -6,6 +8,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 
 		private string m_ExternallyWritten;
 
+		[field: AllowNull]
 		public string Text => field ?? Fallback;
 
 		public string ExternallyWritten => this.m_ExternallyWritten ?? Fallback;

@@ -176,19 +176,25 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			FieldDeclaration fieldDeclaration = typeDeclaration.Members.OfType<FieldDeclaration>()
 				.FirstOrDefault(fd => fd.Variables.Count == 1 && fd.GetSymbol() is IField f
 					&& f.MetadataToken == field.MetadataToken && f.ParentModule == field.ParentModule);
+			// A hidden backing field does not always have an attached declaration in the AST. This can
+			// happen for a specialized field of a generic type, but its custom attributes still belong
+			// on the synthesized field that the C# compiler will recreate. Convert a temporary declaration
+			// solely as an attribute carrier in that case.
+			FieldDeclaration attributeSource = fieldDeclaration
+				?? (FieldDeclaration)context.TypeSystemAstBuilder.ConvertEntity(field);
 			if (fieldDeclaration != null)
 			{
 				VariableInitializer variable = fieldDeclaration.Variables.First();
 				if (variable.Initializer is not null)
 					propertyDeclaration.Initializer = variable.Initializer.Detach();
-				CSharpDecompiler.RemoveAttribute(fieldDeclaration, KnownAttribute.CompilerGenerated);
-				CSharpDecompiler.RemoveAttribute(fieldDeclaration, KnownAttribute.DebuggerBrowsable);
-				foreach (AttributeSection section in fieldDeclaration.Attributes.ToArray())
-				{
-					section.AttributeTarget = "field";
-					propertyDeclaration.Attributes.Add(section.Detach());
-				}
 				fieldDeclaration.Remove();
+			}
+			CSharpDecompiler.RemoveAttribute(attributeSource, KnownAttribute.CompilerGenerated);
+			CSharpDecompiler.RemoveAttribute(attributeSource, KnownAttribute.DebuggerBrowsable);
+			foreach (AttributeSection section in attributeSource.Attributes.ToArray())
+			{
+				section.AttributeTarget = "field";
+				propertyDeclaration.Attributes.Add(section.Detach());
 			}
 		}
 
