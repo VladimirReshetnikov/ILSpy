@@ -83,7 +83,8 @@ namespace ICSharpCode.Decompiler.DebugInfo
 				return false;
 			if (ns == "XamlGeneratedNamespace" && name == "GeneratedInternalTypeHelper")
 				return false;
-			if (!typeDef.IsNested && RemoveEmbeddedAttributes.attributeNames.Contains(ns + "." + name))
+			if (!typeDef.IsNested && RemoveEmbeddedAttributes.attributeNames.Contains(ns + "." + name)
+				&& typeDef.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.Embedded))
 				return false;
 			return true;
 		}

@@ -21,9 +21,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Resources;
+using System.Threading.Tasks;
 
 using ICSharpCode.Decompiler.CSharp.ProjectDecompiler;
 using ICSharpCode.Decompiler.Metadata;
+using ICSharpCode.Decompiler.Tests.Helpers;
 
 using NUnit.Framework;
 
@@ -100,6 +102,60 @@ public sealed class WholeProjectDecompilerTests
 		WholeProjectDecompiler decompiler = new(settings, new UniversalAssemblyResolver(null, false, null),
 			projectWriter: null, assemblyReferenceClassifier: null, debugInfoProvider: null);
 		Assert.That(((INullableProjectInfoProvider)decompiler).NullableReferenceTypes, Is.EqualTo(nullableReferenceTypes));
+	}
+
+	[Test]
+	public async Task GeneratedInternalTypeHelperDependsOnXamlBuildItems()
+	{
+		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "GeneratedInternalTypeHelper.il");
+		string assembly = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
+		try
+		{
+			using PEFile module = new(assembly);
+			TestFriendlyProjectDecompiler rawResourceDecompiler = new(new UniversalAssemblyResolver(assembly, false, null));
+			using StringWriter rawProject = new();
+			rawResourceDecompiler.DecompileProject(module, Path.GetRandomFileName(), rawProject);
+
+			TestFriendlyProjectDecompiler xamlDecompiler = new(new UniversalAssemblyResolver(assembly, false, null));
+			xamlDecompiler.ResourceItems.Add(new ProjectItemInfo("Page", "Test.xaml"));
+			using StringWriter xamlProject = new();
+			xamlDecompiler.DecompileProject(module, Path.GetRandomFileName(), xamlProject);
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(rawResourceDecompiler.ContainsSource("class GeneratedInternalTypeHelper"), Is.True);
+				Assert.That(xamlDecompiler.ContainsSource("class GeneratedInternalTypeHelper"), Is.False);
+			}
+		}
+		finally
+		{
+			Tester.RepeatOnIOError(() => File.Delete(assembly));
+		}
+	}
+
+	[Test]
+	public async Task CompilerSupportTypesAreExcludedOnlyWhenEmbedded()
+	{
+		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "EmbeddedCompilerAttributes.il");
+		string assembly = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
+		try
+		{
+			using PEFile module = new(assembly);
+			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(assembly, false, null));
+			using StringWriter project = new();
+			decompiler.DecompileProject(module, Path.GetRandomFileName(), project);
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(decompiler.ContainsSource("class IsReadOnlyAttribute"), Is.True);
+				Assert.That(decompiler.ContainsSource("class IsByRefLikeAttribute"), Is.False);
+				Assert.That(decompiler.ContainsSource("class EmbeddedAttribute"), Is.False);
+			}
+		}
+		finally
+		{
+			Tester.RepeatOnIOError(() => File.Delete(assembly));
+		}
 	}
 
 	[Test]
@@ -205,6 +261,9 @@ public sealed class WholeProjectDecompilerTests
 	{
 		public Dictionary<string, StringWriter> Files { get; } = [];
 		public HashSet<string> Directories { get; } = [];
+		public List<ProjectItemInfo> ResourceItems { get; } = [];
+
+		public bool ContainsSource(string text) => Files.Values.Any(writer => writer.ToString().Contains(text));
 
 		protected override TextWriter CreateFile(string path)
 		{
@@ -226,7 +285,7 @@ public sealed class WholeProjectDecompilerTests
 
 		protected override IEnumerable<ProjectItemInfo> WriteMiscellaneousFilesInProject(PEFile module) => [];
 
-		protected override IEnumerable<ProjectItemInfo> WriteResourceFilesInProject(MetadataFile module) => [];
+		protected override IEnumerable<ProjectItemInfo> WriteResourceFilesInProject(MetadataFile module) => ResourceItems;
 
 		public ProjectItemInfo WriteResource(string targetDirectory, string fileName, string resourceName, Stream stream)
 		{

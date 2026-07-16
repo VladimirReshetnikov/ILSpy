@@ -137,6 +137,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		// per-run members
 		HashSet<string> directories = new HashSet<string>(Platform.FileNameComparer);
 		readonly IProjectFileWriter projectWriter;
+		bool xamlBuildRegeneratesInternalTypeHelper;
 
 		public void DecompileProject(MetadataFile file, string targetDirectory, CancellationToken cancellationToken = default(CancellationToken))
 		{
@@ -156,6 +157,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			TargetDirectory = targetDirectory;
 			directories.Clear();
 			var resources = WriteResourceFilesInProject(file).ToList();
+			xamlBuildRegeneratesInternalTypeHelper = resources.Any(item => item.ItemType is "Page" or "ApplicationDefinition");
 			var files = WriteCodeFilesInProject(file, resources.SelectMany(r => r.PartialTypes ?? Enumerable.Empty<PartialTypeInfo>()).ToList(), cancellationToken).ToList();
 			files.AddRange(resources);
 			var module = file as PEFile;
@@ -183,9 +185,11 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			string ns = metadata.GetString(typeDef.Namespace);
 			if (name == "<Module>" || CSharpDecompiler.MemberIsHidden(module, type, Settings))
 				return false;
-			if (ns == "XamlGeneratedNamespace" && name == "GeneratedInternalTypeHelper")
+			if (xamlBuildRegeneratesInternalTypeHelper
+				&& ns == "XamlGeneratedNamespace" && name == "GeneratedInternalTypeHelper")
 				return false;
-			if (!typeDef.IsNested && RemoveEmbeddedAttributes.attributeNames.Contains(ns + "." + name))
+			if (!typeDef.IsNested && RemoveEmbeddedAttributes.attributeNames.Contains(ns + "." + name)
+				&& typeDef.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.Embedded))
 				return false;
 			return true;
 		}
