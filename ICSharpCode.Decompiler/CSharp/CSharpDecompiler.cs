@@ -1453,14 +1453,22 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				yield break; // cannot create forwarder for extern method
 			}
-			var genericContext = new Decompiler.TypeSystem.GenericContext(method);
-			var methodHandle = (MethodDefinitionHandle)method.MetadataToken;
-			foreach (var h in methodHandle.GetMethodImplementations(metadata))
+			var handledAccessorOwners = new HashSet<IMember>();
+			foreach (IMethod m in GetInterfaceMethodImplementations(method))
 			{
-				var mi = metadata.GetMethodImplementation(h);
-				IMethod m = module.ResolveMethod(mi.MethodDeclaration, genericContext);
-				if (m == null || m.DeclaringType.Kind != TypeKind.Interface)
+				if (m.IsAccessor && m.AccessorOwner is IMember accessorOwner && accessorOwner is IProperty or IEvent)
+				{
+					// A CLR MethodImpl can map an ordinary method name to an interface accessor. Emitting
+					// IInterface.get_Property() as a C# method is illegal (CS0683); retain the ordinary
+					// method and add one grouped explicit property/event forwarder instead.
+					if (handledAccessorOwners.Add(accessorOwner))
+					{
+						var helper = CreateInterfaceAccessorImplHelper(method, accessorOwner, astBuilder);
+						if (helper != null)
+							yield return helper;
+					}
 					continue;
+				}
 				var methodDecl = new MethodDeclaration();
 				// EntityDeclaration.ReturnType is typed non-null but its getter yields null when the Type
 				// slot is empty; leave the forwarder's (already empty) return-type slot untouched in that case.
@@ -1491,6 +1499,142 @@ namespace ICSharpCode.Decompiler.CSharp
 					methodDecl.Body.Add(new ReturnStatement(forwardingCall));
 				}
 				yield return methodDecl;
+			}
+		}
+
+		IEnumerable<IMethod> GetInterfaceMethodImplementations(IMethod method)
+		{
+			// Synthesized members (for example, the implicit parameterless constructor of a
+			// generic struct) do not have a MethodDef row and therefore cannot own MethodImpls.
+			if (method.MetadataToken.Kind != HandleKind.MethodDefinition)
+				yield break;
+			var genericContext = new Decompiler.TypeSystem.GenericContext(method);
+			var methodHandle = (MethodDefinitionHandle)method.MetadataToken;
+			foreach (var h in methodHandle.GetMethodImplementations(metadata))
+			{
+				var methodImpl = metadata.GetMethodImplementation(h);
+				IMethod? declaration = module.ResolveMethod(methodImpl.MethodDeclaration, genericContext);
+				if (declaration?.DeclaringType.Kind == TypeKind.Interface)
+					yield return declaration;
+			}
+		}
+
+		EntityDeclaration? CreateInterfaceAccessorImplHelper(
+			IMethod method, IMember interfaceMember,
+			TypeSystemAstBuilder astBuilder)
+		{
+			IMethod? getter = null, setter = null, adder = null, remover = null;
+			foreach (IMethod sibling in method.DeclaringTypeDefinition?.Methods ?? [])
+			{
+				foreach (IMethod declaration in GetInterfaceMethodImplementations(sibling))
+				{
+					if (!declaration.IsAccessor || !interfaceMember.Equals(declaration.AccessorOwner))
+						continue;
+					switch (declaration.AccessorKind)
+					{
+						case System.Reflection.MethodSemanticsAttributes.Getter:
+							getter ??= sibling;
+							break;
+						case System.Reflection.MethodSemanticsAttributes.Setter:
+							setter ??= sibling;
+							break;
+						case System.Reflection.MethodSemanticsAttributes.Adder:
+							adder ??= sibling;
+							break;
+						case System.Reflection.MethodSemanticsAttributes.Remover:
+							remover ??= sibling;
+							break;
+					}
+				}
+			}
+
+			if (interfaceMember is IProperty interfaceProperty)
+			{
+				if (!method.Equals(getter ?? setter))
+					return null; // emit the grouped property only alongside its first accessor
+
+				var parameters = interfaceProperty.Parameters.Select(astBuilder.ConvertParameter).ToList();
+				AstType returnType = astBuilder.ConvertType(interfaceProperty.ReturnType);
+				if (interfaceProperty.ReturnTypeIsRefReadOnly && returnType is ComposedType composedType && composedType.HasRefSpecifier)
+					composedType.HasReadOnlySpecifier = true;
+				Accessor? getterDecl = getter != null ? CreateGetter(getter, parameters, interfaceProperty.ReturnType.Kind == TypeKind.ByReference) : null;
+				Accessor? setterDecl = setter != null ? CreateSetter(setter, parameters, getter == null) : null;
+				if (interfaceProperty.IsIndexer)
+				{
+					var indexerDecl = new IndexerDeclaration {
+						ReturnType = returnType,
+						PrivateImplementationType = astBuilder.ConvertType(interfaceProperty.DeclaringType),
+						Getter = getterDecl,
+						Setter = setterDecl,
+					};
+					indexerDecl.Parameters.AddRange(parameters);
+					return indexerDecl;
+				}
+				return new PropertyDeclaration {
+					ReturnType = returnType,
+					PrivateImplementationType = astBuilder.ConvertType(interfaceProperty.DeclaringType),
+					Name = interfaceProperty.Name,
+					Getter = getterDecl,
+					Setter = setterDecl,
+				};
+			}
+
+			if (interfaceMember is IEvent interfaceEvent)
+			{
+				if (!method.Equals(adder ?? remover))
+					return null; // emit the grouped event only alongside its first accessor
+				var eventDecl = new CustomEventDeclaration {
+					ReturnType = astBuilder.ConvertType(interfaceEvent.ReturnType),
+					PrivateImplementationType = astBuilder.ConvertType(interfaceEvent.DeclaringType),
+					Name = interfaceEvent.Name,
+				};
+				if (adder != null)
+					eventDecl.AddAccessor = CreateEventAccessor(adder, isFirstAccessor: true);
+				if (remover != null)
+					eventDecl.RemoveAccessor = CreateEventAccessor(remover, isFirstAccessor: adder == null);
+				return eventDecl;
+			}
+
+			return null;
+
+			Accessor CreateGetter(IMethod implementation, IReadOnlyList<ParameterDeclaration> parameters, bool returnByRef)
+			{
+				Expression call = CreateForwardingCall(implementation, parameters.Select(ForwardParameter));
+				if (returnByRef)
+					call = new DirectionExpression(FieldDirection.Ref, call);
+				var returnStatement = new ReturnStatement(call);
+				returnStatement.AddLeadingTrivia(InterfaceImplComment(implementation.Name));
+				var accessor = new Accessor { Body = new BlockStatement() };
+				accessor.Body.Add(returnStatement);
+				return accessor;
+			}
+
+			Accessor CreateSetter(IMethod implementation, IReadOnlyList<ParameterDeclaration> parameters, bool isFirstAccessor)
+			{
+				var arguments = parameters.Select(ForwardParameter).Append(new IdentifierExpression("value"));
+				var statement = new ExpressionStatement(CreateForwardingCall(implementation, arguments));
+				if (isFirstAccessor)
+					statement.AddLeadingTrivia(InterfaceImplComment(implementation.Name));
+				var accessor = new Accessor { Body = new BlockStatement() };
+				accessor.Body.Add(statement);
+				return accessor;
+			}
+
+			Accessor CreateEventAccessor(IMethod implementation, bool isFirstAccessor)
+			{
+				var statement = new ExpressionStatement(CreateForwardingCall(
+					implementation, new[] { new IdentifierExpression("value") }));
+				if (isFirstAccessor)
+					statement.AddLeadingTrivia(InterfaceImplComment(implementation.Name));
+				var accessor = new Accessor { Body = new BlockStatement() };
+				accessor.Body.Add(statement);
+				return accessor;
+			}
+
+			InvocationExpression CreateForwardingCall(IMethod implementation, IEnumerable<Expression> arguments)
+			{
+				return new InvocationExpression(
+					new MemberReferenceExpression(new ThisReferenceExpression(), implementation.Name), arguments);
 			}
 		}
 
