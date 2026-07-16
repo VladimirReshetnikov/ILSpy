@@ -253,6 +253,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					HandleLoad(inst);
 					return;
 				}
+				if (!IsAnalyzedVariable(inst.Variable))
+					return;
 
 				var stores = GetStores(state, inst.Variable).ToList();
 				if ((stores.Count == 0 && IsPotentiallyUninitialized(state, inst.Variable))
