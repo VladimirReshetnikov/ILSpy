@@ -353,7 +353,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		{
 			foreach (var extension in syntaxTree.Descendants.OfType<ExtensionDeclaration>())
 			{
-				var receiverType = extension.ReceiverParameters.Single().Type.GetResolveResult()?.Type;
+				var receiverType = (extension.GetSymbol() as IMethod)?.Parameters.Single().Type;
 				if (receiverType == null || !ContainsObliviousReferenceType(receiverType))
 					continue;
 

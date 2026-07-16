@@ -1,3 +1,5 @@
+#nullable enable
+
 namespace ExtensionBlockTest;
 
 public static class Extensions
@@ -15,5 +17,10 @@ public static class Extensions
 	extension((string Text, int Count) value)
 	{
 		public int TextLength => value.Text.Length;
+	}
+
+	extension(object contextEnabled)
+	{
+		public object Identity => contextEnabled;
 	}
 }

@@ -159,11 +159,11 @@ public sealed class WholeProjectDecompilerTests
 	}
 
 	[Test]
-	public async Task ProjectNullableContextPreservesObliviousExtensionMarkerName()
+	public async Task ProjectNullableContextPreservesAnnotatedExtensionMarkerName()
 	{
 		string sourceFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "ObliviousExtensionBlock.cs");
 		CompilerResults original = await Tester.CompileCSharp(sourceFile,
-			CompilerOptions.UseRoslynLatest | CompilerOptions.Preview | CompilerOptions.Library);
+			CompilerOptions.UseRoslynLatest | CompilerOptions.Preview | CompilerOptions.NullableEnable | CompilerOptions.Library);
 		CompilerResults rebuilt = null;
 		string decompiledSourceFile = null;
 		try
@@ -173,6 +173,44 @@ public sealed class WholeProjectDecompilerTests
 			using StringWriter project = new();
 			decompiler.DecompileProject(module, Path.GetRandomFileName(), project);
 			string source = decompiler.SourceContaining("extension(string value)");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(source, Does.Not.Contain("#nullable disable annotations"));
+				Assert.That(source, Does.Not.Contain("#nullable restore annotations"));
+			}
+
+			decompiledSourceFile = Path.Combine(Path.GetTempPath(), $"ObliviousExtensionBlock-{Guid.NewGuid():N}.cs");
+			File.WriteAllText(decompiledSourceFile, source);
+			rebuilt = await Tester.CompileCSharp(decompiledSourceFile,
+				CompilerOptions.UseRoslynLatest | CompilerOptions.Preview | CompilerOptions.NullableEnable | CompilerOptions.Library);
+
+			using PEFile rebuiltModule = new(rebuilt.PathToAssembly);
+			Assert.That(GetExtensionMarkerTypeNames(rebuiltModule), Is.EqualTo(GetExtensionMarkerTypeNames(module)));
+		}
+		finally
+		{
+			rebuilt?.DeleteTempFiles();
+			original.DeleteTempFiles();
+			if (decompiledSourceFile != null && File.Exists(decompiledSourceFile))
+				File.Delete(decompiledSourceFile);
+		}
+	}
+
+	[Test]
+	public async Task ProjectNullableContextPreservesObliviousExtensionMarkerName()
+	{
+		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "ObliviousExtensionBlock.il");
+		string assembly = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
+		CompilerResults rebuilt = null;
+		string decompiledSourceFile = null;
+		try
+		{
+			using PEFile module = new(assembly);
+			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(assembly, false, null));
+			using StringWriter project = new();
+			decompiler.DecompileProject(module, Path.GetRandomFileName(), project);
+			string source = decompiler.SourceContaining("extension(string receiver)");
 
 			using (Assert.EnterMultipleScope())
 			{
@@ -191,7 +229,7 @@ public sealed class WholeProjectDecompilerTests
 		finally
 		{
 			rebuilt?.DeleteTempFiles();
-			original.DeleteTempFiles();
+			Tester.RepeatOnIOError(() => File.Delete(assembly));
 			if (decompiledSourceFile != null && File.Exists(decompiledSourceFile))
 				File.Delete(decompiledSourceFile);
 		}

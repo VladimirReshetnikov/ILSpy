@@ -1889,6 +1889,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		public EntityDeclaration ConvertExtension((IMethod MarkerMethod, IReadOnlyList<ITypeParameter> TypeParameters) group)
 		{
 			var ext = new ExtensionDeclaration();
+			ext.AddAnnotation(new MemberResolveResult(null, group.MarkerMethod));
 			var subst = new TypeParameterSubstitution(group.TypeParameters, []);
 			ext.TypeParameters.AddRange(group.TypeParameters.Select(ConvertTypeParameter));
 			ext.ReceiverParameters.Add(ConvertParameter(group.MarkerMethod.Specialize(subst).Parameters.Single()));
