@@ -799,8 +799,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				{
 					continue;
 				}
-				// TODO remove redundant goto?
+#if !EXPECTED_OUTPUT
 				goto IL_0026;
+#endif
 				IL_0026:
 				Console.WriteLine("Block2");
 				goto IL_000f;

@@ -29,13 +29,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 				}
 				Console.WriteLine("not string");
 			}
-			goto IL_0046;
 			IL_0046:
 			Console.WriteLine("done");
 			return;
 			IL_001e:
 			flag = false;
-			goto IL_0024;
 			IL_0024:
 			if (flag)
 			{

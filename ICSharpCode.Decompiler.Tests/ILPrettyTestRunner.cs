@@ -22,6 +22,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
+using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.Tests.Helpers;
 
 using NUnit.Framework;
@@ -104,6 +105,31 @@ namespace ICSharpCode.Decompiler.Tests
 			Assert.That(allocator.GetUniqueLabel("IL_0000"), Is.EqualTo("IL_0000"));
 			Assert.That(allocator.GetUniqueLabel("IL_0000_2"), Is.EqualTo("IL_0000_2"));
 			Assert.That(allocator.GetUniqueLabel("IL_0000"), Is.EqualTo("IL_0000_3"));
+		}
+
+		[Test]
+		public void RemovesOnlyAdjacentGotosInNestedStatementLists()
+		{
+			var adjacentGoto = new GotoStatement { Label = "IL_0001" };
+			var nonAdjacentGoto = new GotoStatement { Label = "IL_0002" };
+			var nestedBlock = new BlockStatement {
+				adjacentGoto,
+				new LabelStatement { Label = "IL_0001" },
+				nonAdjacentGoto,
+				new EmptyStatement(),
+				new LabelStatement { Label = "IL_0002" }
+			};
+			var root = new BlockStatement {
+				new IfElseStatement {
+					Condition = new PrimitiveExpression(true),
+					TrueStatement = nestedBlock
+				}
+			};
+
+			ICSharpCode.Decompiler.CSharp.StatementBuilder.RemoveGotosToNextLabel(root);
+
+			Assert.That(adjacentGoto.Parent, Is.Null);
+			Assert.That(nonAdjacentGoto.Parent, Is.SameAs(nestedBlock));
 		}
 
 		[Test]

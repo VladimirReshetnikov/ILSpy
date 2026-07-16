@@ -1539,7 +1539,20 @@ namespace ICSharpCode.Decompiler.CSharp
 					blockStatement.Add(new BreakStatement());
 				}
 			}
+			RemoveGotosToNextLabel(blockStatement);
 			return blockStatement;
+		}
+
+		internal static void RemoveGotosToNextLabel(BlockStatement blockStatement)
+		{
+			foreach (var gotoStatement in blockStatement.Descendants.OfType<GotoStatement>().ToList())
+			{
+				if (gotoStatement.NextSibling is LabelStatement labelStatement
+					&& gotoStatement.Label == labelStatement.Label)
+				{
+					gotoStatement.Remove();
+				}
+			}
 		}
 
 		readonly Dictionary<Block, string> labels = new Dictionary<Block, string>();

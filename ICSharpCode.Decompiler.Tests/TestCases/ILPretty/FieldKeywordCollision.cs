@@ -78,7 +78,6 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 			num = 1;
 			goto IL_001b;
 			IL_000c:
-			goto IL_001b;
 			IL_001b:
 			return num switch {
 				1 => num2,
