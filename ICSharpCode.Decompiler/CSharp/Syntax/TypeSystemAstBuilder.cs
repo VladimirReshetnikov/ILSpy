@@ -953,6 +953,123 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				return a.FullName.CompareTo(b.FullName);
 			}
 		}
+
+		static int GetCompilerProjectedPropertyAttributeKind(IAttribute attribute)
+		{
+			return attribute.AttributeType.FullName switch {
+				"System.Diagnostics.CodeAnalysis.MemberNotNullAttribute" => 1,
+				"System.Diagnostics.CodeAnalysis.MemberNotNullWhenAttribute" => 2,
+				_ => 0
+			};
+		}
+
+		static bool HasMemberNotNullArgument(IAttribute attribute, int kind)
+		{
+			int argumentIndex = kind == 1 ? 0 : 1;
+			if (attribute.HasDecodeErrors || attribute.FixedArguments.Length <= argumentIndex)
+				return false;
+			object? value = attribute.FixedArguments[argumentIndex].Value;
+			if (value is string)
+				return true;
+			if (value is ImmutableArray<System.Reflection.Metadata.CustomAttributeTypedArgument<IType>> values)
+				return values.Any(v => v.Value is string);
+			return false;
+		}
+
+		static IEnumerable<IAttribute> RemoveCompilerProjectedPropertyAttributes(IProperty property, IMethod accessor)
+		{
+			var propertyAttributes = property.GetAttributes()
+				.Where(a => GetCompilerProjectedPropertyAttributeKind(a) != 0)
+				.ToList();
+			if (propertyAttributes.Count == 0)
+				return accessor.GetAttributes();
+
+			var accessorAttributes = accessor.GetAttributes().ToList();
+			for (int kind = 1; kind <= 2; kind++)
+			{
+				var projectedAttributes = propertyAttributes
+					.Where(a => GetCompilerProjectedPropertyAttributeKind(a) == kind)
+					.ToList();
+				if (projectedAttributes.Count == 0)
+					continue;
+
+				var candidate = accessorAttributes.ToList();
+				if (!TryRemoveMatchingAttributes(candidate, projectedAttributes))
+					continue;
+
+				// Roslyn copies all MemberNotNull/MemberNotNullWhen attributes from a property
+				// onto each accessor when either the property or that accessor has at least one
+				// non-null member-name argument. Do not spell those synthesized copies explicitly,
+				// or recompilation would add a second copy of each attribute to the accessor.
+				if (projectedAttributes.Any(a => HasMemberNotNullArgument(a, kind))
+					|| candidate.Any(a => GetCompilerProjectedPropertyAttributeKind(a) == kind
+						&& HasMemberNotNullArgument(a, kind)))
+				{
+					accessorAttributes = candidate;
+				}
+			}
+			return accessorAttributes;
+		}
+
+		static bool TryRemoveMatchingAttributes(List<IAttribute> attributes, IEnumerable<IAttribute> attributesToRemove)
+		{
+			foreach (var attributeToRemove in attributesToRemove)
+			{
+				int index = attributes.FindIndex(a => AttributesAreEquivalent(a, attributeToRemove));
+				if (index < 0)
+					return false;
+				attributes.RemoveAt(index);
+			}
+			return true;
+		}
+
+		static bool AttributesAreEquivalent(IAttribute a, IAttribute b)
+		{
+			if (!a.AttributeType.Equals(b.AttributeType)
+				|| a.HasDecodeErrors != b.HasDecodeErrors
+				|| a.FixedArguments.Length != b.FixedArguments.Length
+				|| a.NamedArguments.Length != b.NamedArguments.Length)
+			{
+				return false;
+			}
+			for (int i = 0; i < a.FixedArguments.Length; i++)
+			{
+				if (!AttributeArgumentsAreEquivalent(a.FixedArguments[i], b.FixedArguments[i]))
+					return false;
+			}
+			for (int i = 0; i < a.NamedArguments.Length; i++)
+			{
+				var argA = a.NamedArguments[i];
+				var argB = b.NamedArguments[i];
+				if (argA.Name != argB.Name || argA.Kind != argB.Kind || !argA.Type.Equals(argB.Type)
+					|| !AttributeArgumentValuesAreEquivalent(argA.Value, argB.Value))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+
+		static bool AttributeArgumentsAreEquivalent(System.Reflection.Metadata.CustomAttributeTypedArgument<IType> a, System.Reflection.Metadata.CustomAttributeTypedArgument<IType> b)
+		{
+			return a.Type.Equals(b.Type) && AttributeArgumentValuesAreEquivalent(a.Value, b.Value);
+		}
+
+		static bool AttributeArgumentValuesAreEquivalent(object? a, object? b)
+		{
+			if (a is IType typeA && b is IType typeB)
+				return typeA.Equals(typeB);
+			if (a is System.Reflection.Metadata.CustomAttributeTypedArgument<IType> boxedA
+				&& b is System.Reflection.Metadata.CustomAttributeTypedArgument<IType> boxedB)
+				return AttributeArgumentsAreEquivalent(boxedA, boxedB);
+			if (a is ImmutableArray<System.Reflection.Metadata.CustomAttributeTypedArgument<IType>> arrayA
+				&& b is ImmutableArray<System.Reflection.Metadata.CustomAttributeTypedArgument<IType>> arrayB)
+			{
+				return arrayA.Length == arrayB.Length
+					&& arrayA.Zip(arrayB, AttributeArgumentsAreEquivalent).All(equal => equal);
+			}
+			return Equals(a, b);
+		}
 		#endregion
 
 		#region Convert Attribute Type
@@ -2175,14 +2292,16 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			}
 		}
 
-		Accessor? ConvertAccessor(IMethod? accessor, MethodSemanticsAttributes kind, Accessibility ownerAccessibility, bool addParameterAttribute)
+		Accessor? ConvertAccessor(IMethod? accessor, MethodSemanticsAttributes kind, Accessibility ownerAccessibility, bool addParameterAttribute, IProperty? owner = null)
 		{
 			if (accessor == null)
 				return null;
 			Accessor decl = new Accessor();
 			if (ShowAttributes)
 			{
-				decl.Attributes.AddRange(ConvertAttributes(accessor.GetAttributes()));
+				decl.Attributes.AddRange(ConvertAttributes(owner == null
+					? accessor.GetAttributes()
+					: RemoveCompilerProjectedPropertyAttributes(owner, accessor)));
 				decl.Attributes.AddRange(ConvertAttributes(accessor.GetReturnTypeAttributes(), "return"));
 				if (addParameterAttribute && accessor.Parameters.Count > 0)
 				{
@@ -2238,8 +2357,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				ct.HasReadOnlySpecifier = true;
 			}
 			decl.Name = property.Name;
-			decl.Getter = ConvertAccessor(property.Getter, MethodSemanticsAttributes.Getter, property.Accessibility, false);
-			decl.Setter = ConvertAccessor(property.Setter, MethodSemanticsAttributes.Setter, property.Accessibility, true);
+			decl.Getter = ConvertAccessor(property.Getter, MethodSemanticsAttributes.Getter, property.Accessibility, false, property);
+			decl.Setter = ConvertAccessor(property.Setter, MethodSemanticsAttributes.Setter, property.Accessibility, true, property);
 			decl.PrivateImplementationType = GetExplicitInterfaceType(property);
 			MergeReadOnlyModifiers(decl, decl.Getter, decl.Setter);
 			return decl;
@@ -2283,8 +2402,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				decl.Parameters.Add(ConvertParameter(p));
 			}
-			decl.Getter = ConvertAccessor(indexer.Getter, MethodSemanticsAttributes.Getter, indexer.Accessibility, false);
-			decl.Setter = ConvertAccessor(indexer.Setter, MethodSemanticsAttributes.Setter, indexer.Accessibility, true);
+			decl.Getter = ConvertAccessor(indexer.Getter, MethodSemanticsAttributes.Getter, indexer.Accessibility, false, indexer);
+			decl.Setter = ConvertAccessor(indexer.Setter, MethodSemanticsAttributes.Setter, indexer.Accessibility, true, indexer);
 			decl.PrivateImplementationType = GetExplicitInterfaceType(indexer);
 			MergeReadOnlyModifiers(decl, decl.Getter, decl.Setter);
 			return decl;

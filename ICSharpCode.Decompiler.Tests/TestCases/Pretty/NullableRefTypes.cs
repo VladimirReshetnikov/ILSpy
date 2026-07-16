@@ -236,4 +236,35 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return null;
 		}
 	}
+
+	public class T10_MemberNotNullPropertyAttributes
+	{
+		private string? value;
+
+		[MemberNotNullWhen(true, "value")]
+		public bool HasValue => value != null;
+
+		[MemberNotNull("value")]
+		public bool Initialize {
+			get {
+				value = "";
+				return true;
+			}
+		}
+
+		public bool GetterOnly {
+			[MemberNotNullWhen(true, "value")]
+			get {
+				return value != null;
+			}
+		}
+
+		[MemberNotNullWhen(true, "value")]
+		public bool PropertyAndGetter {
+			[MemberNotNullWhen(true, "value")]
+			get {
+				return value != null;
+			}
+		}
+	}
 }
