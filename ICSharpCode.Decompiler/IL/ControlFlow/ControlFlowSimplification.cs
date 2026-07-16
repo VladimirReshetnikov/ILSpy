@@ -55,8 +55,26 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 				// starts duplicating return instructions.
 				SwitchDetection.SimplifySwitchInstruction(block, context);
 			}
+			RemoveUnreachableBlocks(function, context);
 			SimplifyBranchChains(function, context);
 			CleanUpEmptyBlocks(function, context);
+		}
+
+		private static void RemoveUnreachableBlocks(ILFunction function, ILTransformContext context)
+		{
+			var containers = function.Descendants.OfType<BlockContainer>().ToList();
+			for (int i = containers.Count - 1; i >= 0; i--)
+			{
+				var container = containers[i];
+				var reachableBlocks = new HashSet<Block>(container.TopologicalSort(deleteUnreachableBlocks: true));
+				foreach (var block in container.Blocks)
+				{
+					if (reachableBlocks.Contains(block))
+						continue;
+					context.Step("Remove unreachable block", block);
+					block.Instructions.Clear();
+				}
+			}
 		}
 
 		private static void RemoveNopInstructions(Block block)

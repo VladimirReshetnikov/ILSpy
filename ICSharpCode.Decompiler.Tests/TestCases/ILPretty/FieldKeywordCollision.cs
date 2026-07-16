@@ -88,15 +88,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 		public static int ConstantSwitchDefiniteAssignment()
 		{
 			int num = 0;
-			int num2 = 42;
-			num = 1;
-			goto IL_001b;
-			IL_000c:
-			IL_001b:
-			return num switch {
-				1 => num2,
-				_ => -1,
-			};
+			return 42;
 		}
 
 		public static int GotoCrossedLocals(object input)
