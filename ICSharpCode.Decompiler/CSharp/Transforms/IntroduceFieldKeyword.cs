@@ -34,11 +34,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 	/// <c>&lt;Name&gt;k__BackingField</c> is rewritten to use the <c>field</c> keyword in its
 	/// accessors, and the explicit backing field is removed.
 	///
-	/// The reconstruction is applied only when nothing outside the property's own accessors
-	/// touches the backing field. If it is read or written elsewhere (another method, a nested
-	/// type, or a constructor assignment that was not turned into a field initializer), the
-	/// original source could not have used the <c>field</c> keyword - the field would be
-	/// unnameable - so the explicit field is kept.
+	/// The reconstruction is applied only when every backing-field reference can be represented
+	/// through the property. References in the property's accessors become <c>field</c>, and a
+	/// simple assignment in the matching constructor of a getter-only property becomes an
+	/// assignment to the property. Other external reads or writes require an explicit field.
 	///
 	/// Runs after <see cref="TransformFieldAndConstructorInitializers"/> so that a property
 	/// initializer has already been moved onto the field declaration and is therefore not seen
@@ -102,11 +101,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			TypeDeclaration typeDeclaration = propertyDeclaration.Ancestors.OfType<TypeDeclaration>().FirstOrDefault();
 			if (typeDeclaration == null)
 				return;
-			// Collect every reference to the backing field anywhere in the declaring type. The 'field'
-			// keyword can only stand in for references that live inside this property's own accessor
-			// bodies; a reference anywhere else (another method, a nested type, or a constructor
-			// assignment that was not turned into a field initializer) is unnameable as 'field'.
+			// Collect every reference to the backing field anywhere in the declaring type. Accessor
+			// references can become 'field'. C# also permits a getter-only field-backed property to be
+			// assigned in a matching constructor, just like a getter-only auto-property.
 			var accessorReferences = new List<Expression>();
+			var constructorAssignmentReferences = new List<Expression>();
 			var externalReferences = new List<Expression>();
 			foreach (AstNode node in typeDeclaration.Descendants)
 			{
@@ -123,6 +122,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					continue;
 				if (IsInsideOwnAccessor(node, propertyDeclaration))
 					accessorReferences.Add((Expression)node);
+				else if (IsRewritableConstructorAssignment((Expression)node, propertyDeclaration, property))
+					constructorAssignmentReferences.Add((Expression)node);
 				else
 					externalReferences.Add((Expression)node);
 			}
@@ -130,18 +131,27 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			{
 				// The 'field' keyword does not apply. If the explicit backing field is hidden but its
 				// references survive, they would dangle; re-materialize it as an ordinary field.
-				RematerializeHiddenBackingField(typeDeclaration, field, accessorReferences.Concat(externalReferences));
+				RematerializeHiddenBackingField(typeDeclaration, field,
+					accessorReferences.Concat(constructorAssignmentReferences).Concat(externalReferences));
 				return;
 			}
 			if (accessorReferences.Count == 0)
+			{
+				if (constructorAssignmentReferences.Count > 0)
+					RematerializeHiddenBackingField(typeDeclaration, field, constructorAssignmentReferences);
 				return;
+			}
 			// Introducing the contextual 'field' keyword shadows anything else named 'field' that is in
 			// scope in an accessor: a type member, a local/parameter, a foreach/pattern/out/deconstruction
 			// variable, or a primary-constructor parameter. Rewriting the backing-field references to a
 			// bare 'field' would then silently re-bind those other references to the backing field, so
 			// leave the property alone if any other 'field' name could collide.
 			if (DeclaringTypeDeclaresFieldMember(declaringType) || AccessorReferencesFieldName(propertyDeclaration))
+			{
+				RematerializeHiddenBackingField(typeDeclaration, field,
+					accessorReferences.Concat(constructorAssignmentReferences));
 				return;
+			}
 
 			foreach (Expression reference in accessorReferences)
 			{
@@ -150,6 +160,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				if (mrr != null)
 					fieldKeyword.AddAnnotation(mrr);
 				reference.ReplaceWith(fieldKeyword);
+			}
+			foreach (Expression reference in constructorAssignmentReferences)
+			{
+				var mrr = reference.Annotation<MemberResolveResult>();
+				reference.GetChild(Slots.Identifier)!.Name = property.Name;
+				reference.RemoveAnnotations<MemberResolveResult>();
+				reference.AddAnnotation(new MemberResolveResult(mrr?.TargetResult, property));
 			}
 			if (propertyDeclaration.Getter is not null)
 				CSharpDecompiler.RemoveAttribute(propertyDeclaration.Getter, KnownAttribute.CompilerGenerated);
@@ -246,6 +263,34 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					return true;
 			}
 			return false;
+		}
+
+		static bool IsRewritableConstructorAssignment(Expression reference,
+			PropertyDeclaration propertyDeclaration, IProperty property)
+		{
+			if (propertyDeclaration.Setter is not null
+				|| reference.Parent is not AssignmentExpression {
+					Operator: AssignmentOperatorType.Assign,
+					Parent: ExpressionStatement
+				} assignment
+				|| assignment.Left != reference)
+			{
+				return false;
+			}
+
+			AstNode function = reference.Ancestors.FirstOrDefault(ancestor => ancestor is
+				LambdaExpression or AnonymousMethodExpression or LocalFunctionDeclarationStatement or EntityDeclaration);
+			if (function is not ConstructorDeclaration constructor
+				|| constructor.GetSymbol() is not IMethod constructorMethod
+				|| !constructorMethod.IsConstructor
+				|| constructorMethod.IsStatic != property.IsStatic
+				|| constructorMethod.DeclaringTypeDefinition != property.DeclaringTypeDefinition)
+			{
+				return false;
+			}
+
+			return reference is IdentifierExpression
+				|| (!property.IsStatic && reference is MemberReferenceExpression { Target: ThisReferenceExpression });
 		}
 
 		static bool DeclaringTypeDeclaresFieldMember(ITypeDefinition declaringType)

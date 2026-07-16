@@ -4,14 +4,21 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 	{
 		public readonly string Fallback;
 
-		private string m_Text;
+		private string m_ExternallyWritten;
 
-		public string Text => this.m_Text ?? Fallback;
+		public string Text => field ?? Fallback;
+
+		public string ExternallyWritten => this.m_ExternallyWritten ?? Fallback;
 
 		public FieldKeywordCtorBackingFieldWrite(string customText, string fallback)
 		{
 			Fallback = fallback;
-			this.m_Text = customText;
+			Text = customText;
+		}
+
+		public void SetExternallyWritten(string value)
+		{
+			this.m_ExternallyWritten = value;
 		}
 	}
 }

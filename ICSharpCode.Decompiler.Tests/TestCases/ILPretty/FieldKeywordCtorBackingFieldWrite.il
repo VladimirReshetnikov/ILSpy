@@ -1,17 +1,10 @@
-// A semi-auto-property whose getter carries custom logic (so it is not foldable to a trivial
-// auto-property) over the compiler-generated '<Text>k__BackingField', combined with a constructor
-// that writes that backing field directly. Roslyn never emits a constructor 'stfld' to a
-// 'field'-keyword backing field, so this shape is hand-written.
+// A getter-only semi-auto-property may be assigned in the matching constructor. The constructor
+// store to '<Text>k__BackingField' can therefore become an assignment to Text while accessor reads
+// become 'field'. A write from an ordinary method is not representable that way, so the backing
+// field for ExternallyWritten must still be re-materialized as an ordinary explicit field.
 //
-// The backing field is hidden as a property backing field, yet neither absorbing transform applies:
-// the getter's custom logic blocks folding to an auto-property, and the constructor write is a
-// reference outside the accessors, so IntroduceFieldKeyword cannot use the 'field' keyword. The
-// hidden field must therefore be re-materialized as an ordinary explicit field (de-mangled, with the
-// compiler-generated attributes stripped) so the getter and constructor references still resolve.
-// The de-mangled name 'Text' collides with the property, so FixNameCollisions renames it to 'm_Text'.
-//
-// The type is generic: in a generic type the hidden backing field is not re-emitted on demand, so a
-// leaked reference would otherwise dangle (CS0103). This mirrors the JetBrains dotPeek TextualMatcher.
+// The type is generic to ensure both absorbed and surviving references are matched through their
+// specialized field instances as well as their member definitions.
 
 .assembly extern mscorlib
 {
@@ -28,6 +21,8 @@
        extends [mscorlib]System.Object
 {
   .field private string '<Text>k__BackingField'
+  .custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = ( 01 00 00 00 )
+  .field private string '<ExternallyWritten>k__BackingField'
   .custom instance void [mscorlib]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = ( 01 00 00 00 )
   .field public initonly string Fallback
 
@@ -50,6 +45,25 @@
     .get instance string ICSharpCode.Decompiler.Tests.TestCases.ILPretty.FieldKeywordCtorBackingFieldWrite`1::get_Text()
   }
 
+  .method public hidebysig specialname instance string get_ExternallyWritten() cil managed
+  {
+    .maxstack 8
+    ldarg.0
+    ldfld string class ICSharpCode.Decompiler.Tests.TestCases.ILPretty.FieldKeywordCtorBackingFieldWrite`1<!T>::'<ExternallyWritten>k__BackingField'
+    dup
+    brtrue.s EXTERNAL_RET
+    pop
+    ldarg.0
+    ldfld string class ICSharpCode.Decompiler.Tests.TestCases.ILPretty.FieldKeywordCtorBackingFieldWrite`1<!T>::Fallback
+  EXTERNAL_RET:
+    ret
+  }
+
+  .property instance string ExternallyWritten()
+  {
+    .get instance string ICSharpCode.Decompiler.Tests.TestCases.ILPretty.FieldKeywordCtorBackingFieldWrite`1::get_ExternallyWritten()
+  }
+
   .method public hidebysig specialname rtspecialname instance void .ctor(string customText, string fallback) cil managed
   {
     .maxstack 8
@@ -61,6 +75,15 @@
     ldarg.0
     ldarg.1
     stfld string class ICSharpCode.Decompiler.Tests.TestCases.ILPretty.FieldKeywordCtorBackingFieldWrite`1<!T>::'<Text>k__BackingField'
+    ret
+  }
+
+  .method public hidebysig instance void SetExternallyWritten(string 'value') cil managed
+  {
+    .maxstack 8
+    ldarg.0
+    ldarg.1
+    stfld string class ICSharpCode.Decompiler.Tests.TestCases.ILPretty.FieldKeywordCtorBackingFieldWrite`1<!T>::'<ExternallyWritten>k__BackingField'
     ret
   }
 }

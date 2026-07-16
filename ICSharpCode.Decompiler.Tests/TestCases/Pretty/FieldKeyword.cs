@@ -2,6 +2,32 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
 	internal class FieldKeyword
 	{
+		internal class ConstructorAssignedGetterOnlyProperty
+		{
+			private readonly string fallback;
+
+			public string Text => field ?? fallback;
+
+			public ConstructorAssignedGetterOnlyProperty(string text, string fallback)
+			{
+				this.fallback = fallback;
+				Text = text ?? this.fallback;
+			}
+		}
+
+		internal static class StaticConstructorAssignedGetterOnlyProperty
+		{
+			private static readonly string fallback;
+
+			public static string Text => field ?? fallback;
+
+			static StaticConstructorAssignedGetterOnlyProperty()
+			{
+				fallback = string.Empty;
+				Text = fallback;
+			}
+		}
+
 		internal class PrimaryConstructorParameter(string field)
 		{
 			public string Value => @field;
