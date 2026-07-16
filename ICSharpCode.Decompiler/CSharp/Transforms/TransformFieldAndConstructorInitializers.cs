@@ -157,14 +157,32 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					// turned into a field initializer (CS0236), even for a primary constructor, where
 					// references to the primary constructor's own parameters (index >= 0) are otherwise
 					// permitted.
-					void InspectVariable(ILVariable v)
+					void InspectVariable(ILVariable v, bool isPrimaryConstructorBackingFieldTarget = false)
 					{
 						if (v.Function == function && v.Kind == VariableKind.Parameter)
 						{
 							dependsOnBody = true;
-							if (v.Index < 0)
+							if (v.Index < 0 && !isPrimaryConstructorBackingFieldTarget)
 								referencesInstanceMember = true;
 						}
+					}
+
+					static bool IsPrimaryConstructorBackingFieldTarget(ILInstruction variableInstruction, ILInstruction root)
+					{
+						for (ILInstruction? current = variableInstruction.Parent; current != null; current = current.Parent)
+						{
+							IField? field;
+							ILInstruction? target;
+							if ((current.MatchLdFld(out target, out field) || current.MatchLdFlda(out target, out field))
+								&& IsGeneratedPrimaryConstructorBackingField(field)
+								&& (target == variableInstruction || target.Descendants.Contains(variableInstruction)))
+							{
+								return true;
+							}
+							if (current == root)
+								break;
+						}
+						return false;
 					}
 
 					foreach (var instruction in initializer.Annotations.OfType<ILInstruction>())
@@ -172,7 +190,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						foreach (var inst in instruction.Descendants)
 						{
 							if (inst is IInstructionWithVariableOperand { Variable: var v })
-								InspectVariable(v);
+							{
+								InspectVariable(v, IsPrimaryConstructorBackingFieldTarget(inst, instruction));
+							}
 						}
 					}
 					// The initializer expression may have been rebuilt without IL-instruction annotations
@@ -770,7 +790,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				foreach (var (stmt, member, initializer, dependsOnBody, referencesInstanceMember) in sequence.Statements)
 				{
 					Debug.Assert(!dependsOnBody || kind is InitializerKind.Primary);
-					Debug.Assert(!referencesInstanceMember);
+					Debug.Assert(!referencesInstanceMember, $"Cannot move initializer for {member}: {stmt}");
 
 					if (!MemberToDeclaringSyntaxNodeMap.TryGetValue(member, out var declaringSyntaxNode))
 					{
