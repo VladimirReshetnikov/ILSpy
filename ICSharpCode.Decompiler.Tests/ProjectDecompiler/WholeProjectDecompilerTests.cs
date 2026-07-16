@@ -94,6 +94,21 @@ public sealed class WholeProjectDecompilerTests
 		}
 	}
 
+	[Test]
+	public void SdkStyleProjectWriterPreservesResXMetadata()
+	{
+		UniversalAssemblyResolver assemblyResolver = new(null, false, null);
+		TestProjectInfoProvider project = new(assemblyResolver, nullableReferenceTypes: false);
+		ProjectItemInfo resource = new ProjectItemInfo("EmbeddedResource", "Strings.resx")
+			.With("LogicalName", "Test.Strings.resources")
+			.With("WithCulture", "false");
+		using StringWriter output = new();
+		ProjectFileWriterSdkStyle.Create().Write(output, project, [resource], new PEFile("ICSharpCode.Decompiler.dll"));
+
+		Assert.That(output.ToString(), Does.Contain(
+			"<EmbeddedResource Update=\"Strings.resx\" LogicalName=\"Test.Strings.resources\" WithCulture=\"false\" />"));
+	}
+
 	[TestCase(true)]
 	[TestCase(false)]
 	public void WholeProjectDecompilerProvidesNullableReferenceTypeSetting(bool nullableReferenceTypes)
@@ -253,6 +268,7 @@ public sealed class WholeProjectDecompilerTests
 				Assert.That(item.ItemType, Is.EqualTo("EmbeddedResource"));
 				Assert.That(item.FileName, Is.EqualTo("Strings.resx"));
 				Assert.That(item.AdditionalProperties["LogicalName"], Is.EqualTo("Test.Strings.resources"));
+				Assert.That(item.AdditionalProperties["WithCulture"], Is.EqualTo("false"));
 				Assert.That(File.Exists(outputFile), Is.True);
 				Assert.That(File.Exists(Path.Combine(targetDirectory, "Strings.resources")), Is.False);
 			}
@@ -284,10 +300,93 @@ public sealed class WholeProjectDecompilerTests
 				Assert.That(item.ItemType, Is.EqualTo("EmbeddedResource"));
 				Assert.That(item.FileName, Is.EqualTo("Mixed.resources"));
 				Assert.That(item.AdditionalProperties["LogicalName"], Is.EqualTo("Test.Mixed.resources"));
+				Assert.That(item.AdditionalProperties["WithCulture"], Is.EqualTo("false"));
 				Assert.That(File.Exists(outputFile), Is.True);
 				Assert.That(File.Exists(Path.Combine(targetDirectory, "Mixed.resx")), Is.False);
 			}
 			Assert.That(File.ReadAllBytes(outputFile), Is.EqualTo(input));
+		}
+		finally
+		{
+			Directory.Delete(targetDirectory, recursive: true);
+		}
+	}
+
+	[TestCase(false)]
+	[TestCase(true)]
+	public void EmptyResourcesStayBinary(bool extractIndividualResources)
+	{
+		string targetDirectory = CreateTemporaryDirectory();
+		try
+		{
+			byte[] input = CreateEmptyResources();
+			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
+			decompiler.ExtractResources = extractIndividualResources;
+			using MemoryStream stream = new(input, writable: false);
+
+			ProjectItemInfo item = decompiler.WriteResource(targetDirectory, "Empty.resources", "Test.Empty.resources", stream);
+			string outputFile = Path.Combine(targetDirectory, "Empty.resources");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(item.ItemType, Is.EqualTo("EmbeddedResource"));
+				Assert.That(item.FileName, Is.EqualTo("Empty.resources"));
+				Assert.That(item.AdditionalProperties["LogicalName"], Is.EqualTo("Test.Empty.resources"));
+				Assert.That(item.AdditionalProperties["WithCulture"], Is.EqualTo("false"));
+				Assert.That(File.Exists(outputFile), Is.True);
+				Assert.That(File.Exists(Path.Combine(targetDirectory, "Empty.resx")), Is.False);
+			}
+			Assert.That(File.ReadAllBytes(outputFile), Is.EqualTo(input));
+		}
+		finally
+		{
+			Directory.Delete(targetDirectory, recursive: true);
+		}
+	}
+
+	[Test]
+	public void StreamOnlyResourcesStayInTheirContainerByDefault()
+	{
+		string targetDirectory = CreateTemporaryDirectory();
+		try
+		{
+			byte[] input = CreateStreamOnlyResources();
+			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
+
+			ProjectItemInfo item = decompiler.WriteResource(
+				targetDirectory, new ByteArrayResource("Test.g.resources", input));
+			string outputFile = Path.Combine(targetDirectory, "Test.g.resources");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(item.ItemType, Is.EqualTo("EmbeddedResource"));
+				Assert.That(item.FileName, Is.EqualTo("Test.g.resources"));
+				Assert.That(item.AdditionalProperties["LogicalName"], Is.EqualTo("Test.g.resources"));
+				Assert.That(item.AdditionalProperties["WithCulture"], Is.EqualTo("false"));
+				Assert.That(File.Exists(outputFile), Is.True);
+				Assert.That(File.Exists(Path.Combine(targetDirectory, "Views", "MainWindow.baml")), Is.False);
+			}
+			Assert.That(File.ReadAllBytes(outputFile), Is.EqualTo(input));
+		}
+		finally
+		{
+			Directory.Delete(targetDirectory, recursive: true);
+		}
+	}
+
+	[Test]
+	public void EmbeddedResourcesDisableCultureInference()
+	{
+		string targetDirectory = CreateTemporaryDirectory();
+		try
+		{
+			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
+			using MemoryStream stream = new([1, 2, 3, 4], writable: false);
+
+			ProjectItemInfo item = decompiler.WriteResource(
+				targetDirectory, "Certificate.ca.crt", "Test.Certificate.ca.crt", stream);
+
+			Assert.That(item.AdditionalProperties["WithCulture"], Is.EqualTo("false"));
 		}
 		finally
 		{
@@ -325,6 +424,27 @@ public sealed class WholeProjectDecompilerTests
 		return output.ToArray();
 	}
 
+	static byte[] CreateEmptyResources()
+	{
+		MemoryStream output = new();
+		using (ResourceWriter writer = new(output))
+		{
+			writer.Generate();
+		}
+		return output.ToArray();
+	}
+
+	static byte[] CreateStreamOnlyResources()
+	{
+		MemoryStream output = new();
+		using (ResourceWriter writer = new(output))
+		{
+			writer.AddResource("Views/MainWindow.baml", new MemoryStream([1, 2, 3, 4]), closeAfterWrite: true);
+			writer.Generate();
+		}
+		return output.ToArray();
+	}
+
 	static void AssertDirectoryDoesntExist(string directory)
 	{
 		if (Directory.Exists(directory))
@@ -349,6 +469,7 @@ public sealed class WholeProjectDecompilerTests
 		public Dictionary<string, StringWriter> Files { get; } = [];
 		public HashSet<string> Directories { get; } = [];
 		public List<ProjectItemInfo> ResourceItems { get; } = [];
+		public bool ExtractResources { get; set; }
 
 		public bool ContainsSource(string text) => Files.Values.Any(writer => writer.ToString().Contains(text));
 
@@ -375,11 +496,18 @@ public sealed class WholeProjectDecompilerTests
 		protected override IEnumerable<ProjectItemInfo> WriteMiscellaneousFilesInProject(PEFile module) => [];
 
 		protected override IEnumerable<ProjectItemInfo> WriteResourceFilesInProject(MetadataFile module) => ResourceItems;
+		protected override bool ExtractIndividualResources => ExtractResources;
 
 		public ProjectItemInfo WriteResource(string targetDirectory, string fileName, string resourceName, Stream stream)
 		{
 			TargetDirectory = targetDirectory;
 			return WriteResourceToFile(fileName, resourceName, stream).Single();
+		}
+
+		public ProjectItemInfo WriteResource(string targetDirectory, Resource resource)
+		{
+			TargetDirectory = targetDirectory;
+			return WriteResourceFile(resource).Single();
 		}
 	}
 

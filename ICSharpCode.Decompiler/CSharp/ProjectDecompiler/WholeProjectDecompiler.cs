@@ -386,80 +386,80 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		#endregion
 
 		#region WriteResourceFilesInProject
+		protected virtual bool ExtractIndividualResources => false;
+
 		protected virtual IEnumerable<ProjectItemInfo> WriteResourceFilesInProject(MetadataFile module)
 		{
 			foreach (var r in module.Resources.Where(r => r.ResourceType == ResourceType.Embedded))
 			{
-				Stream stream = r.TryOpenStream();
-				if (stream == null)
-					continue;
-
-				stream.Position = 0;
-
-				if (r.Name.EndsWith(".resources", StringComparison.OrdinalIgnoreCase))
+				foreach (var item in WriteResourceFile(r))
 				{
-					bool decodedIntoIndividualFiles;
-					var individualResources = new List<ProjectItemInfo>();
-					try
+					yield return item;
+				}
+			}
+		}
+
+		protected virtual IEnumerable<ProjectItemInfo> WriteResourceFile(Resource resource)
+		{
+			using Stream stream = resource.TryOpenStream();
+			if (stream == null)
+				yield break;
+
+			stream.Position = 0;
+
+			if (ExtractIndividualResources
+				&& resource.Name.EndsWith(".resources", StringComparison.OrdinalIgnoreCase))
+			{
+				bool decodedIntoIndividualFiles;
+				var individualResources = new List<ProjectItemInfo>();
+				try
+				{
+					var resourcesFile = new ResourcesFile(stream);
+					if (resourcesFile.Any() && resourcesFile.AllEntriesAreStreams())
 					{
-						var resourcesFile = new ResourcesFile(stream);
-						if (resourcesFile.AllEntriesAreStreams())
+						foreach (var (name, value) in resourcesFile)
 						{
-							foreach (var (name, value) in resourcesFile)
+							string fileName = SanitizeFileName(name);
+							string dirName = Path.GetDirectoryName(fileName);
+							if (!string.IsNullOrEmpty(dirName) && directories.Add(dirName))
 							{
-								string fileName = SanitizeFileName(name);
-								string dirName = Path.GetDirectoryName(fileName);
-								if (!string.IsNullOrEmpty(dirName) && directories.Add(dirName))
-								{
-									CreateDirectory(Path.Combine(TargetDirectory, dirName));
-								}
-								Stream entryStream = (Stream)value;
-								entryStream.Position = 0;
-								individualResources.AddRange(
-									WriteResourceToFile(fileName, name, entryStream));
+								CreateDirectory(Path.Combine(TargetDirectory, dirName));
 							}
-							decodedIntoIndividualFiles = true;
+							Stream entryStream = (Stream)value;
+							entryStream.Position = 0;
+							individualResources.AddRange(
+								WriteResourceToFile(fileName, name, entryStream));
 						}
-						else
-						{
-							decodedIntoIndividualFiles = false;
-						}
-					}
-					catch (BadImageFormatException)
-					{
-						decodedIntoIndividualFiles = false;
-					}
-					catch (EndOfStreamException)
-					{
-						decodedIntoIndividualFiles = false;
-					}
-					if (decodedIntoIndividualFiles)
-					{
-						foreach (var entry in individualResources)
-						{
-							yield return entry;
-						}
+						decodedIntoIndividualFiles = true;
 					}
 					else
 					{
-						stream.Position = 0;
-						string fileName = GetFileNameForResource(r.Name);
-						foreach (var entry in WriteResourceToFile(fileName, r.Name, stream))
-						{
-							yield return entry;
-						}
+						decodedIntoIndividualFiles = false;
 					}
 				}
-				else
+				catch (BadImageFormatException)
 				{
-					string fileName = GetFileNameForResource(r.Name);
-					using (FileStream fs = new FileStream(Path.Combine(TargetDirectory, fileName), FileMode.Create, FileAccess.Write))
-					{
-						stream.Position = 0;
-						stream.CopyTo(fs);
-					}
-					yield return new ProjectItemInfo("EmbeddedResource", fileName).With("LogicalName", r.Name);
+					decodedIntoIndividualFiles = false;
 				}
+				catch (EndOfStreamException)
+				{
+					decodedIntoIndividualFiles = false;
+				}
+				if (decodedIntoIndividualFiles)
+				{
+					foreach (var entry in individualResources)
+					{
+						yield return entry;
+					}
+					yield break;
+				}
+			}
+
+			stream.Position = 0;
+			string resourceFileName = GetFileNameForResource(resource.Name);
+			foreach (var entry in WriteResourceToFile(resourceFileName, resource.Name, stream))
+			{
+				yield return entry;
 			}
 		}
 
@@ -473,7 +473,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 				{
 					using (ResourcesFile resourcesFile = new ResourcesFile(entryStream))
 					{
-						if (resourcesFile.All(entry => entry.Value is string))
+						if (resourcesFile.Any() && resourcesFile.All(entry => entry.Value is string))
 						{
 							using (FileStream fs = new FileStream(Path.Combine(TargetDirectory, resx), FileMode.Create, FileAccess.Write))
 							using (ResXResourceWriter writer = new ResXResourceWriter(fs))
@@ -483,7 +483,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 									writer.AddResource(entry.Key, entry.Value);
 								}
 							}
-							return new[] { new ProjectItemInfo("EmbeddedResource", resx).With("LogicalName", resourceName) };
+							return new[] { CreateEmbeddedResourceProjectItem(resx, resourceName) };
 						}
 					}
 				}
@@ -504,7 +504,17 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			{
 				entryStream.CopyTo(fs);
 			}
-			return new[] { new ProjectItemInfo("EmbeddedResource", fileName).With("LogicalName", resourceName) };
+			return new[] { CreateEmbeddedResourceProjectItem(fileName, resourceName) };
+		}
+
+		static ProjectItemInfo CreateEmbeddedResourceProjectItem(string fileName, string resourceName)
+		{
+			// All resources handled here were embedded in the main module. Disable MSBuild's
+			// filename-based culture inference so names such as Certificate.ca.crt are not
+			// silently moved into a satellite assembly.
+			return new ProjectItemInfo("EmbeddedResource", fileName)
+				.With("LogicalName", resourceName)
+				.With("WithCulture", "false");
 		}
 
 		string GetFileNameForResource(string fullName)

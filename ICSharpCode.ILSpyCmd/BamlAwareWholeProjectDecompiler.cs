@@ -49,6 +49,8 @@ namespace ICSharpCode.ILSpyCmd
 
 		public CancellationToken CancellationToken { get; set; }
 
+		protected override bool ExtractIndividualResources => true;
+
 		protected override IEnumerable<ProjectItemInfo> WriteResourceToFile(string fileName, string resourceName, Stream entryStream)
 		{
 			if (!fileName.EndsWith(".baml", StringComparison.OrdinalIgnoreCase))

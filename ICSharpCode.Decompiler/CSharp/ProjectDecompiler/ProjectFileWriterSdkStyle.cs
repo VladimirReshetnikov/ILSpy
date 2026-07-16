@@ -241,11 +241,12 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			// include phase
 			foreach (var item in files.Where(t => t.ItemType == "EmbeddedResource"))
 			{
-				if (Path.GetExtension(item.FileName) == ".resx")
+				bool isResX = string.Equals(Path.GetExtension(item.FileName), ".resx", StringComparison.OrdinalIgnoreCase);
+				if (isResX && item.AdditionalProperties == null)
 					continue;
 
 				xml.WriteStartElement("EmbeddedResource");
-				xml.WriteAttributeString("Include", item.FileName);
+				xml.WriteAttributeString(isResX ? "Update" : "Include", item.FileName);
 				if (item.AdditionalProperties != null)
 				{
 					foreach (var (key, value) in item.AdditionalProperties)
