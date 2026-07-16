@@ -943,7 +943,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 			for (int i = 0; i < ids.Length; i++)
 			{
+#if EXPECTED_OUTPUT && LEGACY_CSC && !OPT
+				Item item;
+#else
 				Item item = null;
+#endif
 				TryGetItem(ids[i], out item);
 				if (item == null)
 				{

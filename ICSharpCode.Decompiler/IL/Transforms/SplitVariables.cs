@@ -248,7 +248,21 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			protected internal override void VisitLdLoca(LdLoca inst)
 			{
 				base.VisitLdLoca(inst);
-				HandleLoad(inst);
+				if (!IsOutArgument(inst))
+				{
+					HandleLoad(inst);
+					return;
+				}
+
+				var stores = GetStores(state, inst.Variable).ToList();
+				if ((stores.Count == 0 && IsPotentiallyUninitialized(state, inst.Variable))
+					|| (stores.Count > 0 && stores.All(store => store is StLoc { Value: DefaultValue })))
+				{
+					// Preserve a redundant default initialization as part of the same logical C#
+					// variable as the following out write. Any non-default reaching store must
+					// remain separate from the out definition (for example, a recycled lock temp).
+					HandleLoad(inst);
+				}
 			}
 
 			void HandleLoad(IInstructionWithVariableOperand inst)

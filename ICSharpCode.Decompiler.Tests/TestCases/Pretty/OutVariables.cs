@@ -112,6 +112,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return a;
 		}
 
+		public static void SequentialUnusedOutValues()
+		{
+			GetTwo(out var a, out var b);
+			GetTwo(out a, out b);
+		}
+
 		private static void OutAndValue(out int a, int b)
 		{
 			a = b;

@@ -23,6 +23,7 @@ using System.Linq;
 using System.Threading;
 
 using ICSharpCode.Decompiler.IL;
+using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.FlowAnalysis
@@ -38,8 +39,9 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 	/// Possible "definitions" that store to a variable are:
 	/// * <c>StLoc</c>
 	/// * <c>TryCatchHandler</c> (for the exception variable)
+	/// * <c>LdLoca</c> passed directly to an <c>out</c> parameter
 	/// * <c>ReachingDefinitionsVisitor.UninitializedVariable</c> for uninitialized variables.
-	/// Note that we do not keep track of <c>LdLoca</c>/references/pointers.
+	/// Note that we do not otherwise keep track of <c>LdLoca</c>/references/pointers.
 	/// The analysis will likely be wrong/incomplete for variables with <c>AddressCount != 0</c>.
 	/// 
 	/// Note: this class does not store the computed information, because doing so
@@ -302,6 +304,7 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 				if (stores != null)
 				{
 					int expectedStoreCount = scope.Variables[vi].StoreInstructions.Count;
+					expectedStoreCount += scope.Variables[vi].AddressInstructions.OfType<LdLoca>().Count(IsOutArgument);
 					// Extra store for the uninitialized state.
 					expectedStoreCount += 1;
 					Debug.Assert(stores.Count == expectedStoreCount);
@@ -335,17 +338,32 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			}
 			foreach (var inst in scope.Descendants)
 			{
+				ILVariable v;
 				if (inst.HasDirectFlag(InstructionFlags.MayWriteLocals))
 				{
-					cancellationToken.ThrowIfCancellationRequested();
-					ILVariable v = ((IInstructionWithVariableOperand)inst).Variable;
-					if (v.Function == scope && activeVariables[v.IndexInFunction])
-					{
-						storesByVar[v.IndexInFunction].Add(inst);
-					}
+					v = ((IInstructionWithVariableOperand)inst).Variable;
+				}
+				else if (inst is LdLoca ldloca && IsOutArgument(ldloca))
+				{
+					v = ldloca.Variable;
+				}
+				else
+				{
+					continue;
+				}
+				cancellationToken.ThrowIfCancellationRequested();
+				if (v.Function == scope && activeVariables[v.IndexInFunction])
+				{
+					storesByVar[v.IndexInFunction].Add(inst);
 				}
 			}
 			return storesByVar;
+		}
+
+		protected static bool IsOutArgument(LdLoca inst)
+		{
+			return inst.Parent is CallInstruction call
+				&& call.GetParameter(inst.ChildIndex)?.ReferenceKind == ReferenceKind.Out;
 		}
 
 		/// <summary>
@@ -411,6 +429,39 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			inst.Init.AcceptVisitor(this);
 			HandleStore(inst, inst.Variable);
 			inst.Body.AcceptVisitor(this);
+		}
+
+		protected internal override void VisitCall(Call inst)
+		{
+			HandleCall(inst);
+		}
+
+		protected internal override void VisitCallVirt(CallVirt inst)
+		{
+			HandleCall(inst);
+		}
+
+		protected internal override void VisitNewObj(NewObj inst)
+		{
+			HandleCall(inst);
+		}
+
+		void HandleCall(CallInstruction call)
+		{
+			DebugStartPoint(call);
+			foreach (var argument in call.Arguments)
+			{
+				argument.AcceptVisitor(this);
+			}
+			// An out argument is assigned only after all arguments have been evaluated.
+			foreach (var argument in call.Arguments)
+			{
+				if (argument is LdLoca ldloca && IsOutArgument(ldloca))
+				{
+					HandleStore(ldloca, ldloca.Variable);
+				}
+			}
+			DebugEndPoint(call);
 		}
 
 		public bool IsAnalyzedVariable(ILVariable v)

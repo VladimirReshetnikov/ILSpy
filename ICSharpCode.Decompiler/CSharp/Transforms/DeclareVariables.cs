@@ -789,7 +789,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					// Note: ExpressionBuilder.HidesVariableWithName produces inaccurate results, because it
 					// does not take lambdas and local functions into account, that are defined in the same
 					// scope as v.
-					if (context.Settings.Discards && v.ILVariable.LoadCount == 0
+					// A collision merge combines multiple IL live ranges into one C# local. Even if
+					// the surviving range is unused, replacing its declaration with a discard would
+					// leave references from the other merged ranges without a declaration.
+					if (context.Settings.Discards && !v.InvolvedInCollision && v.ILVariable.LoadCount == 0
 						&& v.ILVariable.StoreCount == 0 && v.ILVariable.AddressCount == 1)
 					{
 						name = "_";
