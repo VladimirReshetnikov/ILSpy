@@ -463,6 +463,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task LocalFunctionSignatureAccessibility()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task FSharpLoops_Debug()
 		{
 			CopyFSharpCoreDll();

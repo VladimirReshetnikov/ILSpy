@@ -148,7 +148,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			{
 				if (methodDecl.GetSymbol() is not IMethod method)
 					continue;
-				MakeSignatureTypesAccessible(method);
+				// Local functions have no declared accessibility; their symbols still refer to generated metadata methods.
+				if (methodDecl.Parent is TypeDeclaration)
+					MakeSignatureTypesAccessible(method);
 				var forbiddenNames = methodDecl.Ancestors.OfType<TypeDeclaration>().Select(t => t.Name)
 					.Append(methodDecl.Name);
 				RenameTypeParameters(methodDecl.TypeParameters, method.TypeParameters, methodDecl.Constraints,
