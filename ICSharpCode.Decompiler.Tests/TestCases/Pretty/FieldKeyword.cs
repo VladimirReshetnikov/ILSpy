@@ -15,6 +15,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
+		internal class ConstructorParameterNameCollision
+		{
+			private readonly string fallback;
+
+			public string Text => field ?? fallback;
+
+			public ConstructorParameterNameCollision(string Text, string fallback)
+			{
+				this.fallback = fallback;
+				this.Text = Text ?? this.fallback;
+			}
+		}
+
 		internal static class StaticConstructorAssignedGetterOnlyProperty
 		{
 			private static readonly string fallback;
