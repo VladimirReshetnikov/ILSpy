@@ -291,6 +291,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public record struct PrimaryCtor(int A, string B);
 
+		public readonly record struct PrimaryCtorWithGetterOnly(string Value)
+		{
+			public string Value { get; } = Value;
+		}
+
+		public record struct PrimaryCtorWithInitOnly(string Value)
+		{
+			public string Value { get; init; } = Value;
+		}
+
 		public record struct MultipleCtorsNoPrimaryCtor
 		{
 			public Guid Id { get; }

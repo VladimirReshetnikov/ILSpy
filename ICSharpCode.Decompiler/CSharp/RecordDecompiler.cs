@@ -330,12 +330,14 @@ namespace ICSharpCode.Decompiler.CSharp
 						continue;
 					}
 
-					if (recordTypeDef.Kind != TypeKind.Struct)
+					bool expectedInitOnlySetter = !isStruct || recordTypeDef.IsReadOnly;
+					if (!(property.CanGet
+						&& property.Getter.Accessibility == Accessibility.Public
+						&& property.CanSet
+						&& property.Setter.Accessibility == Accessibility.Public
+						&& property.Setter.IsInitOnly == expectedInitOnlySetter))
 					{
-						if (!(property.CanSet && property.Setter.IsInitOnly))
-						{
-							continue;
-						}
+						continue;
 					}
 					primaryCtorParameterToAutoProperty.Add(parameter, property);
 				}
