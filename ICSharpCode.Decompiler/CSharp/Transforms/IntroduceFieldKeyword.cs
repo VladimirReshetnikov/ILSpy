@@ -50,7 +50,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		public void Run(AstNode rootNode, TransformContext context)
 		{
-			if (!context.Settings.UseFieldKeyword || !context.Settings.AutomaticProperties)
+			if (context.Settings.GetMinimumRequiredVersion() < LanguageVersion.CSharp14_0)
 				return;
 			this.context = context;
 			rootNode.AcceptVisitor(this);
@@ -59,7 +59,30 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		public override void VisitPropertyDeclaration(PropertyDeclaration propertyDeclaration)
 		{
 			base.VisitPropertyDeclaration(propertyDeclaration);
-			TryIntroduceFieldKeyword(propertyDeclaration);
+			EscapeFieldKeywordReferences(propertyDeclaration);
+			if (context.Settings.UseFieldKeyword && context.Settings.AutomaticProperties)
+			{
+				TryIntroduceFieldKeyword(propertyDeclaration);
+			}
+		}
+
+		// In C# 14, a bare identifier named 'field' inside a property accessor binds to the
+		// property's synthesized backing field. Preserve references that were already present in
+		// the AST by escaping them before TryIntroduceFieldKeyword adds intentional bare keywords.
+		static void EscapeFieldKeywordReferences(PropertyDeclaration propertyDeclaration)
+		{
+			foreach (var accessor in new[] { propertyDeclaration.Getter, propertyDeclaration.Setter })
+			{
+				if (accessor is null)
+					continue;
+				foreach (Identifier identifier in accessor.Descendants.OfType<Identifier>())
+				{
+					if (identifier.Name == "field")
+					{
+						identifier.IsVerbatim = true;
+					}
+				}
+			}
 		}
 
 		void TryIntroduceFieldKeyword(PropertyDeclaration propertyDeclaration)

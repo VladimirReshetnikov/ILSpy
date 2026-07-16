@@ -153,7 +153,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 		public int Prop {
 			[CompilerGenerated]
 			get {
-				return _003CProp_003Ek__BackingField + field;
+				return _003CProp_003Ek__BackingField + @field;
 			}
 		}
 	}

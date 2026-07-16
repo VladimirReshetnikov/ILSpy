@@ -2,7 +2,7 @@
 // 'field'. The C# compiler never emits this shape (a 'field'-keyword property cannot coexist with a
 // member named 'field' referenced in the accessor), but it must not be mis-reconstructed: rewriting
 // the backing field to the bare 'field' keyword would re-bind the member access. IntroduceFieldKeyword
-// must therefore keep the explicit backing field here.
+// must therefore keep the explicit backing field here and escape the ordinary member reference.
 
 .assembly extern mscorlib
 {

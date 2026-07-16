@@ -2,6 +2,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
 	internal class FieldKeyword
 	{
+		internal class PrimaryConstructorParameter(string field)
+		{
+			public string Value => @field;
+		}
+
 		public string ChangeDetectingSetter {
 			get {
 				return field;
