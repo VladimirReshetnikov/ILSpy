@@ -275,6 +275,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public string S;
 		}
 
+		public readonly record struct FieldBeforeAutoProperty
+		{
+			private readonly int first;
+
+			public int Second { get; }
+
+			public FieldBeforeAutoProperty(int first, int second)
+			{
+				this.first = first;
+				Second = second;
+			}
+		}
+
 		public record struct Interface(int B) : IRecord;
 
 		public interface IRecord

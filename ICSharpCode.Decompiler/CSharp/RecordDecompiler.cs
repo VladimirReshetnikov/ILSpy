@@ -408,14 +408,21 @@ namespace ICSharpCode.Decompiler.CSharp
 		{
 			// For records, the order of members is important:
 			// Equals/GetHashCode/PrintMembers must agree on an order of fields+properties.
-			// The IL metadata has the order of fields and the order of properties, but we
-			// need to detect the correct interleaving.
-			// We could try to detect this from the PrintMembers body, but let's initially
-			// restrict ourselves to the common case where the record only uses properties.
+			// The property table orders properties, while the field table orders fields and
+			// auto-properties through their backing fields. Merge both sets of constraints.
 			var subst = recordTypeDef.AsParameterizedType().GetSubstitution();
-			return recordTypeDef.Properties.Select(p => p.Specialize(subst)).Concat(
-				recordTypeDef.Fields.Select(f => (IField)f.Specialize(subst)).Where(f => !backingFieldToAutoProperty.ContainsKey(f))
-			).ToList();
+			var propertyOrder = recordTypeDef.Properties.Select(p => (IMember)p.Specialize(subst)).ToList();
+			var fieldOrder = new List<IMember>();
+			foreach (var field in recordTypeDef.Fields.Select(f => (IField)f.Specialize(subst)))
+			{
+				if (backingFieldToAutoProperty.TryGetValue(field, out var property))
+					fieldOrder.Add(property);
+				else
+					fieldOrder.Add(field);
+			}
+
+			var baselineOrder = propertyOrder.Concat(fieldOrder).Distinct().ToList();
+			return CSharpDecompiler.MergeMemberOrders(baselineOrder, propertyOrder, fieldOrder);
 		}
 
 		/// <summary>

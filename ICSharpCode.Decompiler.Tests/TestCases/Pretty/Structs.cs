@@ -16,6 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Runtime.InteropServices;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
@@ -23,6 +24,50 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 	[StructLayout(LayoutKind.Sequential, Size = 1)]
 	public struct EmptyStruct
 	{
+	}
+
+	[StructLayout(LayoutKind.Sequential)]
+	public struct EmptyStructWithZeroClassSize
+	{
+	}
+
+	public struct SequentialGeneratedFieldOrder
+	{
+#if EXPECTED_OUTPUT && LEGACY_CSC
+		public event Action Changed;
+
+		public long Last;
+
+		public bool First { get; private set; }
+#elif EXPECTED_OUTPUT && MCS2
+		public long Last;
+
+		public event Action Changed;
+
+		public bool First { get; private set; }
+#else
+		public bool First { get; private set; }
+
+		public event Action Changed;
+
+		public long Last;
+#endif
+
+		public SequentialGeneratedFieldOrder(bool first, Action changed, long last)
+		{
+			this = default(SequentialGeneratedFieldOrder);
+			First = first;
+			this.Changed = changed;
+			Last = last;
+		}
+
+		public void Raise()
+		{
+			if (this.Changed != null)
+			{
+				this.Changed();
+			}
+		}
 	}
 
 	public class Structs

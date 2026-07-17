@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 {
@@ -27,6 +28,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 		{
 		}
 
+		[StructLayout(LayoutKind.Sequential)]
 		private struct MarkerStruct : IMarker
 		{
 		}
@@ -35,6 +37,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 		{
 		}
 
+		[StructLayout(LayoutKind.Sequential)]
 		private struct SetterStruct
 		{
 			public int Value {

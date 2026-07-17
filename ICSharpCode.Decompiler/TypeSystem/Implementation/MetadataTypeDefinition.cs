@@ -429,7 +429,12 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 			var layout = typeDefinition.GetLayout();
 			LayoutKind defaultLayoutKind = Kind == TypeKind.Struct ? LayoutKind.Sequential : LayoutKind.Auto;
-			if (layoutKind != defaultLayoutKind || charSet != CharSet.Ansi || layout.PackingSize > 0 || layout.Size > 0)
+			bool needsZeroSizeEmptyStructLayout = Kind == TypeKind.Struct
+				&& layoutKind == LayoutKind.Sequential && layout.Size == 0
+				&& typeDefinition.GetFields().All(fieldHandle =>
+					(metadata.GetFieldDefinition(fieldHandle).Attributes & FieldAttributes.Static) != 0);
+			if (layoutKind != defaultLayoutKind || charSet != CharSet.Ansi || layout.PackingSize > 0 || layout.Size > 0
+				|| needsZeroSizeEmptyStructLayout)
 			{
 				var structLayout = new AttributeBuilder(module, KnownAttribute.StructLayout);
 				structLayout.AddFixedArg(

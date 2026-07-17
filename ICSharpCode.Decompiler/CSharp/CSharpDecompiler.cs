@@ -651,6 +651,89 @@ namespace ICSharpCode.Decompiler.CSharp
 			return typeDef.Fields.Concat<IMember>(typeDef.Properties).Concat(typeDef.Methods).Concat(typeDef.Events).OrderBy((member) => GetOrderingHandle(member), HandleComparer.Default);
 		}
 
+		bool RequiresSequentialFieldOrdering(ITypeDefinition typeDef)
+		{
+			if (typeDef.MetadataToken.Kind != HandleKind.TypeDefinition)
+				return false;
+			var type = module.MetadataFile.Metadata.GetTypeDefinition((TypeDefinitionHandle)typeDef.MetadataToken);
+			return (type.Attributes & System.Reflection.TypeAttributes.LayoutMask)
+				== System.Reflection.TypeAttributes.SequentialLayout;
+		}
+
+		IEnumerable<IMember> GetMembersWithSequentialFieldOrdering(ITypeDefinition typeDef)
+		{
+			var properties = typeDef.Properties.ToDictionary(property => property.MetadataToken);
+			var events = typeDef.Events.ToDictionary(@event => @event.MetadataToken);
+			var replacedFields = new HashSet<EntityHandle>();
+			var fieldOrder = new List<IMember>();
+			foreach (var field in typeDef.Fields)
+			{
+				IMember member = field;
+				if (field.MetadataToken.Kind == HandleKind.FieldDefinition
+					&& MemberIsHidden(module.MetadataFile, field.MetadataToken, settings))
+				{
+					var fieldHandle = (FieldDefinitionHandle)field.MetadataToken;
+					if (module.MetadataFile.PropertyAndEventBackingFieldLookup.IsPropertyBackingField(fieldHandle, out var propertyHandle)
+						&& properties.TryGetValue(propertyHandle, out var property))
+					{
+						member = property;
+						replacedFields.Add(field.MetadataToken);
+					}
+					else if (module.MetadataFile.PropertyAndEventBackingFieldLookup.IsEventBackingField(fieldHandle, out var eventHandle)
+						&& events.TryGetValue(eventHandle, out var @event))
+					{
+						member = @event;
+						replacedFields.Add(field.MetadataToken);
+					}
+				}
+				fieldOrder.Add(member);
+			}
+
+			var propertyOrder = typeDef.Properties.Cast<IMember>().ToList();
+			var eventOrder = typeDef.Events.Cast<IMember>().ToList();
+			var baselineOrder = typeDef.Fields.Where(field => !replacedFields.Contains(field.MetadataToken)).Cast<IMember>()
+				.Concat(propertyOrder).Concat(eventOrder).Distinct().ToList();
+			return MergeMemberOrders(baselineOrder, fieldOrder, propertyOrder, eventOrder);
+		}
+
+		internal static List<IMember> MergeMemberOrders(List<IMember> baselineOrder, params IReadOnlyList<IMember>[] constrainedOrders)
+		{
+			var nodes = baselineOrder.Concat(constrainedOrders.SelectMany(order => order)).Distinct().ToList();
+			var successors = nodes.ToDictionary(member => member, _ => new HashSet<IMember>());
+			var predecessorCount = nodes.ToDictionary(member => member, _ => 0);
+			foreach (var order in constrainedOrders)
+				AddConstraints(order);
+
+			var emitted = new HashSet<IMember>();
+			var orderedMembers = new List<IMember>(nodes.Count);
+			while (orderedMembers.Count < nodes.Count)
+			{
+				IMember? next = nodes.FirstOrDefault(member => !emitted.Contains(member) && predecessorCount[member] == 0);
+				if (next == null)
+				{
+					// Conflicting metadata orders cannot be represented in C#. The first
+					// constraint is the caller's required fallback order.
+					return constrainedOrders[0].Concat(nodes).Distinct().ToList();
+				}
+				emitted.Add(next);
+				orderedMembers.Add(next);
+				foreach (var successor in successors[next])
+					predecessorCount[successor]--;
+			}
+			return orderedMembers;
+
+			void AddConstraints(IReadOnlyList<IMember> members)
+			{
+				for (int i = 1; i < members.Count; i++)
+				{
+					var predecessor = members[i - 1];
+					var successor = members[i];
+					if (!predecessor.Equals(successor) && successors[predecessor].Add(successor))
+						predecessorCount[successor]++;
+				}
+			}
+		}
+
 		#endregion
 
 		static PEFile LoadPEFile(string fileName, DecompilerSettings settings)
@@ -2120,14 +2203,19 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (recordDecompiler != null)
 					decompileRun.RecordDecompilers.Add(typeDef, recordDecompiler);
 
-				// With C# 9 records, the relative order of fields and properties matters:
-				IEnumerable<IMember> fieldsAndProperties = isRecord
-					? recordDecompiler!.FieldsAndProperties
-					: typeDef.Fields.Concat<IMember>(typeDef.Properties);
+				// With C# 9 records, the relative order of fields and properties matters.
+				// Sequential-layout types also need backing fields to remain at the source position of
+				// the auto-property or field-like event that will recreate them.
+				bool requiresSequentialFieldOrdering = RequiresSequentialFieldOrdering(typeDef);
+				IEnumerable<IMember> fieldsPropertiesAndEvents = requiresSequentialFieldOrdering
+					? GetMembersWithSequentialFieldOrdering(typeDef)
+					: isRecord
+						? recordDecompiler!.FieldsAndProperties.Concat(typeDef.Events)
+						: typeDef.Fields.Concat<IMember>(typeDef.Properties).Concat(typeDef.Events);
 
 				// For COM interop scenarios, the relative order of virtual functions/properties matters:
 				IEnumerable<IMember> allOrderedMembers = RequiresNativeOrdering(typeDef) ? GetMembersWithNativeOrdering(typeDef) :
-					fieldsAndProperties.Concat(typeDef.Events).Concat(typeDef.Methods);
+					fieldsPropertiesAndEvents.Concat(typeDef.Methods);
 
 				var allOrderedEntities = typeDef.NestedTypes.Concat<IEntity>(allOrderedMembers).ToArray();
 
