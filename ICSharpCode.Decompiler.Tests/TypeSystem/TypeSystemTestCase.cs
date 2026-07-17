@@ -770,6 +770,9 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 	{
 		extension(int input)
 		{
+			[OverloadResolutionPriority(0)]
+			public void PriorityMethod(int value) { }
+
 			public void Method() { }
 			public void Method(char c) { }
 			public string AsString => input.ToString();
@@ -788,6 +791,12 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		extension(int number)
 		{
 			public int Squared => number * number;
+		}
+
+		extension(long number)
+		{
+			[OverloadResolutionPriority(1)]
+			public void PriorityMethod(long value) { }
 		}
 
 		extension(string input)

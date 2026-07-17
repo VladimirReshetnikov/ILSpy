@@ -478,7 +478,8 @@ namespace ICSharpCode.Decompiler.CSharp
 			if (method.IsAccessor && (method.AccessorOwner.SymbolKind == SymbolKind.Indexer || argumentList.ExpectedParameters.Length == allowedParamCount))
 			{
 				argumentList.CheckNoNamedOrOptionalArguments();
-				return HandleAccessorCall(expectedTargetDetails, method, target, argumentList.Arguments.ToList(), argumentList.ArgumentNames);
+				return HandleAccessorCall(expectedTargetDetails, method, target, argumentList.Arguments.ToList(),
+					argumentList.ExpectedParameters, argumentList.ArgumentNames);
 			}
 
 			if (IsDelegateEqualityComparison(method, argumentList.Arguments))
@@ -768,7 +769,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			var unused = new IdentifierExpression("initializedObject").WithRR(target).WithoutILInstruction();
 
 			var assignment = HandleAccessorCall(expectedTargetDetails, method, unused,
-				argumentList.Arguments.ToList(), argumentList.ArgumentNames);
+				argumentList.Arguments.ToList(), argumentList.ExpectedParameters, argumentList.ArgumentNames);
 
 			if (((AssignmentExpression)assignment).Left is IndexerExpression indexer && indexer.Target is not null)
 				indexer.Target.Remove();
@@ -1329,7 +1330,8 @@ namespace ICSharpCode.Decompiler.CSharp
 			/// </summary>
 			EnforceExplicitIn = 8,
 			NoNamedArgsForPrettiness = 0x10,
-			All = 0x1f,
+			DisambiguateWithNamedArguments = 0x20,
+			All = 0x3f,
 		}
 
 		private CallTransformation GetRequiredTransformationsForCall(ExpectedTargetDetails expectedTargetDetails, IMethod method,
@@ -1375,6 +1377,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			bool appliedRequireTypeArgumentsShortcut = false;
 			bool typeArgumentsRequiredForSpecialization = false;
 			bool argumentsCasted = false;
+			bool expectedParameterNamesApplied = false;
 			if (method.TypeParameters.Count > 0 && (allowedTransforms & CallTransformation.RequireTypeArguments) != 0
 				&& !IsPossibleExtensionMethodCallOnNull(method, argumentList.Arguments))
 			{
@@ -1474,6 +1477,13 @@ namespace ICSharpCode.Decompiler.CSharp
 						{
 							argumentList.FirstOptionalArgumentIndex = -1;
 						}
+						else if ((allowedTransforms & CallTransformation.DisambiguateWithNamedArguments) != 0
+							&& !expectedParameterNamesApplied
+							&& OverloadResolution.IsOverloadResolutionPriorityMismatch(method, foundMethod)
+							&& TryUseExpectedParameterNames(ref argumentList))
+						{
+							expectedParameterNamesApplied = true;
+						}
 						else if (!argumentsCasted)
 						{
 							// If we added type arguments beforehand, but that didn't make the code any better,
@@ -1538,6 +1548,66 @@ namespace ICSharpCode.Decompiler.CSharp
 			if (!argumentList.AddNamesToPrimitiveValues)
 				transform |= CallTransformation.NoNamedArgsForPrettiness;
 			return transform;
+		}
+
+		private static bool TryUseExpectedParameterNames(ref ArgumentList argumentList)
+		{
+			if (argumentList.IsExpandedForm || argumentList.Arguments.Length == 0
+				|| argumentList.ExpectedParameters.Length != argumentList.Arguments.Length)
+				return false;
+
+			if (!TryGetExpectedParameterNames(argumentList.ExpectedParameters, argumentList.Arguments.Length, out var names))
+				return false;
+			argumentList.ArgumentNames = names;
+			return true;
+		}
+
+		private static bool TryGetExpectedParameterNames(IReadOnlyList<IParameter> parameters, int argumentCount,
+			[NotNullWhen(true)] out string[]? names)
+		{
+			names = null;
+			if (argumentCount == 0 || parameters.Count != argumentCount)
+				return false;
+
+			var expectedNames = new string[argumentCount];
+			var uniqueNames = new HashSet<string>(StringComparer.Ordinal);
+			for (int i = 0; i < expectedNames.Length; i++)
+			{
+				string name = parameters[i].Name;
+				if (!AssignVariableNames.IsValidName(name) || !uniqueNames.Add(name))
+					return false;
+				expectedNames[i] = name;
+			}
+
+			names = expectedNames;
+			return true;
+		}
+
+		private static bool TryGetExpectedAccessorParameterNames(IMethod accessor, IProperty property,
+			IReadOnlyList<IParameter> expectedParameters, int argumentCount, [NotNullWhen(true)] out string[]? names)
+		{
+			names = null;
+			if (argumentCount == 0 || expectedParameters.Count < argumentCount || property.Parameters.Count != argumentCount)
+				return false;
+
+			var propertyParameters = new IParameter[argumentCount];
+			for (int i = 0; i < argumentCount; i++)
+			{
+				int parameterIndex = -1;
+				for (int j = 0; j < accessor.Parameters.Count; j++)
+				{
+					if (ReferenceEquals(expectedParameters[i], accessor.Parameters[j]))
+					{
+						parameterIndex = j;
+						break;
+					}
+				}
+				if (parameterIndex < 0 || parameterIndex >= property.Parameters.Count)
+					return false;
+				propertyParameters[i] = property.Parameters[parameterIndex];
+			}
+
+			return TryGetExpectedParameterNames(propertyParameters, argumentCount, out names);
 		}
 
 		private void EnforceExplicitIn(TranslatedExpression[] arguments, IParameter[] expectedParameters)
@@ -1948,7 +2018,8 @@ namespace ICSharpCode.Decompiler.CSharp
 		}
 
 		ExpressionWithResolveResult HandleAccessorCall(ExpectedTargetDetails expectedTargetDetails, IMethod method,
-			TranslatedExpression target, List<TranslatedExpression> arguments, string[]? argumentNames)
+			TranslatedExpression target, List<TranslatedExpression> arguments,
+			IReadOnlyList<IParameter> expectedParameters, string[]? argumentNames)
 		{
 			bool requireTarget;
 			if (settings.AlwaysQualifyMemberReferences || method.AccessorOwner!.SymbolKind == SymbolKind.Indexer || expressionBuilder.HidesVariableWithName(method.AccessorOwner.Name))
@@ -1960,6 +2031,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			bool targetCasted = false;
 			bool isSetter = method.ReturnType.IsKnownType(KnownTypeCode.Void);
 			bool argumentsCasted = (isSetter && method.Parameters.Count == 1) || (!isSetter && method.Parameters.Count == 0);
+			bool expectedParameterNamesApplied = false;
 			var targetResolveResult = requireTarget ? target.ResolveResult : null;
 
 			TranslatedExpression value = default(TranslatedExpression);
@@ -1972,7 +2044,14 @@ namespace ICSharpCode.Decompiler.CSharp
 			IMember? foundMember;
 			while (!IsUnambiguousAccess(expectedTargetDetails, targetResolveResult, method, arguments, argumentNames, out foundMember))
 			{
-				if (!argumentsCasted)
+				if (!expectedParameterNamesApplied && method.AccessorOwner is IProperty property
+					&& foundMember is IParameterizedMember actualMember
+					&& OverloadResolution.IsOverloadResolutionPriorityMismatch(property, actualMember)
+					&& TryGetExpectedAccessorParameterNames(method, property, expectedParameters, arguments.Count, out argumentNames))
+				{
+					expectedParameterNamesApplied = true;
+				}
+				else if (!argumentsCasted)
 				{
 					argumentsCasted = true;
 					CastArguments(arguments, method.Parameters.ToList());
@@ -1996,6 +2075,16 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 
 			var rr = new MemberResolveResult(target.ResolveResult, foundMember);
+			IEnumerable<Expression> GetArgumentExpressions()
+			{
+				for (int i = 0; i < arguments.Count; i++)
+				{
+					if (argumentNames?[i] is string name)
+						yield return new NamedArgumentExpression(name, arguments[i].Expression);
+					else
+						yield return arguments[i].Expression;
+				}
+			}
 
 			if (isSetter)
 			{
@@ -2003,7 +2092,7 @@ namespace ICSharpCode.Decompiler.CSharp
 
 				if (arguments.Count != 0)
 				{
-					expr = new IndexerExpression(target.ResolveResult is InitializedObjectResolveResult ? null : target.Expression, arguments.Select(a => a.Expression))
+					expr = new IndexerExpression(target.ResolveResult is InitializedObjectResolveResult ? null : target.Expression, GetArgumentExpressions())
 						.WithoutILInstruction().WithRR(rr);
 				}
 				else if (requireTarget)
@@ -2035,7 +2124,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				if (arguments.Count != 0)
 				{
-					return new IndexerExpression(target.Expression, arguments.Select(a => a.Expression))
+					return new IndexerExpression(target.Expression, GetArgumentExpressions())
 						.WithoutILInstruction().WithRR(rr);
 				}
 				else if (requireTarget)
@@ -2099,9 +2188,10 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 			else
 			{
+				bool expectedParameterNamesApplied = false;
 				while (IsUnambiguousCall(expectedTargetDetails, method, null, Empty<IType>.Array,
 					argumentList.GetArgumentResolveResults().ToArray(),
-					argumentList.GetArgumentNames(), argumentList.FirstOptionalArgumentIndex, out _,
+					argumentList.GetArgumentNames(), argumentList.FirstOptionalArgumentIndex, out var foundMethod,
 					out var bestCandidateIsExpandedForm) != OverloadResolutionErrors.None || bestCandidateIsExpandedForm != argumentList.IsExpandedForm)
 				{
 					if (argumentList.AddNamesToPrimitiveValues)
@@ -2112,6 +2202,13 @@ namespace ICSharpCode.Decompiler.CSharp
 					if (argumentList.FirstOptionalArgumentIndex >= 0)
 					{
 						argumentList.FirstOptionalArgumentIndex = -1;
+						continue;
+					}
+					if (!expectedParameterNamesApplied
+						&& OverloadResolution.IsOverloadResolutionPriorityMismatch(method, foundMethod)
+						&& TryUseExpectedParameterNames(ref argumentList))
+					{
+						expectedParameterNamesApplied = true;
 						continue;
 					}
 					CastArguments(argumentList.Arguments, argumentList.ExpectedParameters);

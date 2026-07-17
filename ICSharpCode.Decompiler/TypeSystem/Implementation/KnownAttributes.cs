@@ -120,11 +120,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 
 		// C# 14 attributes:
 		ExtensionMarker,
+
+		// C# 13 attributes (appended to preserve existing enum values):
+		OverloadResolutionPriority,
 	}
 
 	public static class KnownAttributes
 	{
-		internal const int Count = (int)KnownAttribute.ExtensionMarker + 1;
+		internal const int Count = (int)KnownAttribute.OverloadResolutionPriority + 1;
 
 		static readonly TopLevelTypeName[] typeNames = new TopLevelTypeName[Count]{
 			default,
@@ -200,6 +203,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			new TopLevelTypeName("System.Runtime.CompilerServices", "InlineArrayAttribute"),
 			// C# 14 attributes:
 			new TopLevelTypeName("System.Runtime.CompilerServices", "ExtensionMarkerAttribute"),
+			// C# 13 attributes:
+			new TopLevelTypeName("System.Runtime.CompilerServices", "OverloadResolutionPriorityAttribute"),
 		};
 
 		public static ref readonly TopLevelTypeName GetTypeName(this KnownAttribute attr)

@@ -36,6 +36,8 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 		sealed class Candidate
 		{
 			public readonly IParameterizedMember Member;
+			public readonly IParameterizedMember MemberWithPriority;
+			public readonly int OverloadResolutionPriority;
 
 			/// <summary>
 			/// Returns the normal form candidate, if this is an expanded candidate.
@@ -120,6 +122,8 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			public Candidate(IParameterizedMember member, bool isExpanded)
 			{
 				this.Member = member;
+				this.MemberWithPriority = GetMemberWithOverloadResolutionPriority(member);
+				this.OverloadResolutionPriority = GetOverloadResolutionPriority(MemberWithPriority);
 				this.IsExpandedForm = isExpanded;
 				IParameterizedMember memberDefinition = (IParameterizedMember)member.MemberDefinition;
 				// For specialized methods, go back to the original parameters:
@@ -146,9 +150,10 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 		readonly ResolveResult[] arguments;
 		readonly string[] argumentNames;
 		readonly CSharpConversions conversions;
-		//List<Candidate> candidates = new List<Candidate>();
+		readonly List<Candidate> candidates = new List<Candidate>();
 		Candidate bestCandidate;
 		Candidate bestCandidateAmbiguousWith;
+		bool hasApplicableCandidateWithNonDefaultPriority;
 		IType[] explicitlyGivenTypeArguments;
 		bool bestCandidateWasValidated;
 		OverloadResolutionErrors bestCandidateValidationResult;
@@ -282,8 +287,71 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			MapCorrespondingParameters(candidate);
 			RunTypeInference(candidate);
 			CheckApplicability(candidate);
-			ConsiderIfNewCandidateIsBest(candidate);
+			candidates.Add(candidate);
+			hasApplicableCandidateWithNonDefaultPriority |= IsApplicable(candidate.Errors)
+				&& candidate.OverloadResolutionPriority != 0;
+			if (hasApplicableCandidateWithNonDefaultPriority)
+				RecalculateBestCandidate();
+			else
+				ConsiderIfNewCandidateIsBest(candidate);
 			return true;
+		}
+
+		static IParameterizedMember GetMemberWithOverloadResolutionPriority(IParameterizedMember member)
+		{
+			HashSet<IMember> visitedMembers = null;
+			while (member.IsOverride)
+			{
+				visitedMembers ??= new HashSet<IMember>();
+				if (!visitedMembers.Add(member.MemberDefinition))
+					break;
+				if (InheritanceHelper.GetBaseMember(member) is not IParameterizedMember baseMember)
+					break;
+				member = baseMember;
+			}
+			return member;
+		}
+
+		static int GetOverloadResolutionPriority(IParameterizedMember member)
+		{
+			if (member is IMethod method)
+			{
+				if (method.IsAccessor || method.IsLocalFunction || method.IsDestructor
+					|| (method.IsConstructor && method.IsStatic)
+					|| (method.IsOperator && method.Name is "op_Implicit" or "op_Explicit" or "op_CheckedImplicit" or "op_CheckedExplicit"))
+				{
+					return 0;
+				}
+			}
+			else if (member is not IProperty { IsIndexer: true })
+			{
+				return 0;
+			}
+
+			IAttribute attribute = null;
+			foreach (var candidateAttribute in member.GetAttributes())
+			{
+				if (candidateAttribute.AttributeType.FullName == KnownAttribute.OverloadResolutionPriority.GetTypeName().ReflectionName)
+					attribute = candidateAttribute;
+			}
+			if (attribute?.FixedArguments.Length == 1
+				&& attribute.FixedArguments[0].Value is int priority)
+			{
+				return priority;
+			}
+			return 0;
+		}
+
+		internal static bool IsOverloadResolutionPriorityMismatch(IParameterizedMember expectedMember,
+			IParameterizedMember actualMember)
+		{
+			if (actualMember == null)
+				return false;
+
+			expectedMember = GetMemberWithOverloadResolutionPriority(expectedMember);
+			actualMember = GetMemberWithOverloadResolutionPriority(actualMember);
+			return GetOverloadResolutionPriorityGroup(expectedMember).Equals(GetOverloadResolutionPriorityGroup(actualMember))
+				&& GetOverloadResolutionPriority(expectedMember) != GetOverloadResolutionPriority(actualMember);
 		}
 
 		bool ResolveParameterTypes(Candidate candidate, bool useSpecializedParameters)
@@ -975,6 +1043,65 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 		#endregion
 
 		#region ConsiderIfNewCandidateIsBest
+		bool IsApplicableForOverloadResolutionPriority(Candidate candidate)
+		{
+			return IsApplicable(candidate.Errors)
+				&& ValidateMethodConstraints(candidate) == OverloadResolutionErrors.None;
+		}
+
+		static IType GetOverloadResolutionPriorityGroup(IParameterizedMember member)
+		{
+			var extensionInfo = member.ResolveExtensionInfo();
+			IMethod extensionMember = member as IMethod;
+			if (extensionMember == null && member is IProperty property)
+				extensionMember = property.Getter ?? property.Setter;
+
+			if (extensionInfo != null && extensionMember != null
+				&& extensionInfo.InfoOfExtensionMember((IMethod)extensionMember.MemberDefinition) is ExtensionMemberInfo memberInfo)
+			{
+				return memberInfo.ExtensionContainer;
+			}
+			return member.DeclaringType;
+		}
+
+		void RecalculateBestCandidate()
+		{
+			bestCandidate = null;
+			bestCandidateAmbiguousWith = null;
+			bestCandidateWasValidated = false;
+
+			var highestPriorityByDeclaringType = new Dictionary<IType, int>();
+			bool hasConstraintValidApplicableCandidate = false;
+			foreach (var candidate in candidates)
+			{
+				if (!IsApplicableForOverloadResolutionPriority(candidate))
+					continue;
+				hasConstraintValidApplicableCandidate = true;
+				var declaringType = GetOverloadResolutionPriorityGroup(candidate.MemberWithPriority);
+				if (declaringType == null)
+					continue;
+				if (!highestPriorityByDeclaringType.TryGetValue(declaringType, out int highestPriority)
+					|| candidate.OverloadResolutionPriority > highestPriority)
+				{
+					highestPriorityByDeclaringType[declaringType] = candidate.OverloadResolutionPriority;
+				}
+			}
+
+			foreach (var candidate in candidates)
+			{
+				bool isApplicable = IsApplicableForOverloadResolutionPriority(candidate);
+				if (hasConstraintValidApplicableCandidate && !isApplicable && IsApplicable(candidate.Errors))
+					continue;
+				var declaringType = GetOverloadResolutionPriorityGroup(candidate.MemberWithPriority);
+				if (isApplicable && declaringType != null
+					&& highestPriorityByDeclaringType[declaringType] > candidate.OverloadResolutionPriority)
+				{
+					continue;
+				}
+				ConsiderIfNewCandidateIsBest(candidate);
+			}
+		}
+
 		void ConsiderIfNewCandidateIsBest(Candidate candidate)
 		{
 			if (bestCandidate == null)

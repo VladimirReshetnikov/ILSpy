@@ -18,8 +18,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection.Metadata;
+using System.Runtime.CompilerServices;
 
 using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.Semantics;
@@ -171,6 +174,296 @@ namespace ICSharpCode.Decompiler.Tests.Semantics
 			Assert.That(r.AddCandidate(m2), Is.EqualTo(OverloadResolutionErrors.None));
 			Assert.That(!r.IsAmbiguous);
 			Assert.That(r.BestCandidate, Is.SameAs(m1));
+		}
+
+		[Test]
+		public void HigherOverloadResolutionPriorityWinsBeforeBetterConversion()
+		{
+			var stringOverload = GetMethod(typeof(HigherPriorityTestCase), typeof(string));
+			var objectOverload = GetMethod(typeof(HigherPriorityTestCase), typeof(object));
+
+			OverloadResolution r = new OverloadResolution(compilation, MakeArgumentList(typeof(string)));
+			Assert.That(r.AddCandidate(stringOverload), Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.AddCandidate(objectOverload), Is.EqualTo(OverloadResolutionErrors.None));
+
+			Assert.That(r.BestCandidateErrors, Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.BestCandidate, Is.SameAs(objectOverload));
+		}
+
+		class HigherPriorityTestCase
+		{
+			public static void Method(string value) { }
+
+			[OverloadResolutionPriority(1)]
+			public static void Method(object value) { }
+		}
+
+		[Test]
+		public void NegativeOverloadResolutionPriorityLosesBeforeBetterConversion()
+		{
+			var stringOverload = GetMethod(typeof(NegativePriorityTestCase), typeof(string));
+			var objectOverload = GetMethod(typeof(NegativePriorityTestCase), typeof(object));
+
+			OverloadResolution r = new OverloadResolution(compilation, MakeArgumentList(typeof(string)));
+			Assert.That(r.AddCandidate(stringOverload), Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.AddCandidate(objectOverload), Is.EqualTo(OverloadResolutionErrors.None));
+
+			Assert.That(r.BestCandidateErrors, Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.BestCandidate, Is.SameAs(objectOverload));
+		}
+
+		class NegativePriorityTestCase
+		{
+			[OverloadResolutionPriority(-1)]
+			public static void Method(string value) { }
+
+			public static void Method(object value) { }
+		}
+
+		[Test]
+		public void LastOverloadResolutionPriorityAttributeWins()
+		{
+			var declaringType = compilation.FindType(typeof(DuplicatePriorityTestCase)).GetDefinition();
+			var objectMethod = (FakeMethod)MakeMethod(typeof(object));
+			objectMethod.DeclaringType = declaringType;
+			var stringMethod = (FakeMethod)MakeMethod(typeof(string));
+			stringMethod.DeclaringType = declaringType;
+			var attributedObjectMethod = new AttributedMethod(objectMethod, MakePriorityAttribute(-1), MakePriorityAttribute(1));
+
+			OverloadResolution r = new OverloadResolution(compilation, MakeArgumentList(typeof(string)));
+			Assert.That(r.AddCandidate(stringMethod), Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.AddCandidate(attributedObjectMethod), Is.EqualTo(OverloadResolutionErrors.None));
+
+			Assert.That(r.BestCandidateErrors, Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.BestCandidate, Is.SameAs(attributedObjectMethod));
+		}
+
+		IAttribute MakePriorityAttribute(int priority)
+		{
+			return new DefaultAttribute(
+				compilation.FindType(typeof(OverloadResolutionPriorityAttribute)),
+				ImmutableArray.Create(new CustomAttributeTypedArgument<IType>(compilation.FindType(typeof(int)), priority)),
+				ImmutableArray<CustomAttributeNamedArgument<IType>>.Empty);
+		}
+
+		class DuplicatePriorityTestCase
+		{
+		}
+
+		sealed class AttributedMethod : SpecializedMethod, IEntity
+		{
+			readonly IReadOnlyList<IAttribute> attributes;
+
+			public AttributedMethod(IMethod method, params IAttribute[] attributes)
+				: base(method, TypeParameterSubstitution.Identity)
+			{
+				this.attributes = attributes;
+			}
+
+			IEnumerable<IAttribute> IEntity.GetAttributes() => attributes;
+
+			bool IEntity.HasAttribute(KnownAttribute attribute)
+			{
+				return attributes.Any(candidate => candidate.AttributeType.IsKnownType(attribute));
+			}
+
+			IAttribute IEntity.GetAttribute(KnownAttribute attribute)
+			{
+				return attributes.FirstOrDefault(candidate => candidate.AttributeType.IsKnownType(attribute));
+			}
+		}
+
+		[Test]
+		public void OverloadResolutionPriorityIsGroupedByDeclaringTypeAndOrderIndependent()
+		{
+			var lowPriorityMethod = GetMethod(typeof(PriorityGroupOne), typeof(string));
+			var highPriorityMethod = GetMethod(typeof(PriorityGroupOne), typeof(object));
+			var otherGroupMethod = GetMethod(typeof(PriorityGroupTwo), typeof(string));
+
+			IMethod[][] candidateOrders = {
+				new[] { otherGroupMethod, lowPriorityMethod, highPriorityMethod },
+				new[] { highPriorityMethod, lowPriorityMethod, otherGroupMethod }
+			};
+			foreach (var candidates in candidateOrders)
+			{
+				OverloadResolution r = new OverloadResolution(compilation, MakeArgumentList(typeof(string)));
+				foreach (var candidate in candidates)
+				{
+					Assert.That(r.AddCandidate(candidate), Is.EqualTo(OverloadResolutionErrors.None));
+				}
+
+				Assert.That(r.BestCandidateErrors, Is.EqualTo(OverloadResolutionErrors.None));
+				Assert.That(r.BestCandidate, Is.SameAs(otherGroupMethod));
+			}
+		}
+
+		class PriorityGroupOne
+		{
+			public static void Method(string value) { }
+
+			[OverloadResolutionPriority(1)]
+			public static void Method(object value) { }
+		}
+
+		class PriorityGroupTwo
+		{
+			public static void Method(string value) { }
+		}
+
+		[Test]
+		public void OverrideUsesPriorityAndDeclaringTypeOfLeastDerivedDeclaration()
+		{
+			var stringOverload = GetMethod(typeof(PriorityOverrideBase), typeof(string));
+			var objectOverride = GetMethod(typeof(PriorityOverrideDerived), typeof(object));
+
+			OverloadResolution r = new OverloadResolution(compilation, MakeArgumentList(typeof(string)));
+			Assert.That(r.AddCandidate(stringOverload), Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.AddCandidate(objectOverride), Is.EqualTo(OverloadResolutionErrors.None));
+
+			Assert.That(r.BestCandidateErrors, Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.BestCandidate, Is.SameAs(objectOverride));
+		}
+
+		class PriorityOverrideBase
+		{
+			public void Method(string value) { }
+
+			[OverloadResolutionPriority(1)]
+			public virtual void Method(object value) { }
+		}
+
+		class PriorityOverrideDerived : PriorityOverrideBase
+		{
+			public override void Method(object value) { }
+		}
+
+		[Test]
+		public void ConstraintInvalidPriorityCandidateDoesNotPruneValidCandidate()
+		{
+			var objectOverload = GetMethod(typeof(PriorityConstraintTestCase), typeof(object));
+			var stringOverload = GetMethod(typeof(PriorityConstraintTestCase), typeof(string));
+
+			OverloadResolution r = new OverloadResolution(
+				compilation,
+				MakeArgumentList(typeof(string)),
+				typeArguments: new[] { compilation.FindType(typeof(string)) });
+			Assert.That(r.AddCandidate(objectOverload), Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.AddCandidate(stringOverload), Is.EqualTo(OverloadResolutionErrors.None));
+
+			Assert.That(r.BestCandidateErrors, Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.BestCandidate, Is.SameAs(stringOverload));
+		}
+
+		class PriorityConstraintTestCase
+		{
+			[OverloadResolutionPriority(1)]
+			public static void Method<T>(object value) where T : struct { }
+
+			public static void Method<T>(string value) { }
+		}
+
+		[Test]
+		public void ConstraintInvalidBetterConversionDoesNotWin()
+		{
+			var objectOverload = GetMethod(typeof(PriorityConstraintBetterConversionTestCase), typeof(object));
+			var stringOverload = GetMethod(typeof(PriorityConstraintBetterConversionTestCase), typeof(string));
+
+			OverloadResolution r = new OverloadResolution(
+				compilation,
+				MakeArgumentList(typeof(string)),
+				typeArguments: new[] { compilation.FindType(typeof(string)) });
+			Assert.That(r.AddCandidate(stringOverload), Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.AddCandidate(objectOverload), Is.EqualTo(OverloadResolutionErrors.None));
+
+			Assert.That(r.BestCandidateErrors, Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.BestCandidate, Is.SameAs(objectOverload));
+		}
+
+		[Test]
+		public void OnlyConstraintInvalidPriorityCandidateRetainsDiagnostic()
+		{
+			var stringOverload = GetMethod(typeof(PriorityConstraintBetterConversionTestCase), typeof(string));
+
+			OverloadResolution r = new OverloadResolution(
+				compilation,
+				MakeArgumentList(typeof(string)),
+				typeArguments: new[] { compilation.FindType(typeof(string)) });
+			Assert.That(r.AddCandidate(stringOverload), Is.EqualTo(OverloadResolutionErrors.None));
+
+			Assert.That(r.BestCandidateErrors, Is.EqualTo(OverloadResolutionErrors.MethodConstraintsNotSatisfied));
+			Assert.That(r.BestCandidate, Is.SameAs(stringOverload));
+		}
+
+		class PriorityConstraintBetterConversionTestCase
+		{
+			[OverloadResolutionPriority(1)]
+			public static void Method<T>(string value) where T : struct { }
+
+			public static void Method<T>(object value) { }
+		}
+
+		[Test]
+		public void OverloadResolutionPriorityGroupsPreserveConstructedDeclaringTypes()
+		{
+			var genericInterface = compilation.FindType(typeof(PriorityConstructedGroup<>)).GetDefinition();
+			var objectInterface = new ParameterizedType(genericInterface, compilation.FindType(typeof(object)));
+			var intInterface = new ParameterizedType(genericInterface, compilation.FindType(typeof(int)));
+			var objectOverload = GetMethod(objectInterface, typeof(object));
+			var intOverload = GetMethod(intInterface, typeof(int));
+			var stringOverload = GetMethod(intInterface, typeof(string));
+
+			OverloadResolution r = new OverloadResolution(compilation, MakeArgumentList(typeof(string)));
+			Assert.That(r.AddCandidate(objectOverload), Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.AddCandidate(intOverload), Is.EqualTo(OverloadResolutionErrors.ArgumentTypeMismatch));
+			Assert.That(r.AddCandidate(stringOverload), Is.EqualTo(OverloadResolutionErrors.None));
+
+			Assert.That(r.BestCandidateErrors, Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.BestCandidate, Is.SameAs(stringOverload));
+		}
+
+		interface PriorityConstructedGroup<T>
+		{
+			[OverloadResolutionPriority(1)]
+			string Method(T value);
+
+			string Method(string value);
+		}
+
+		[Test]
+		public void ExtensionBlockMembersGroupByOuterContainer()
+		{
+			var container = compilation.FindType(typeof(ExtensionEverything)).GetDefinition();
+			var extensionInfo = container.ExtensionInfo;
+			Assert.That(extensionInfo, Is.Not.Null);
+			var methods = extensionInfo.ExtensionGroups
+				.SelectMany(group => extensionInfo.GetMembersOfGroup(group.Marker))
+				.OfType<IMethod>()
+				.Where(method => method.Name == "PriorityMethod")
+				.ToArray();
+			var intOverload = methods.Single(method => method.Parameters[0].Type.IsKnownType(KnownTypeCode.Int32));
+			var longOverload = methods.Single(method => method.Parameters[0].Type.IsKnownType(KnownTypeCode.Int64));
+			Assert.That(intOverload.DeclaringType.Equals(longOverload.DeclaringType), Is.False);
+
+			OverloadResolution r = new OverloadResolution(compilation, MakeArgumentList(typeof(int)));
+			Assert.That(r.AddCandidate(intOverload), Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.AddCandidate(longOverload), Is.EqualTo(OverloadResolutionErrors.None));
+
+			Assert.That(r.BestCandidateErrors, Is.EqualTo(OverloadResolutionErrors.None));
+			Assert.That(r.BestCandidate, Is.SameAs(longOverload));
+		}
+
+		IMethod GetMethod(Type declaringType, Type parameterType)
+		{
+			return GetMethod(compilation.FindType(declaringType).GetDefinition(), parameterType);
+		}
+
+		IMethod GetMethod(IType declaringType, Type parameterType)
+		{
+			var expectedParameterType = compilation.FindType(parameterType);
+			return declaringType.GetMethods(method => method.Name == "Method", GetMemberOptions.IgnoreInheritedMembers).Single(method =>
+				method.Name == "Method"
+				&& method.Parameters.Count == 1
+				&& method.Parameters[0].Type.Equals(expectedParameterType));
 		}
 
 		[Test]
