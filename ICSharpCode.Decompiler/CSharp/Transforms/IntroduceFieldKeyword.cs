@@ -106,11 +106,25 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// assigned in a matching constructor, just like a getter-only auto-property.
 			var accessorReferences = new List<Expression>();
 			var constructorAssignmentReferences = new List<Expression>();
+			var constructorPropertyAssignmentReferences = new List<Expression>();
 			var externalReferences = new List<Expression>();
 			foreach (AstNode node in typeDeclaration.Descendants)
 			{
 				if (node is not (IdentifierExpression or MemberReferenceExpression))
 					continue;
+				var expression = (Expression)node;
+				// PatternStatementTransform may already render a store to a compiler-generated
+				// backing field as a getter-only property assignment. That spelling is valid if we
+				// introduce 'field', but must be changed back to the explicit field whenever this
+				// transform has to re-materialize it.
+				if (node.GetSymbol() is IProperty referencedProperty
+					&& referencedProperty.MetadataToken == property.MetadataToken
+					&& referencedProperty.ParentModule == property.ParentModule
+					&& IsRewritableConstructorAssignment(expression, propertyDeclaration, property))
+				{
+					constructorPropertyAssignmentReferences.Add(expression);
+					continue;
+				}
 				// Match by metadata token plus declaring module. A token alone is only a per-module row
 				// index, so an unrelated field in another assembly can share it and be mistaken for this
 				// backing field, rewriting a cross-assembly reference to the wrong member. Comparing the
@@ -121,24 +135,41 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					|| referenced.ParentModule != field.ParentModule)
 					continue;
 				if (IsInsideOwnAccessor(node, propertyDeclaration))
-					accessorReferences.Add((Expression)node);
-				else if (IsRewritableConstructorAssignment((Expression)node, propertyDeclaration, property))
-					constructorAssignmentReferences.Add((Expression)node);
+					accessorReferences.Add(expression);
+				else if (IsRewritableConstructorAssignment(expression, propertyDeclaration, property))
+					constructorAssignmentReferences.Add(expression);
 				else
-					externalReferences.Add((Expression)node);
+					externalReferences.Add(expression);
 			}
 			if (externalReferences.Count > 0)
 			{
 				// The 'field' keyword does not apply. If the explicit backing field is hidden but its
 				// references survive, they would dangle; re-materialize it as an ordinary field.
 				RematerializeHiddenBackingField(typeDeclaration, field,
-					accessorReferences.Concat(constructorAssignmentReferences).Concat(externalReferences));
+					accessorReferences.Concat(constructorAssignmentReferences)
+						.Concat(constructorPropertyAssignmentReferences).Concat(externalReferences));
 				return;
 			}
 			if (accessorReferences.Count == 0)
 			{
 				if (constructorAssignmentReferences.Count > 0)
-					RematerializeHiddenBackingField(typeDeclaration, field, constructorAssignmentReferences);
+				{
+					RematerializeHiddenBackingField(typeDeclaration, field,
+						constructorAssignmentReferences.Concat(constructorPropertyAssignmentReferences));
+				}
+				return;
+			}
+			// Roslyn always emits a mutable backing field for a field-backed property, even when
+			// the property has only a getter. Replacing an initonly metadata field with the C# 14
+			// contextual keyword would therefore silently drop the readonly flag. Keep an explicit
+			// field in that case so its metadata and constructor-only assignment semantics survive.
+			// An already-reconstructed auto-property has no accessor references and exits above;
+			// its { get; } syntax correctly recreates an initonly backing field.
+			if (field.IsReadOnly)
+			{
+				RematerializeHiddenBackingField(typeDeclaration, field,
+					accessorReferences.Concat(constructorAssignmentReferences)
+						.Concat(constructorPropertyAssignmentReferences));
 				return;
 			}
 			// Introducing the contextual 'field' keyword shadows anything else named 'field' that is in
@@ -149,7 +180,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			if (DeclaringTypeDeclaresFieldMember(declaringType) || AccessorReferencesFieldName(propertyDeclaration))
 			{
 				RematerializeHiddenBackingField(typeDeclaration, field,
-					accessorReferences.Concat(constructorAssignmentReferences));
+					accessorReferences.Concat(constructorAssignmentReferences)
+						.Concat(constructorPropertyAssignmentReferences));
 				return;
 			}
 
@@ -202,41 +234,49 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// A compiler-generated property backing field is hidden from the member list on the assumption
 		/// that an absorbing transform (the auto-property fold or the 'field' keyword) will remove its
 		/// references. When neither applies - the accessor carries custom logic and the field is also
-		/// written from outside the accessors - the references remain but the field is never declared.
-		/// Emit it as an ordinary field with a de-mangled name and strip the attributes that only make
-		/// sense on a hidden backing field. The de-mangled name equals the property name and therefore
-		/// collides with it; FixNameCollisions renames the private field afterwards.
+		/// written from outside the accessors - emit a hidden field as an ordinary field with a
+		/// de-mangled name. If the field already has an explicit declaration, keep it but retarget any
+		/// references that an earlier transform had rendered as property assignments. A de-mangled name
+		/// equals the property name, so FixNameCollisions renames the private field afterwards.
 		/// </summary>
 		void RematerializeHiddenBackingField(TypeDeclaration typeDeclaration, IField field, IEnumerable<Expression> references)
 		{
-			// If the field already has an explicit declaration, its references resolve; nothing to do.
-			bool alreadyDeclared = typeDeclaration.Members.OfType<FieldDeclaration>()
-				.Any(fd => fd.Variables.Count == 1 && fd.GetSymbol() is IField f
+			var fieldDecl = typeDeclaration.Members.OfType<FieldDeclaration>()
+				.FirstOrDefault(fd => fd.Variables.Count == 1 && fd.GetSymbol() is IField f
 					&& f.MetadataToken == field.MetadataToken && f.ParentModule == field.ParentModule);
-			if (alreadyDeclared)
-				return;
-
-			// strip the leading '<' and trailing '>k__BackingField' of '<name>k__BackingField'
-			const string suffix = ">k__BackingField";
-			if (!field.Name.StartsWith("<", StringComparison.Ordinal) || !field.Name.EndsWith(suffix, StringComparison.Ordinal))
-				return;
-			string name = field.Name.Substring(1, field.Name.Length - 1 - suffix.Length);
-
-			var fieldDecl = (FieldDeclaration)context.TypeSystemAstBuilder.ConvertEntity(field);
-			fieldDecl.Variables.Single().Name = name;
-			// the synthesized field is an ordinary field now, so drop attributes that only
-			// make sense on the hidden compiler-generated backing field
-			CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.CompilerGenerated);
-			CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.DebuggerBrowsable);
-
-			var lastField = typeDeclaration.Members.OfType<FieldDeclaration>().LastOrDefault();
-			var firstMember = typeDeclaration.Members.FirstOrDefault();
-			if (lastField != null)
-				typeDeclaration.Members.InsertAfter(lastField, fieldDecl);
-			else if (firstMember != null)
-				typeDeclaration.Members.InsertBefore(firstMember, fieldDecl);
+			string name;
+			if (fieldDecl != null)
+			{
+				name = fieldDecl.Variables.Single().Name;
+				// Existing field references already resolve. Only a reference that was rewritten to
+				// the property (notably a constructor assignment) needs to be redirected.
+				references = references.Where(reference => reference.GetSymbol() is not IField f
+					|| f.MetadataToken != field.MetadataToken || f.ParentModule != field.ParentModule).ToArray();
+			}
 			else
-				typeDeclaration.Members.Add(fieldDecl);
+			{
+				// strip the leading '<' and trailing '>k__BackingField' of '<name>k__BackingField'
+				const string suffix = ">k__BackingField";
+				if (!field.Name.StartsWith("<", StringComparison.Ordinal) || !field.Name.EndsWith(suffix, StringComparison.Ordinal))
+					return;
+				name = field.Name.Substring(1, field.Name.Length - 1 - suffix.Length);
+
+				fieldDecl = (FieldDeclaration)context.TypeSystemAstBuilder.ConvertEntity(field);
+				fieldDecl.Variables.Single().Name = name;
+				// the synthesized field is an ordinary field now, so drop attributes that only
+				// make sense on the hidden compiler-generated backing field
+				CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.CompilerGenerated);
+				CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.DebuggerBrowsable);
+
+				var lastField = typeDeclaration.Members.OfType<FieldDeclaration>().LastOrDefault();
+				var firstMember = typeDeclaration.Members.FirstOrDefault();
+				if (lastField != null)
+					typeDeclaration.Members.InsertAfter(lastField, fieldDecl);
+				else if (firstMember != null)
+					typeDeclaration.Members.InsertBefore(firstMember, fieldDecl);
+				else
+					typeDeclaration.Members.Add(fieldDecl);
+			}
 
 			foreach (Expression reference in references)
 			{
@@ -257,6 +297,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				else
 				{
 					reference.GetChild(Slots.Identifier)!.Name = name;
+					if (mrr != null)
+					{
+						reference.RemoveAnnotations<MemberResolveResult>();
+						reference.AddAnnotation(new MemberResolveResult(mrr.TargetResult, field));
+					}
 				}
 			}
 		}
