@@ -1568,6 +1568,9 @@ namespace ICSharpCode.Decompiler.CSharp
 				foreach (ParameterDeclaration parameter in memberDecl.GetChildren(Slots.Parameter))
 				{
 					var clone = (ParameterDeclaration)parameter.Clone();
+					// Calls to an explicit implementation use the interface declaration's params behavior.
+					// Retaining it on this synthetic bridge would invent a ParamArrayAttribute row.
+					clone.IsParams = false;
 					// This bridge has no counterpart in the original metadata. Retaining tuple names from the
 					// ordinary implementation would make Roslyn invent TupleElementNamesAttribute rows for it.
 					if (clone.Type is { } parameterType)

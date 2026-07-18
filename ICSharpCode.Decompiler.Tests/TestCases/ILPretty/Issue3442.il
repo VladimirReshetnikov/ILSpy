@@ -50,7 +50,7 @@
 
 	.method public hidebysig newslot abstract virtual
 		instance valuetype [System.Runtime]System.ValueTuple`2<int32, int32> NamedTuple (
-			valuetype [System.Runtime]System.ValueTuple`2<int32, int32> pair
+			valuetype [System.Runtime]System.ValueTuple`2<int32, int32>[] pairs
 		) cil managed
 	{
 		.param [0]
@@ -62,6 +62,9 @@
 		.custom instance void [System.Runtime]System.Runtime.CompilerServices.TupleElementNamesAttribute::.ctor(string[]) = (
 			01 00 02 00 00 00 04 6c 65 66 74 05 72 69 67 68
 			74 00 00
+		)
+		.custom instance void [System.Runtime]System.ParamArrayAttribute::.ctor() = (
+			01 00 00 00
 		)
 	} // end of method Interface::NamedTuple
 
@@ -88,10 +91,10 @@
 
 	.method private final hidebysig newslot virtual
 		instance valuetype [System.Runtime]System.ValueTuple`2<int32, int32> NamedTuple (
-			valuetype [System.Runtime]System.ValueTuple`2<int32, int32> pair
+			valuetype [System.Runtime]System.ValueTuple`2<int32, int32>[] pairs
 		) cil managed
 	{
-		.override method instance valuetype [System.Runtime]System.ValueTuple`2<int32, int32> ICSharpCode.Decompiler.Tests.TestCases.ILPretty.Issue3442.Interface::NamedTuple(valuetype [System.Runtime]System.ValueTuple`2<int32, int32>)
+		.override method instance valuetype [System.Runtime]System.ValueTuple`2<int32, int32> ICSharpCode.Decompiler.Tests.TestCases.ILPretty.Issue3442.Interface::NamedTuple(valuetype [System.Runtime]System.ValueTuple`2<int32, int32>[])
 		.param [0]
 		.custom instance void [System.Runtime]System.Runtime.CompilerServices.TupleElementNamesAttribute::.ctor(string[]) = (
 			01 00 02 00 00 00 06 72 65 73 75 6c 74 05 63 6f
@@ -102,12 +105,17 @@
 			01 00 02 00 00 00 04 6c 65 66 74 05 72 69 67 68
 			74 00 00
 		)
+		.custom instance void [System.Runtime]System.ParamArrayAttribute::.ctor() = (
+			01 00 00 00
+		)
 		// Method begins at RVA 0x2052
-		// Code size 2 (0x2)
+		// Code size 8 (0x8)
 		.maxstack 8
 
 		IL_0000: ldarg.1
-		IL_0001: ret
+		IL_0001: ldc.i4.0
+		IL_0002: ldelem valuetype [System.Runtime]System.ValueTuple`2<int32, int32>
+		IL_0007: ret
 	} // end of method Class::NamedTuple
 
 	.method public hidebysig specialname rtspecialname 
