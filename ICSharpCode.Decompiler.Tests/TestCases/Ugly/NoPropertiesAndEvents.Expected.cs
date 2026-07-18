@@ -49,7 +49,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Ugly
 					eventHandler2 = eventHandler;
 					EventHandler value2 = (EventHandler)Delegate.Combine(eventHandler2, value);
 					eventHandler = Interlocked.CompareExchange(ref this.m_MyEvent, value2, eventHandler2);
-				} while ((object)eventHandler != eventHandler2);
+				} while ((object)eventHandler != (object)eventHandler2);
 			}
 #if ROSLYN
 		[CompilerGenerated]
@@ -62,7 +62,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Ugly
 					eventHandler2 = eventHandler;
 					EventHandler value2 = (EventHandler)Delegate.Remove(eventHandler2, value);
 					eventHandler = Interlocked.CompareExchange(ref this.m_MyEvent, value2, eventHandler2);
-				} while ((object)eventHandler != eventHandler2);
+				} while ((object)eventHandler != (object)eventHandler2);
 			}
 		}
 	}

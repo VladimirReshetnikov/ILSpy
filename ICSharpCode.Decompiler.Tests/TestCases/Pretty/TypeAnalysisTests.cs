@@ -262,7 +262,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public bool CompareDelegatesByReference(Action a, Action b)
 		{
-			return (object)a == b;
+			return (object)a == (object)b;
 		}
 
 		public bool CompareDelegateWithNull(Action a)
@@ -277,7 +277,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public bool CompareStringsByReference(string a, string b)
 		{
-			return (object)a == b;
+			return (object)a == (object)b;
 		}
 
 		public bool CompareStringWithNull(string a)
@@ -292,7 +292,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public bool CompareTypeByReference(Type a, Type b)
 		{
-			return (object)a == b;
+			return (object)a == (object)b;
 		}
 
 		public bool CompareTypeWithNull(Type t)

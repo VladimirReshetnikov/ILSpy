@@ -975,6 +975,8 @@ namespace ICSharpCode.Decompiler.CSharp
 					.WithILInstruction(inst);
 			}
 
+			PreserveReferenceComparisonIntent(ref left, ref right, inst.Kind.ToBinaryOperatorType());
+
 			OperatorResolveResult? rr = resolver.ResolveBinaryOperator(inst.Kind.ToBinaryOperatorType(), left.ResolveResult, right.ResolveResult) as OperatorResolveResult;
 			if (rr == null || rr.IsError || rr.UserDefinedOperatorMethod != null
 				|| NullableType.GetUnderlyingType(rr.Operands[0].Type).GetStackType() != inst.InputType
@@ -1033,6 +1035,33 @@ namespace ICSharpCode.Decompiler.CSharp
 			return new BinaryOperatorExpression(left.Expression, inst.Kind.ToBinaryOperatorType(), right.Expression)
 				.WithILInstruction(inst)
 				.WithRR(rr);
+		}
+
+		void PreserveReferenceComparisonIntent(ref TranslatedExpression left, ref TranslatedExpression right, BinaryOperatorType operatorType)
+		{
+			bool castLeft = HasUserDefinedComparison(left.Type);
+			bool castRight = HasUserDefinedComparison(right.Type);
+			if (!castLeft && !castRight)
+				return;
+
+			// A built-in reference comparison can still produce CS0252 or CS0253 when either
+			// operand's type supplies an inapplicable user-defined operator. Cast every such
+			// operand to object so the source expresses reference equality unambiguously.
+			var objectType = compilation.FindType(KnownTypeCode.Object);
+			if (castLeft)
+				left = left.ConvertTo(objectType, this);
+			if (castRight)
+				right = right.ConvertTo(objectType, this);
+
+			bool HasUserDefinedComparison(IType type)
+			{
+				if (type.IsReferenceType != true)
+					return false;
+				var comparison = resolver.ResolveBinaryOperator(
+					operatorType, new ResolveResult(type), new ResolveResult(type)
+				) as OperatorResolveResult;
+				return comparison != null && !comparison.IsError && comparison.UserDefinedOperatorMethod != null;
+			}
 		}
 
 		TranslatedExpression TryUniteEqualityOperandType(TranslatedExpression left, TranslatedExpression right)

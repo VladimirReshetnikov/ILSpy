@@ -1135,7 +1135,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					Condition = new BinaryOperatorExpression {
 						Left = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var1")),
 						Operator = BinaryOperatorType.InEquality,
-						Right = new IdentifierExpressionBackreference("var2")
+						Right = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var2"))
 					},
 				}
 			}
@@ -1166,7 +1166,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					Condition = new BinaryOperatorExpression {
 						Left = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var1")),
 						Operator = BinaryOperatorType.InEquality,
-						Right = new IdentifierExpressionBackreference("var2")
+						Right = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var2"))
 					},
 				}
 			}
@@ -1205,7 +1205,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					Condition = new BinaryOperatorExpression {
 						Left = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var1")),
 						Operator = BinaryOperatorType.InEquality,
-						Right = new IdentifierExpressionBackreference("var2")
+						Right = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var2"))
 					},
 				}
 			}
