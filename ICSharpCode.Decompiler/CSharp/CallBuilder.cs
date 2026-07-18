@@ -624,11 +624,77 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 
 			if ((transform & CallTransformation.RequireTypeArguments) != 0 && (!settings.AnonymousTypes || !method.TypeArguments.Any(a => a.ContainsAnonymousType())))
-				typeArgumentList.AddRange(method.TypeArguments.Select(expressionBuilder.ConvertType));
+			{
+				var typeArguments = PreserveTupleElementNamesInExplicitTypeArguments(method, argumentList);
+				typeArgumentList.AddRange(typeArguments.Select(expressionBuilder.ConvertType));
+			}
 			return new InvocationExpression(targetExpr, argumentList.GetArgumentExpressions())
 				.WithRR(new CSharpInvocationResolveResult(target.ResolveResult, foundMethod,
 					argumentList.GetArgumentResolveResultsDirect(), isExpandedForm: argumentList.IsExpandedForm,
 					argumentToParameterMap: argumentList.GetArgumentToParameterMap()));
+		}
+
+		private IReadOnlyList<IType> PreserveTupleElementNamesInExplicitTypeArguments(IMethod method, ArgumentList argumentList)
+		{
+			if (!settings.TupleTypes || !method.TypeArguments.Any(TupleType.ContainsTupleType))
+				return method.TypeArguments;
+
+			var methodDefinition = (IMethod)method.MemberDefinition;
+			var typeArguments = method.TypeArguments.ToArray();
+			int argumentCount = Math.Min(argumentList.Arguments.Length, argumentList.ExpectedParameters.Length);
+			for (int argumentIndex = 0; argumentIndex < argumentCount; argumentIndex++)
+			{
+				if (GetLambdaResolveResult(argumentList.Arguments[argumentIndex].ResolveResult) is not LambdaResolveResult lambda)
+					continue;
+				var expectedParameter = argumentList.ExpectedParameters[argumentIndex];
+				int methodParameterIndex = argumentList.ArgumentToParameterMap?[argumentIndex] ?? argumentIndex;
+				if ((uint)methodParameterIndex >= (uint)methodDefinition.Parameters.Count)
+					continue;
+
+				var definitionInvoke = methodDefinition.Parameters[methodParameterIndex].Type.GetDelegateInvokeMethod();
+				var expectedInvoke = expectedParameter.Type.GetDelegateInvokeMethod();
+				if (definitionInvoke == null || expectedInvoke == null
+					|| definitionInvoke.Parameters.Count != lambda.Parameters.Count
+					|| expectedInvoke.Parameters.Count != lambda.Parameters.Count)
+				{
+					continue;
+				}
+
+				// MethodSpec type arguments cannot carry tuple names, but the generated lambda's
+				// return metadata can. When an otherwise necessary explicit type argument directly
+				// supplies that return slot, retain those names so a named tuple expression is not
+				// forced into an unnamed target (CS8123).
+				MergeDirectMethodTypeParameterNames(
+					definitionInvoke.ReturnType,
+					expectedInvoke.ReturnType,
+					lambda.GetInferredReturnType(lambda.Parameters.Select(p => p.Type).ToArray()),
+					typeArguments);
+			}
+			return typeArguments;
+		}
+
+		static LambdaResolveResult? GetLambdaResolveResult(ResolveResult resolveResult)
+		{
+			return resolveResult switch {
+				LambdaResolveResult lambda => lambda,
+				ConversionResolveResult { Input: LambdaResolveResult lambda } => lambda,
+				_ => null
+			};
+		}
+
+		static void MergeDirectMethodTypeParameterNames(IType definitionType, IType expectedType,
+			IType sourceType, IType[] typeArguments)
+		{
+			if (definitionType is not ITypeParameter { OwnerType: SymbolKind.Method } typeParameter
+				|| (uint)typeParameter.Index >= (uint)typeArguments.Length
+				|| !NormalizeTypeVisitor.TypeErasure.EquivalentTypes(typeArguments[typeParameter.Index], expectedType))
+			{
+				return;
+			}
+			if (TupleType.MergeTupleElementNames(typeArguments[typeParameter.Index], sourceType) is IType mergedType)
+			{
+				typeArguments[typeParameter.Index] = mergedType;
+			}
 		}
 
 		private ExpressionWithResolveResult HandleStringInterpolation(IMethod method, ArgumentList argumentList)

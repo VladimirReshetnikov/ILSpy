@@ -105,6 +105,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public Lazy<(int left, int right)> NamedTupleLazy => new Lazy<(int left, int right)>(() => (left: 1, right: 2));
 
+#if !EXPECTED_OUTPUT
+		private static TResult CreateWithMarker<TMarker, TResult>(Func<TResult> factory)
+		{
+			return factory();
+		}
+#endif
+
+		public (int left, int right) NamedTupleGenericCall => CreateWithMarker<object, (int left, int right)>(() => (left: 1, right: 2));
+
 		public (uint, int) SwapUnnamed => (Unnamed2.Item2, Unnamed2.Item1);
 		public (uint, int) SwapNamed2 => (Named2.b, Named2.a);
 
@@ -122,6 +131,13 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #pragma warning disable format
 		});
 #pragma warning restore format
+
+#if EXPECTED_OUTPUT
+		private static TResult CreateWithMarker<TMarker, TResult>(Func<TResult> factory)
+		{
+			return factory();
+		}
+#endif
 
 		public void UnnamedTupleOut(out (int, string, Action, dynamic) tuple)
 		{
