@@ -991,6 +991,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						this.TypeDeclaration.Modifiers |= Modifiers.Unsafe;
 					}
 
+					foreach (var attributeSection in PrimaryConstructorDecl.Attributes)
+					{
+						context.Step("Move method attribute from primary constructor to type", attributeSection);
+						attributeSection.AttributeTarget = "method";
+						this.TypeDeclaration.Attributes.Add(attributeSection.Detach());
+					}
+
 					if (PrimaryConstructorDecl.Initializer is { } initializer && TypeDeclaration is { BaseTypes.Count: > 0 })
 					{
 						Debug.Assert(initializer.ConstructorInitializerType == ConstructorInitializerType.Base);

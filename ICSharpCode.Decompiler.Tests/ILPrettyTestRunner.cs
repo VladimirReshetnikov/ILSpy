@@ -145,6 +145,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task PrimaryConstructorMethodAttributes()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task SwitchTupleNaturalType()
 		{
 			await Run();
