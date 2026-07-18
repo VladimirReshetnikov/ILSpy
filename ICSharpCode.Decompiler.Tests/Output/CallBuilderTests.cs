@@ -23,6 +23,7 @@ using System.Reflection.PortableExecutable;
 using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.Syntax;
+using ICSharpCode.Decompiler.CSharp.Transforms;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Semantics;
@@ -226,6 +227,52 @@ namespace ICSharpCode.Decompiler.Tests.Output
 			Assert.That(resolveResult, Is.Not.Null);
 			Assert.That(resolveResult.Member.Parameters[0].Type.IsKnownType(KnownTypeCode.Object), Is.True,
 				syntaxTree.ToString());
+		}
+
+		[Test]
+		public void NullConditionalLowerPriorityExtensionTargetIsValidCSharp()
+		{
+			using var module = new PEFile(metadataSamplesAssembly, PEStreamOptions.PrefetchEntireImage);
+			var resolver = new UniversalAssemblyResolver(metadataSamplesAssembly, false, module.Metadata.DetectTargetFrameworkId());
+			var decompiler = new CSharpDecompiler(module, resolver, new DecompilerSettings());
+			var syntaxTree = decompiler.DecompileType(new FullTypeName("CallBuilderMetadataSamples"));
+			var method = syntaxTree.Descendants.OfType<MethodDeclaration>()
+				.Single(m => m.Name == "SelectLowerPriorityExtensionConditionally");
+			var invocation = method.Descendants.OfType<InvocationExpression>().Single();
+
+			Assert.That(invocation.Arguments, Is.Empty, syntaxTree.ToString());
+			Assert.That(invocation.Target, Is.TypeOf<MemberReferenceExpression>());
+			var memberReference = (MemberReferenceExpression)invocation.Target;
+			Assert.That(memberReference.MemberName, Is.EqualTo("Select"), syntaxTree.ToString());
+			Assert.That(memberReference.Target, Is.TypeOf<UnaryOperatorExpression>());
+			Assert.That(((UnaryOperatorExpression)memberReference.Target).Operator,
+				Is.EqualTo(UnaryOperatorType.NullConditional), syntaxTree.ToString());
+			var resolveResult = invocation.GetResolveResult() as CSharpInvocationResolveResult;
+			Assert.That(resolveResult, Is.Not.Null);
+			Assert.That(resolveResult.IsExtensionMethodInvocation, Is.True, syntaxTree.ToString());
+			Assert.That(resolveResult.Member.Parameters[0].Type.FullName,
+				Is.EqualTo("LowPriorityExtensionReceiver"), syntaxTree.ToString());
+		}
+
+		[Test]
+		public void NamedExtensionReceiverMustMapToFirstParameter()
+		{
+			using var module = new PEFile(metadataSamplesAssembly, PEStreamOptions.PrefetchEntireImage);
+			var resolver = new UniversalAssemblyResolver(metadataSamplesAssembly, false, module.Metadata.DetectTargetFrameworkId());
+			var decompiler = new CSharpDecompiler(module, resolver, new DecompilerSettings());
+			var syntaxTree = decompiler.DecompileType(new FullTypeName("CallBuilderMetadataSamples"));
+			var method = syntaxTree.Descendants.OfType<MethodDeclaration>()
+				.Single(m => m.Name == "SelectLowerPriorityExtensionConditionally");
+			var extensionMethod = (IMethod)((CSharpInvocationResolveResult)method.Descendants.OfType<InvocationExpression>()
+				.Single().GetResolveResult()).Member;
+			var matchingArgument = new NamedArgumentExpression("lowReceiver", new NullReferenceExpression());
+			var mismatchedArgument = new NamedArgumentExpression("otherParameter", new NullReferenceExpression());
+
+			Assert.That(IntroduceExtensionMethods.TryGetExtensionReceiverArgument(
+				extensionMethod, matchingArgument, out var receiver), Is.True);
+			Assert.That(receiver, Is.SameAs(matchingArgument.Expression));
+			Assert.That(IntroduceExtensionMethods.TryGetExtensionReceiverArgument(
+				extensionMethod, mismatchedArgument, out _), Is.False);
 		}
 
 		[Test]

@@ -109,6 +109,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 			var method = (IMethod)invocationExpression.GetSymbol()!;
 			bool stepped = false;
+			if (firstArgument.Parent is NamedArgumentExpression namedArgument)
+			{
+				context.Step("Introduce extension method call", invocationExpression);
+				stepped = true;
+				firstArgument.Detach();
+				namedArgument.ReplaceWith(firstArgument);
+			}
 			if (firstArgument is DirectionExpression dirExpr)
 			{
 				if (!context.Settings.RefExtensionMethods || dirExpr.FieldDirection == FieldDirection.Out)
@@ -182,8 +189,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					return false;
 			}
 
-			firstArgument = invocationExpression.Arguments.First();
-			if (firstArgument is NamedArgumentExpression)
+			if (!TryGetExtensionReceiverArgument(method, invocationExpression.Arguments.First(), out firstArgument))
 				return false;
 			target = firstArgument.GetResolveResult();
 			if (target is ConstantResolveResult crr && crr.ConstantValue == null)
@@ -216,6 +222,25 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				pos++;
 			}
 			return resolver.CanTransformToExtensionMethodCall(method, typeArguments, target, args, argNames);
+		}
+
+		internal static bool TryGetExtensionReceiverArgument(IMethod method, Expression argument,
+			[NotNullWhen(true)] out Expression? receiver)
+		{
+			if (argument is NamedArgumentExpression namedArgument)
+			{
+				if (namedArgument.Name != method.Parameters[0].Name)
+				{
+					receiver = null;
+					return false;
+				}
+				receiver = namedArgument.Expression;
+			}
+			else
+			{
+				receiver = argument;
+			}
+			return true;
 		}
 	}
 }

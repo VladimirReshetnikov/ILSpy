@@ -22,6 +22,45 @@
 	}
 }
 
+.class interface public abstract auto ansi HighPriorityExtensionReceiver
+{
+}
+
+.class interface public abstract auto ansi LowPriorityExtensionReceiver
+	implements HighPriorityExtensionReceiver
+{
+}
+
+.class public abstract auto ansi sealed beforefieldinit PriorityExtensions
+	extends [mscorlib]System.Object
+{
+	.custom instance void [mscorlib]System.Runtime.CompilerServices.ExtensionAttribute::.ctor() = (
+		01 00 00 00
+	)
+
+	.method public hidebysig static
+		string Select (class HighPriorityExtensionReceiver highReceiver) cil managed
+	{
+		.maxstack 1
+		ldstr "high"
+		ret
+	}
+
+	.method public hidebysig static
+		string Select (class LowPriorityExtensionReceiver lowReceiver) cil managed
+	{
+		.custom instance void [mscorlib]System.Runtime.CompilerServices.ExtensionAttribute::.ctor() = (
+			01 00 00 00
+		)
+		.custom instance void System.Runtime.CompilerServices.OverloadResolutionPriorityAttribute::.ctor(int32) = (
+			01 00 FF FF FF FF 00 00
+		)
+		.maxstack 1
+		ldstr "low"
+		ret
+	}
+}
+
 .class public auto ansi beforefieldinit DivergentNameIndexer
 	extends [mscorlib]System.Object
 {
@@ -87,6 +126,32 @@
 .class public auto ansi beforefieldinit CallBuilderMetadataSamples
 	extends [mscorlib]System.Object
 {
+	.method public hidebysig static
+		string SelectLowerPriorityExtensionConditionally (
+			class LowPriorityExtensionReceiver receiver,
+			string fallback
+		) cil managed
+	{
+		.maxstack 2
+		ldarg.0
+		brtrue.s CALL_EXTENSION
+		ldnull
+		br.s COALESCE
+
+	CALL_EXTENSION:
+		ldarg.0
+		call string PriorityExtensions::Select(class LowPriorityExtensionReceiver)
+
+	COALESCE:
+		dup
+		brtrue.s RETURN
+		pop
+		ldarg.1
+
+	RETURN:
+		ret
+	}
+
 	.method public hidebysig
 		instance void SetLowerPriorityIndexer () cil managed
 	{
