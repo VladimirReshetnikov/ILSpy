@@ -135,6 +135,177 @@ public class ProjectExportRunnerTests
 	}
 
 	[AvaloniaTest]
+	public async Task Solution_Progress_Is_Determinate_And_Counts_Files_Across_Projects()
+	{
+		var (_, vm) = await TestHarness.BootAsync();
+		var assemblies = await OpenFixtures(vm, 2);
+
+		var tempDir = Path.Combine(Path.GetTempPath(), "ILSpyProjSlnProgress_" + System.Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempDir);
+		try
+		{
+			var progress = new RecordingProgress();
+			var result = await ProjectExporter.ExportAsync(assemblies, solutionMode: true, Options(tempDir),
+				new DecompilerSettings(), Language(), progress, CancellationToken.None);
+			result.Success.Should().BeTrue(result.StatusText);
+
+			progress.Reports.Should().NotBeEmpty();
+			progress.Reports.Max(p => p.TotalUnits).Should().BeGreaterThan(assemblies.Count,
+				"the bar counts the files of every project put together, not whole assemblies -- an assembly-granular "
+				+ "bar only moves when a project finishes, which for a solution of two is 0%, 50%, done");
+			progress.Reports.Should().Contain(p => p.TotalUnits > 0 && p.UnitsCompleted < p.TotalUnits,
+				"a determinate report has to arrive while work is still outstanding; reporting only on completion "
+				+ "leaves the tab showing an indeterminate spinner for the whole export");
+			progress.Reports.Should().Contain(p => p.Status != null && p.Status.Contains(assemblies[0].ShortName),
+				"the status names the projects being written");
+		}
+		finally
+		{
+			TryDelete(tempDir);
+		}
+	}
+
+	[AvaloniaTest]
+	public async Task Solution_Progress_Completes_Even_When_A_Project_Cannot_Be_Written()
+	{
+		var (_, vm) = await TestHarness.BootAsync();
+		var assemblies = await OpenFixtures(vm, 2);
+
+		var tempDir = Path.Combine(Path.GetTempPath(), "ILSpyProjSlnStuck_" + System.Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempDir);
+		try
+		{
+			// A file where the second project's directory needs to go: that project bails out before it
+			// writes anything, which used to leave its share of the bar outstanding forever.
+			await File.WriteAllTextAsync(Path.Combine(tempDir, assemblies[1].ShortName), "in the way");
+
+			var progress = new RecordingProgress();
+			var result = await ProjectExporter.ExportAsync(assemblies, solutionMode: true, Options(tempDir),
+				new DecompilerSettings(), Language(), progress, CancellationToken.None);
+
+			result.Success.Should().BeFalse("a project that cannot be written is a failed export");
+			progress.Reports.Should().NotBeEmpty();
+			var last = progress.Reports[^1];
+			last.UnitsCompleted.Should().Be(last.TotalUnits,
+				"the bar has to close out when the export stops, even though one project never ran");
+		}
+		finally
+		{
+			TryDelete(tempDir);
+		}
+	}
+
+	[AvaloniaTest]
+	public async Task Solution_Mode_Skips_Assemblies_That_Failed_To_Load()
+	{
+		var (_, vm) = await TestHarness.BootAsync();
+		var good = await vm.OpenFixtureAsync("FixtureA");
+		var broken = await vm.OpenBrokenFixtureAsync();
+
+		var tempDir = Path.Combine(Path.GetTempPath(), "ILSpyProjSkipped_" + System.Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempDir);
+		try
+		{
+			var result = await ProjectExporter.ExportAsync([good, broken], solutionMode: true,
+				Options(tempDir), new DecompilerSettings(), Language(), progress: null, CancellationToken.None);
+
+			result.Success.Should().BeTrue(
+				"one unloadable assembly must not sink the export of the ones that did load. Status:\n" + result.StatusText);
+			Directory.EnumerateFiles(Path.Combine(tempDir, good.ShortName), "*.csproj").Should().HaveCount(1,
+				"the assembly that loaded is still exported");
+			Directory.Exists(Path.Combine(tempDir, broken.ShortName)).Should().BeFalse(
+				"there is nothing to decompile for an assembly that failed to load");
+			result.StatusText.Should().Contain(broken.ShortName).And.Contain("failed to load",
+				"a skipped assembly is named in the report -- dropping it silently is what this replaces");
+		}
+		finally
+		{
+			TryDelete(tempDir);
+		}
+	}
+
+	[AvaloniaTest]
+	public async Task Export_Loads_An_Assembly_Whose_Load_Has_Not_Started()
+	{
+		var (_, vm) = await TestHarness.BootAsync();
+		// A LoadedAssembly loads lazily: the tree constructs entries en masse and only the first
+		// await kicks the work off, so a selected-but-never-opened assembly reaches the exporter with
+		// its load untouched. Filtering the selection on a non-blocking status poll drops it as if it
+		// had failed, and the export writes nothing.
+		var assembly = new LoadedAssembly(vm.AssemblyTreeModel.AssemblyList!, FixtureAssembly.Emit("FixtureLazy"));
+		assembly.IsLoadedAsValidAssembly.Should().BeFalse("nothing has triggered the load yet");
+
+		var tempDir = Path.Combine(Path.GetTempPath(), "ILSpyProjLazy_" + System.Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempDir);
+		try
+		{
+			var result = await ProjectExporter.ExportAsync([assembly], solutionMode: false,
+				Options(tempDir), new DecompilerSettings(), Language(), progress: null, CancellationToken.None);
+
+			result.Success.Should().BeTrue(
+				"an assembly whose load has not been started yet decompiles fine once awaited. Status:\n" + result.StatusText);
+			Directory.EnumerateFiles(tempDir, "*.csproj").Should().HaveCount(1);
+			result.StatusText.Should().NotContain("failed to load",
+				"a load that had not started is not a load that failed");
+		}
+		finally
+		{
+			TryDelete(tempDir);
+		}
+	}
+
+	[AvaloniaTest]
+	public async Task Solution_Mode_Reports_A_Metadata_Only_File_As_Such()
+	{
+		var (_, vm) = await TestHarness.BootAsync();
+		var good = await vm.OpenFixtureAsync("FixtureA");
+		var metadataOnly = await vm.OpenMetadataOnlyFixtureAsync();
+
+		var tempDir = Path.Combine(Path.GetTempPath(), "ILSpyProjMetaOnly_" + System.Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempDir);
+		try
+		{
+			var result = await ProjectExporter.ExportAsync([good, metadataOnly], solutionMode: true,
+				Options(tempDir), new DecompilerSettings(), Language(), progress: null, CancellationToken.None);
+
+			result.Success.Should().BeTrue(
+				"a metadata-only file must not sink the export of the assembly that did load. Status:\n" + result.StatusText);
+			Directory.EnumerateFiles(Path.Combine(tempDir, good.ShortName), "*.csproj").Should().HaveCount(1);
+			result.StatusText.Should().Contain(metadataOnly.ShortName,
+				"a skipped file is named in the report");
+			result.StatusText.Should().NotContain("failed to load",
+				"the file loaded; it just holds no code, and reporting a load failure sends the user "
+				+ "looking for a corrupt file that is not there");
+		}
+		finally
+		{
+			TryDelete(tempDir);
+		}
+	}
+
+	[AvaloniaTest]
+	public async Task Export_Reports_Failure_When_Nothing_In_The_Selection_Loaded()
+	{
+		var (_, vm) = await TestHarness.BootAsync();
+		var broken = await vm.OpenBrokenFixtureAsync();
+
+		var tempDir = Path.Combine(Path.GetTempPath(), "ILSpyProjNoneLoaded_" + System.Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(tempDir);
+		try
+		{
+			var result = await ProjectExporter.ExportAsync([broken], solutionMode: false,
+				Options(tempDir), new DecompilerSettings(), Language(), progress: null, CancellationToken.None);
+
+			result.Success.Should().BeFalse("there is nothing left to export once the only assembly is skipped");
+			result.StatusText.Should().Contain(broken.ShortName).And.Contain("failed to load");
+		}
+		finally
+		{
+			TryDelete(tempDir);
+		}
+	}
+
+	[AvaloniaTest]
 	public async Task StrongNameKeyFile_Is_Copied_Into_Project()
 	{
 		var (_, vm) = await TestHarness.BootAsync();

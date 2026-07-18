@@ -818,6 +818,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				if (!newObj.Arguments[0].MatchLdcI4(out valuesLength))
 					return false;
 			}
+			if (valuesLength < 0)
+				return false;
 			values = new List<(string, int)>(valuesLength);
 			int i = 0;
 			while (MatchAddCall(dictionaryType, block.Instructions[i + 1], dictVar, out var index, out var value))
@@ -1352,7 +1354,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						|| call.Method.FullNameIs("System.Span", "get_Item"))
 						&& call.Arguments.Count == 2
 						&& call.Arguments[0].MatchLdLoca(switchValueVar)
-						&& call.Arguments[1].MatchLdcI4(out index);
+						&& call.Arguments[1].MatchLdcI4(out index) && index >= 0;
 				}
 				else
 				{
@@ -1360,7 +1362,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						&& call.Method.FullNameIs("System.String", "get_Chars")
 						&& call.Arguments.Count == 2
 						&& call.Arguments[0].MatchLdLoc(switchValueVar)
-						&& call.Arguments[1].MatchLdcI4(out index);
+						&& call.Arguments[1].MatchLdcI4(out index) && index >= 0;
 				}
 			}
 
@@ -1388,8 +1390,6 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 							return false;
 						if (!MatchGetChars(getCharsCall, switchValueVar, out index))
 							return false;
-						if (index < 0)
-							return false;
 						@switch = block.Instructions[1] as SwitchInstruction;
 						if (@switch == null)
 							return false;
@@ -1406,8 +1406,6 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						if (!block.Instructions[0].MatchStLoc(out charTempVar, out getCharsCall))
 							return false;
 						if (!MatchGetChars(getCharsCall, switchValueVar, out index))
-							return false;
-						if (index < 0)
 							return false;
 						if (analysis.SwitchVariable != charTempVar)
 							return false;
