@@ -103,6 +103,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public (int a, int b) NewTuple2 => (a: 1, b: 2);
 		public object BoxedTuple10 => (1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 
+		public Lazy<(int left, int right)> NamedTupleLazy => new Lazy<(int left, int right)>(() => (left: 1, right: 2));
+
 		public (uint, int) SwapUnnamed => (Unnamed2.Item2, Unnamed2.Item1);
 		public (uint, int) SwapNamed2 => (Named2.b, Named2.a);
 

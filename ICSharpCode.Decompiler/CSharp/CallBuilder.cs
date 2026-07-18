@@ -248,6 +248,18 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 			var result = Build(inst.OpCode, inst.Method, inst.Arguments, constrainedTo: inst.ConstrainedTo)
 				.WithILInstruction(inst);
+			if (inst is NewObj
+				&& result.Expression is ObjectCreateExpression objectCreation
+				&& typeHint != null
+				&& TupleType.MergeTupleElementNames(inst.Method.DeclaringType, typeHint) is IType namedType
+				&& !namedType.Equals(inst.Method.DeclaringType))
+			{
+				// Tuple names on a constructed generic type are erased from the constructor reference,
+				// but can survive on the target field/property and on generated lambda methods passed to
+				// the constructor. Render the equivalent target type so those names remain consistent;
+				// otherwise a named tuple literal in the lambda targets an unnamed delegate result (CS8123).
+				objectCreation.Type = expressionBuilder.ConvertType(namedType);
+			}
 			if (inst.IsTail)
 			{
 				// Surface the IL 'tail.' prefix as an inline marker, e.g. '/*tail.*/Callee(x)'.
