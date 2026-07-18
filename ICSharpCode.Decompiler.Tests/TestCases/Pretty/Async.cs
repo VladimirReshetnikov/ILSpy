@@ -19,6 +19,7 @@
 #pragma warning disable 1998
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
@@ -76,6 +77,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		[MethodImpl(MethodImplOptions.NoInlining)]
 		public async Task NoInliningTaskMethod()
+		{
+			await Task.Yield();
+		}
+
+		[DebuggerStepThrough]
+		public async Task DebuggerStepThroughTaskMethod()
 		{
 			await Task.Yield();
 		}

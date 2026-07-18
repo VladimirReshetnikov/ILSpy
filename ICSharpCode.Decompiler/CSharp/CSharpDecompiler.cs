@@ -2830,8 +2830,47 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				entityDecl.Modifiers |= Modifiers.Async;
 				RemoveAttribute(entityDecl, KnownAttribute.AsyncStateMachine);
-				RemoveAttribute(entityDecl, KnownAttribute.DebuggerStepThrough);
+				if (function.MoveNextMethod != null && AsyncMethodCompilerGeneratesDebuggerStepThrough(function.Method))
+				{
+					RemoveFirstAttribute(entityDecl, KnownAttribute.DebuggerStepThrough);
+				}
 			}
+		}
+
+		static bool AsyncMethodCompilerGeneratesDebuggerStepThrough(IMethod? method)
+		{
+			const int disableOptimizations = 0x100;
+			var debuggableAttribute = method?.ParentModule?.GetAssemblyAttributes().FirstOrDefault(
+				a => a.AttributeType.FullName == "System.Diagnostics.DebuggableAttribute");
+			if (debuggableAttribute?.FixedArguments.Length == 1
+				&& debuggableAttribute.FixedArguments[0].Value is int debuggingModes)
+			{
+				return (debuggingModes & disableOptimizations) != 0;
+			}
+			// The native C# compiler emits DebuggerStepThrough on async methods even in optimized builds,
+			// and its output may not contain DebuggableAttribute. Unknown compiler shapes are treated likewise.
+			return true;
+		}
+
+		static bool RemoveFirstAttribute(EntityDeclaration entityDecl, KnownAttribute attributeType)
+		{
+			foreach (var section in entityDecl.Attributes)
+			{
+				foreach (var attr in section.Attributes)
+				{
+					var symbol = attr.Type.GetSymbol();
+					if (symbol is ITypeDefinition td && td.FullTypeName == attributeType.GetTypeName())
+					{
+						attr.Remove();
+						if (section.Attributes.Count == 0)
+						{
+							section.Remove();
+						}
+						return true;
+					}
+				}
+			}
+			return false;
 		}
 
 		internal static bool RemoveAttribute(EntityDeclaration entityDecl, KnownAttribute attributeType)
