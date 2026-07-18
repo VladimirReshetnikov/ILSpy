@@ -1,7 +1,7 @@
 .assembly extern System.Runtime
 {
-	.publickeytoken = (B7 7A 5C 56 19 34 E0 89 )                         // .z\V.4..
-	.ver 4:0:0:0
+	.publickeytoken = (B0 3F 5F 7F 11 D5 0A 3A)
+	.ver 9:0:0:0
 }
 
 .assembly Issue3442
@@ -48,6 +48,23 @@
 		.param [1] = int32(42)
 	} // end of method Interface::M
 
+	.method public hidebysig newslot abstract virtual
+		instance valuetype [System.Runtime]System.ValueTuple`2<int32, int32> NamedTuple (
+			valuetype [System.Runtime]System.ValueTuple`2<int32, int32> pair
+		) cil managed
+	{
+		.param [0]
+		.custom instance void [System.Runtime]System.Runtime.CompilerServices.TupleElementNamesAttribute::.ctor(string[]) = (
+			01 00 02 00 00 00 06 72 65 73 75 6c 74 05 63 6f
+			75 6e 74 00 00
+		)
+		.param [1]
+		.custom instance void [System.Runtime]System.Runtime.CompilerServices.TupleElementNamesAttribute::.ctor(string[]) = (
+			01 00 02 00 00 00 04 6c 65 66 74 05 72 69 67 68
+			74 00 00
+		)
+	} // end of method Interface::NamedTuple
+
 } // end of class ICSharpCode.Decompiler.Tests.TestCases.ILPretty.Issue3442.Interface
 
 .class public auto ansi beforefieldinit ICSharpCode.Decompiler.Tests.TestCases.ILPretty.Issue3442.Class
@@ -68,6 +85,30 @@
 
 		IL_0000: ret
 	} // end of method Class::M
+
+	.method private final hidebysig newslot virtual
+		instance valuetype [System.Runtime]System.ValueTuple`2<int32, int32> NamedTuple (
+			valuetype [System.Runtime]System.ValueTuple`2<int32, int32> pair
+		) cil managed
+	{
+		.override method instance valuetype [System.Runtime]System.ValueTuple`2<int32, int32> ICSharpCode.Decompiler.Tests.TestCases.ILPretty.Issue3442.Interface::NamedTuple(valuetype [System.Runtime]System.ValueTuple`2<int32, int32>)
+		.param [0]
+		.custom instance void [System.Runtime]System.Runtime.CompilerServices.TupleElementNamesAttribute::.ctor(string[]) = (
+			01 00 02 00 00 00 06 72 65 73 75 6c 74 05 63 6f
+			75 6e 74 00 00
+		)
+		.param [1]
+		.custom instance void [System.Runtime]System.Runtime.CompilerServices.TupleElementNamesAttribute::.ctor(string[]) = (
+			01 00 02 00 00 00 04 6c 65 66 74 05 72 69 67 68
+			74 00 00
+		)
+		// Method begins at RVA 0x2052
+		// Code size 2 (0x2)
+		.maxstack 8
+
+		IL_0000: ldarg.1
+		IL_0001: ret
+	} // end of method Class::NamedTuple
 
 	.method public hidebysig specialname rtspecialname 
 		instance void .ctor () cil managed 

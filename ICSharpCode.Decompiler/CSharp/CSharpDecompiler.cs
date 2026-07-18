@@ -1557,7 +1557,10 @@ namespace ICSharpCode.Decompiler.CSharp
 				// EntityDeclaration.ReturnType is typed non-null but its getter yields null when the Type
 				// slot is empty; leave the forwarder's (already empty) return-type slot untouched in that case.
 				if (memberDecl.ReturnType is { } memberReturnType)
+				{
 					methodDecl.ReturnType = memberReturnType.Clone();
+					RemoveTupleElementNames(methodDecl.ReturnType);
+				}
 				methodDecl.PrivateImplementationType = astBuilder.ConvertType(m.DeclaringType);
 				methodDecl.Name = m.Name;
 				methodDecl.TypeParameters.AddRange(memberDecl.GetChildren(Slots.TypeParameter)
@@ -1565,6 +1568,10 @@ namespace ICSharpCode.Decompiler.CSharp
 				foreach (ParameterDeclaration parameter in memberDecl.GetChildren(Slots.Parameter))
 				{
 					var clone = (ParameterDeclaration)parameter.Clone();
+					// This bridge has no counterpart in the original metadata. Retaining tuple names from the
+					// ordinary implementation would make Roslyn invent TupleElementNamesAttribute rows for it.
+					if (clone.Type is { } parameterType)
+						RemoveTupleElementNames(parameterType);
 					// Explicit interface implementations cannot be called with omitted arguments. Copying an
 					// optional default onto this synthetic bridge also invents a Constant row and causes CS1066.
 					clone.DefaultExpression = null;
@@ -1593,6 +1600,12 @@ namespace ICSharpCode.Decompiler.CSharp
 				}
 				yield return methodDecl;
 			}
+		}
+
+		static void RemoveTupleElementNames(AstType type)
+		{
+			foreach (var element in type.DescendantsAndSelf.OfType<TupleTypeElement>())
+				element.Name = null;
 		}
 
 		IEnumerable<IMethod> GetInterfaceMethodImplementations(IMethod method)
