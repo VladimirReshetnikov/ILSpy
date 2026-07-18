@@ -41,8 +41,11 @@
 {
 	// Methods
 	.method public hidebysig newslot abstract virtual 
-		instance void M<(ICSharpCode.Decompiler.Tests.TestCases.ILPretty.Issue3442.Interface) T> () cil managed 
+		instance void M<(ICSharpCode.Decompiler.Tests.TestCases.ILPretty.Issue3442.Interface) T> (
+			[opt] int32 'value'
+		) cil managed
 	{
+		.param [1] = int32(42)
 	} // end of method Interface::M
 
 } // end of class ICSharpCode.Decompiler.Tests.TestCases.ILPretty.Issue3442.Interface
@@ -53,9 +56,12 @@
 {
 	// Methods
 	.method private final hidebysig newslot virtual 
-		instance void M<(ICSharpCode.Decompiler.Tests.TestCases.ILPretty.Issue3442.Interface) T> () cil managed 
+		instance void M<(ICSharpCode.Decompiler.Tests.TestCases.ILPretty.Issue3442.Interface) T> (
+			[opt] int32 'value'
+		) cil managed
 	{
-		.override method instance void ICSharpCode.Decompiler.Tests.TestCases.ILPretty.Issue3442.Interface::M()
+		.override method instance void ICSharpCode.Decompiler.Tests.TestCases.ILPretty.Issue3442.Interface::M(int32)
+		.param [1] = int32(42)
 		// Method begins at RVA 0x2050
 		// Code size 1 (0x1)
 		.maxstack 8

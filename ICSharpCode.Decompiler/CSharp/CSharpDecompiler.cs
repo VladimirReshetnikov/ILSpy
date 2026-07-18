@@ -1562,7 +1562,14 @@ namespace ICSharpCode.Decompiler.CSharp
 				methodDecl.Name = m.Name;
 				methodDecl.TypeParameters.AddRange(memberDecl.GetChildren(Slots.TypeParameter)
 												   .Select(n => (TypeParameterDeclaration)n.Clone()));
-				methodDecl.Parameters.AddRange(memberDecl.GetChildren(Slots.Parameter).Select(n => n.Clone()));
+				foreach (ParameterDeclaration parameter in memberDecl.GetChildren(Slots.Parameter))
+				{
+					var clone = (ParameterDeclaration)parameter.Clone();
+					// Explicit interface implementations cannot be called with omitted arguments. Copying an
+					// optional default onto this synthetic bridge also invents a Constant row and causes CS1066.
+					clone.DefaultExpression = null;
+					methodDecl.Parameters.Add(clone);
+				}
 				// Constraints are not copied because explicit interface implementations cannot have constraints. CS0460
 
 				methodDecl.Body = new BlockStatement();
