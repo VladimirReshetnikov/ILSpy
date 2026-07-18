@@ -1272,6 +1272,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 				switch (node)
 				{
+					case SwitchExpressionSection:
+						// The scope of a variable declared in a switch-expression arm is
+						// limited to that arm, not the containing statement or block.
+						return false;
 					case IfElseStatement:  // variable declared in if condition appears in parent scope
 					case ExpressionStatement:
 						return node == v.InsertionPoint.nextNode;

@@ -1744,7 +1744,7 @@ namespace ICSharpCode.Decompiler.CSharp
 						index => index >= 0 ? method.Parameters[index].Type : SpecialType.UnknownType
 					);
 			var inferredTypes = typeInference.InferTypeArguments(method.TypeParameters,
-				argumentList.Arguments.SelectReadOnlyArray(a => a.ResolveResult), paramTypesInArgumentOrder,
+				argumentList.Arguments.SelectReadOnlyArray(a => (ResolveResult?)GetLambdaResolveResult(a.ResolveResult) ?? a.ResolveResult), paramTypesInArgumentOrder,
 				out bool success);
 			if (!success)
 				return TypeArgumentInferenceResult.Failed;

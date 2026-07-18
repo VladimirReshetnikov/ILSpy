@@ -4207,8 +4207,20 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 		}
 
-		static ResolveResult GetInferredLambdaReturnValue(Expression expression)
+		ResolveResult GetInferredLambdaReturnValue(Expression expression)
 		{
+			if (expression is ConditionalExpression conditional)
+			{
+				// A target-typed conditional has the delegate return type in the translated
+				// AST, but generic method inference must use the conditional's natural type.
+				// In particular, sibling reference types have no natural common type even
+				// when both convert to the target delegate return type.
+				var naturalResult = resolver.ResolveConditional(
+					conditional.Condition.GetResolveResult(),
+					GetInferredLambdaReturnValue(conditional.TrueExpression),
+					GetInferredLambdaReturnValue(conditional.FalseExpression));
+				return naturalResult.IsError ? new ErrorResolveResult(SpecialType.UnknownType) : naturalResult;
+			}
 			var resolveResult = expression.GetResolveResult();
 			// Return expressions are translated in the target delegate's return context. The
 			// resulting implicit conversion is necessary to validate that delegate, but it is

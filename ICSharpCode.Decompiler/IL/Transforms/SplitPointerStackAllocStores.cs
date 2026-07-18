@@ -52,10 +52,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					if (!IsPointerStackAlloc(store.Value))
 						continue;
 					var target = store.Variable;
-					// A single-definition pointer local is declared together with this store, so the
-					// stackalloc already lands in a declaration initializer. Only a target with several
-					// stores is declared separately and would receive the stackalloc as an assignment.
-					if (target.IsSingleDefinition)
+					// A single-definition pointer local is normally declared together with this store,
+					// so the stackalloc lands in a declaration initializer. SplitVariables may, however,
+					// create another live variable for the same original IL local slot. Variable naming
+					// can merge those live ranges again, causing this store to become an assignment.
+					// Treat that case like a multi-store target as well.
+					if (target.IsSingleDefinition && !SharesOriginalLocalSlot(function, target))
 						continue;
 					if (target.Kind != VariableKind.Local && target.Kind != VariableKind.StackSlot)
 						continue;
@@ -72,6 +74,16 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					i++;
 				}
 			}
+		}
+
+		static bool SharesOriginalLocalSlot(ILFunction function, ILVariable target)
+		{
+			return target.Index != null && function.Variables.Any(variable =>
+				variable != target
+				&& variable.Index == target.Index
+				&& variable.Kind == target.Kind
+				&& variable.Type.Equals(target.Type)
+				&& variable.StoreCount > 0);
 		}
 
 		static bool IsPointerStackAlloc(ILInstruction value)

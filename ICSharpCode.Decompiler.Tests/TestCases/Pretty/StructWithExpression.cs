@@ -16,6 +16,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public int B { get; set; }
 		}
 
+		internal record struct RecordWithNestedMutableStruct
+		{
+			public MutableStruct Value;
+		}
+
 		private InitOnlyStruct field;
 
 		public StructWithExpression(InitOnlyStruct field)
@@ -49,6 +54,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			MutableStruct result = src;
 			result.A = n;
 			result.B = 5;
+			return result;
+		}
+
+		// A nested mutation on a record-struct copy is not representable as a with
+		// initializer, because with initializers only allow direct assignments.
+		public RecordWithNestedMutableStruct MutateNestedRecordStruct(RecordWithNestedMutableStruct src, int n)
+		{
+			RecordWithNestedMutableStruct result = src;
+			result.Value.A = n;
 			return result;
 		}
 	}

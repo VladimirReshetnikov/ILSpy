@@ -57,4 +57,27 @@
     IL_0016:  call       void ICSharpCode.Decompiler.Tests.TestCases.ILPretty.StackAllocConditionalPointer::Consume(char*)
     IL_001b:  ret
   }
+
+  // SplitVariables gives the null initialization and stackalloc store separate SSA variables,
+  // but both still refer to local slot V_0. They may later be merged into one C# variable name,
+  // so the stackalloc store must be redirected into its own declaration initializer.
+  .method public hidebysig static void DefaultInitialized(int32 cchLength) cil managed
+  {
+    .maxstack  2
+    .locals init (char* V_0)
+    IL_0000:  ldc.i4.0
+    IL_0001:  conv.u
+    IL_0002:  stloc.0
+    IL_0003:  ldarg.0
+    IL_0004:  ldc.i4.1
+    IL_0005:  add
+    IL_0006:  conv.u
+    IL_0007:  ldc.i4.2
+    IL_0008:  mul.ovf.un
+    IL_0009:  localloc
+    IL_000b:  stloc.0
+    IL_000c:  ldloc.0
+    IL_000d:  call       void ICSharpCode.Decompiler.Tests.TestCases.ILPretty.StackAllocConditionalPointer::Consume(char*)
+    IL_0012:  ret
+  }
 }

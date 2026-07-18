@@ -360,6 +360,23 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				StringComparison.OrdinalIgnoreCase => 3,
 			};
 		}
+
+		private static string GetValue(int value, out string error)
+		{
+			error = ((value < 0) ? "negative" : null);
+			return value.ToString();
+		}
+
+		public static string OutVariableUsedAcrossSwitchExpressionArms(int value)
+		{
+			string error;
+			string text = value switch {
+				0 => GetValue(0, out error),
+				1 => GetValue(1, out error),
+				_ => GetValue(value, out error),
+			};
+			return error ?? text;
+		}
 #pragma warning restore CS8509 // The switch expression does not handle all possible values of its input type (it is not exhaustive).
 	}
 }

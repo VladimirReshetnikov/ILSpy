@@ -25,5 +25,13 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 			}
 			Consume(p);
 		}
+
+		public unsafe static void DefaultInitialized(int cchLength)
+		{
+			char* ptr = null;
+			char* ptr2 = stackalloc char[cchLength + 1];
+			ptr = ptr2;
+			Consume(ptr);
+		}
 	}
 }

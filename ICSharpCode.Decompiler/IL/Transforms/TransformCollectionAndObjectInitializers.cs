@@ -285,6 +285,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			(var kind, var newPath, var values, var targetVariable, var usedIndices) = AccessPathElement.GetAccessPath(instructions[pos], rootType, context.Settings, context.CSharpResolver);
 			if (kind == AccessPathKind.Invalid || target != targetVariable)
 				return false;
+			// A with-initializer only permits direct member assignments. Nested object or
+			// collection initializer syntax ("Member = { ... }") is not valid inside a
+			// with-expression, even though it is valid in an object initializer.
+			if (blockKind == BlockKind.WithInitializer && newPath.Count != 1)
+				return false;
 			// Treat last element separately:
 			// Can either be an Add method call or property setter.
 			var lastElement = newPath.Last();
