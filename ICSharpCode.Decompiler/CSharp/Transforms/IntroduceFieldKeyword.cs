@@ -222,7 +222,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				fieldDeclaration.Remove();
 			}
 			CSharpDecompiler.RemoveAttribute(attributeSource, KnownAttribute.CompilerGenerated);
-			CSharpDecompiler.RemoveAttribute(attributeSource, KnownAttribute.DebuggerBrowsable);
+			// A property-level DebuggerBrowsableAttribute can suppress Roslyn's usual
+			// DebuggerBrowsable(Never) attribute on the synthesized backing field.
+			if (!property.HasAttribute(KnownAttribute.DebuggerBrowsable))
+				CSharpDecompiler.RemoveAttribute(attributeSource, KnownAttribute.DebuggerBrowsable);
 			foreach (AttributeSection section in attributeSource.Attributes.ToArray())
 			{
 				section.AttributeTarget = "field";

@@ -932,17 +932,24 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 				var fieldDecl = propertyDeclaration.Parent?.Children.OfType<FieldDeclaration>()
 					.FirstOrDefault(fd => field.Equals(fd.GetSymbol()));
+				// Specialized backing fields in generic types do not always have an attached AST
+				// declaration. Convert one temporarily so its attributes can still be projected onto
+				// the synthesized field of the automatic property.
+				var attributeSource = fieldDecl
+					?? (FieldDeclaration)context.TypeSystemAstBuilder.ConvertEntity(field);
 				if (fieldDecl != null)
-				{
 					fieldDecl.Remove();
-					// Add C# 7.3 attributes on backing field:
-					CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.CompilerGenerated);
-					CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.DebuggerBrowsable);
-					foreach (var section in fieldDecl.Attributes)
-					{
-						section.AttributeTarget = "field";
-						propertyDeclaration.Attributes.Add(section.Detach());
-					}
+				// Add C# 7.3 attributes on backing field:
+				CSharpDecompiler.RemoveAttribute(attributeSource, KnownAttribute.CompilerGenerated);
+				// Roslyn normally recreates DebuggerBrowsable(Never) on the synthesized field,
+				// but can suppress it when the property itself has DebuggerBrowsableAttribute.
+				// In that case the original field attribute must be emitted explicitly.
+				if (!property.HasAttribute(KnownAttribute.DebuggerBrowsable))
+					CSharpDecompiler.RemoveAttribute(attributeSource, KnownAttribute.DebuggerBrowsable);
+				foreach (var section in attributeSource.Attributes.ToArray())
+				{
+					section.AttributeTarget = "field";
+					propertyDeclaration.Attributes.Add(section.Detach());
 				}
 			}
 			// Since the property instance is not changed, we can continue in the visitor as usual, so return null

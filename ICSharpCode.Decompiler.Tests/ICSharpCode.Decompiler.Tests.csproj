@@ -122,6 +122,7 @@
     <None Include="TestCases\ILPretty\QueryExpressionInParameter.il" />
     <None Include="TestCases\ILPretty\TupleNamesFromConsumerLambdas.il" />
     <None Include="TestCases\ILPretty\OrderByThenByRangeVariable.il" />
+    <None Include="TestCases\ILPretty\AutoPropertyBackingFieldDebuggerBrowsable.il" />
     <None Include="TestCases\ILPretty\StaticLocalFunctionLocalNameCollision.il" />
     <None Include="TestCases\ILPretty\Issue1454.il" />
     <None Include="TestCases\ILPretty\Issue1681.il" />
@@ -197,6 +198,8 @@
     <None Include="TestCases\Correctness\ComInterop.cs" />
     <Compile Remove="TestCases\ILPretty\AnonymousTypeConditionalPhi.cs" />
     <None Include="TestCases\ILPretty\AnonymousTypeConditionalPhi.cs" />
+    <Compile Remove="TestCases\ILPretty\AutoPropertyBackingFieldDebuggerBrowsable.cs" />
+    <None Include="TestCases\ILPretty\AutoPropertyBackingFieldDebuggerBrowsable.cs" />
     <Compile Remove="TestCases\ILPretty\CS1xSwitch_Debug.cs" />
     <None Include="TestCases\ILPretty\CS1xSwitch_Debug.cs" />
     <Compile Remove="TestCases\ILPretty\CastBetweenTypeParameters.cs" />
