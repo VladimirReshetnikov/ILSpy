@@ -169,15 +169,22 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					foreach (var name in CollectAllTypeNames(context.UsingScope))
 						AddExistingName(reservedVariableNames, name);
 					this.currentLowerCaseTypeOrMemberNames = currentLowerCaseTypeOrMemberNames.ToImmutableHashSet();
+					var variables = function.Variables.Where(v => v.Kind == VariableKind.Parameter && v.Index >= 0).ToDictionary(v => v.Index);
+					var usedParameterNames = new HashSet<string>(StringComparer.Ordinal);
+					var parameterNames = function.Parameters.Select((parameter, index) =>
+						parameter.Type == SpecialType.ArgList
+							? parameter.Name
+							: ILReader.GetUniqueParameterName(usedParameterNames, parameter.Name, index)).ToArray();
 
 					// handle implicit parameters of set or event accessors
 					if (function.Method != null && IsSetOrEventAccessor(function.Method) && function.Parameters.Count > 0)
 					{
 						for (int i = 0; i < function.Method.Parameters.Count - 1; i++)
 						{
-							AddExistingName(reservedVariableNames, function.Method.Parameters[i].Name);
+							if (variables.TryGetValue(i, out var variable))
+								variableMapping[variable] = parameterNames[i];
+							AddExistingName(reservedVariableNames, parameterNames[i]);
 						}
-						var lastParameter = function.Method.Parameters.Last();
 						switch (function.Method.AccessorOwner)
 						{
 							case IProperty prop:
@@ -193,14 +200,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 										&& v.Index == function.Method.Parameters.Count - 1);
 									if (variableForLastParameter == null)
 									{
-										AddExistingName(reservedVariableNames, lastParameter.Name);
+										AddExistingName(reservedVariableNames, parameterNames[^1]);
 									}
 									else
 									{
-										if (variableForLastParameter.Name != "value")
-										{
-											variableForLastParameter.Name = "value";
-										}
+										variableForLastParameter.Name = "value";
+										variableMapping[variableForLastParameter] = "value";
 										AddExistingName(reservedVariableNames, variableForLastParameter.Name);
 									}
 								}
@@ -213,34 +218,27 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 										&& v.Index == function.Method.Parameters.Count - 1);
 									if (variableForLastParameter == null)
 									{
-										AddExistingName(reservedVariableNames, lastParameter.Name);
+										AddExistingName(reservedVariableNames, parameterNames[^1]);
 									}
 									else
 									{
-										if (variableForLastParameter.Name != "value")
-										{
-											variableForLastParameter.Name = "value";
-										}
+										variableForLastParameter.Name = "value";
+										variableMapping[variableForLastParameter] = "value";
 										AddExistingName(reservedVariableNames, variableForLastParameter.Name);
 									}
 								}
 								break;
 							default:
-								AddExistingName(reservedVariableNames, lastParameter.Name);
+								if (variables.TryGetValue(function.Method.Parameters.Count - 1, out var variable))
+									variableMapping[variable] = parameterNames[^1];
+								AddExistingName(reservedVariableNames, parameterNames[^1]);
 								break;
 						}
 					}
 					else
 					{
-						var variables = function.Variables.Where(v => v.Kind == VariableKind.Parameter && v.Index >= 0).ToDictionary(v => v.Index);
-						foreach (var (i, p) in function.Parameters.WithIndex())
+						foreach (var (i, name) in parameterNames.WithIndex())
 						{
-							string name = p.Name;
-							if (string.IsNullOrWhiteSpace(name) && p.Type != SpecialType.ArgList)
-							{
-								// needs to be consistent with logic in ILReader.CreateILVariable
-								name = "P_" + i;
-							}
 							if (variables.TryGetValue(i, out var v))
 								variableMapping[v] = name;
 							AddExistingName(reservedVariableNames, name);

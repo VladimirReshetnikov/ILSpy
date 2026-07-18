@@ -670,6 +670,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task InitOnlyTupleInitializer([ValueSource(nameof(roslyn4OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
 		public async Task Structs([ValueSource(nameof(defaultOptionsWithMcs))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);

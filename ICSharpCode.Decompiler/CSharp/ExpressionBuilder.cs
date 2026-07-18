@@ -5185,7 +5185,7 @@ namespace ICSharpCode.Decompiler.CSharp
 						RecursivePatternExpression recursivePatternExpression = new();
 						if (matchInstruction.CheckType)
 						{
-							recursivePatternExpression.Type = ConvertType(matchInstruction.Variable.Type);
+							recursivePatternExpression.Type = ConvertType(matchInstruction.Variable.Type.TupleUnderlyingTypeOrSelf());
 						}
 						else
 						{
@@ -5232,7 +5232,7 @@ namespace ICSharpCode.Decompiler.CSharp
 						AstType type;
 						if (matchInstruction.CheckType)
 						{
-							type = ConvertType(matchInstruction.Variable.Type);
+							type = ConvertType(matchInstruction.Variable.Type.TupleUnderlyingTypeOrSelf());
 						}
 						else
 						{
@@ -5247,7 +5247,7 @@ namespace ICSharpCode.Decompiler.CSharp
 					else
 					{
 						Debug.Assert(matchInstruction.CheckType);
-						return new TypeReferenceExpression(ConvertType(matchInstruction.Variable.Type))
+						return new TypeReferenceExpression(ConvertType(matchInstruction.Variable.Type.TupleUnderlyingTypeOrSelf()))
 							.WithILInstruction(matchInstruction);
 					}
 				case Comp comp:

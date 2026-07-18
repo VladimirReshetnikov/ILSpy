@@ -368,5 +368,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 			return tuple.Item1;
 		}
+
+		public int ValueTupleDeclarationPattern(object value)
+		{
+			if (value is ValueTuple<int, string> tuple)
+			{
+				return tuple.Item1 + tuple.Item2.Length;
+			}
+			return 0;
+		}
 	}
 }

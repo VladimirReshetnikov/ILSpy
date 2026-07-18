@@ -460,6 +460,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (inst.MatchStLoc(out var v, out var value)
 				&& value is Block block && block.MatchInlineAssignBlock(out var call, out valueInst))
 			{
+				// An init-only setter cannot be invoked by a tuple assignment. Keep the
+				// underlying stores available for object-initializer reconstruction.
+				if (call.Method.IsInitOnly)
+					return false;
 				if (!DeconstructInstruction.IsAssignment(call, context.TypeSystem, out targetType, out _))
 					return false;
 				if (!(v.IsSingleDefinition && v.LoadCount == 0))
@@ -473,6 +477,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			}
 			else if (DeconstructInstruction.IsAssignment(inst, context.TypeSystem, out targetType, out valueInst))
 			{
+				if (inst is CallInstruction { Method.IsInitOnly: true })
+					return false;
 				// OK - use the assignment as is
 				addAssignment = (DeconstructInstruction deconstructInst) => {
 					deconstructInst.Assignments.Instructions.Add(inst);

@@ -283,6 +283,7 @@ namespace ICSharpCode.Decompiler.IL
 			if (method.Parameters.LastOrDefault()?.Type == SpecialType.ArgList)
 				popCount--;
 			parameterVariables = new ILVariable[popCount];
+			var usedParameterNames = new HashSet<string>(StringComparer.Ordinal);
 			int paramIndex = 0;
 			int offset = 0;
 			if (!method.IsStatic)
@@ -302,12 +303,26 @@ namespace ICSharpCode.Decompiler.IL
 			while (paramIndex < parameterVariables.Length)
 			{
 				IParameter parameter = method.Parameters[paramIndex - offset];
-				ILVariable ilVar = CreateILVariable(paramIndex - offset, parameter.Type, parameter.Name);
+				int parameterIndex = paramIndex - offset;
+				string parameterName = GetUniqueParameterName(usedParameterNames, parameter.Name, parameterIndex);
+				ILVariable ilVar = CreateILVariable(parameterIndex, parameter.Type, parameterName);
+				ilVar.HasGeneratedName |= parameterName != parameter.Name;
 				ilVar.IsRefReadOnly = parameter.ReferenceKind is ReferenceKind.In or ReferenceKind.RefReadOnly;
 				parameterVariables[paramIndex] = ilVar;
 				paramIndex++;
 			}
 			Debug.Assert(paramIndex == parameterVariables.Length);
+		}
+
+		internal static string GetUniqueParameterName(ISet<string> usedNames, string? name, int index)
+		{
+			if (!string.IsNullOrWhiteSpace(name) && usedNames.Add(name))
+				return name;
+
+			string newName = "P_" + index;
+			for (int suffix = 2; !usedNames.Add(newName); suffix++)
+				newName = "P_" + index + "_" + suffix;
+			return newName;
 		}
 
 		ILVariable CreateILVariable(int index, IType type)

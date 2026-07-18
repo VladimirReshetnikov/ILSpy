@@ -103,6 +103,7 @@
     <None Include="TestCases\Disassembler\Pretty\SortMembers.il" />
     <None Include="TestCases\IsolatedDecompilation\IsolatedStaticCtor.il" />
     <None Include="TestCases\ILPretty\AnonymousTypeConditionalPhi.il" />
+    <None Include="TestCases\ILPretty\DuplicateParameterNames.il" />
     <None Include="TestCases\ILPretty\ExtensionEncodingV2.il" />
     <None Include="testcases\ilpretty\ExtensionEncodingV1.il" />
     <None Include="TestCases\ILPretty\GuessAccessors.il" />
@@ -209,6 +210,8 @@
     <None Include="TestCases\ILPretty\CastBetweenTypeParameters.cs" />
     <Compile Remove="TestCases\ILPretty\ConstructorInitializerAfterLeadingStatements.cs" />
     <None Include="TestCases\ILPretty\ConstructorInitializerAfterLeadingStatements.cs" />
+    <Compile Remove="TestCases\ILPretty\DuplicateParameterNames.cs" />
+    <None Include="TestCases\ILPretty\DuplicateParameterNames.cs" />
     <Compile Remove="TestCases\ILPretty\CrossRootMemberCollision.cs" />
     <None Include="TestCases\ILPretty\CrossRootMemberCollision.cs" />
     <Compile Remove="TestCases\ILPretty\ExplicitInterfacePropertyOverride.cs" />

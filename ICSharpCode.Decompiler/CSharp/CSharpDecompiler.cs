@@ -2166,14 +2166,12 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		void FixParameterNames(EntityDeclaration entity)
 		{
+			var usedNames = new HashSet<string>(StringComparer.Ordinal);
 			int i = 0;
 			foreach (var parameter in entity.GetChildren(Slots.Parameter))
 			{
-				if (string.IsNullOrWhiteSpace(parameter.Name) && !parameter.Type.IsArgList())
-				{
-					// needs to be consistent with logic in ILReader.CreateILVariable
-					parameter.Name = "P_" + i;
-				}
+				if (!parameter.Type.IsArgList())
+					parameter.Name = ILReader.GetUniqueParameterName(usedNames, parameter.Name, i);
 				i++;
 			}
 		}
