@@ -189,10 +189,34 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			if (xamlBuildRegeneratesInternalTypeHelper
 				&& ns == "XamlGeneratedNamespace" && name == "GeneratedInternalTypeHelper")
 				return false;
-			if (!typeDef.IsNested && RemoveEmbeddedAttributes.attributeNames.Contains(ns + "." + name)
-				&& typeDef.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.Embedded))
+			string fullName = ns + "." + name;
+			if (!typeDef.IsNested && RemoveEmbeddedAttributes.attributeNames.Contains(fullName)
+				&& typeDef.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.Embedded)
+				&& !PreserveEmbeddedReadonlySupportType(metadata, fullName))
 				return false;
 			return true;
+		}
+
+		static bool PreserveEmbeddedReadonlySupportType(MetadataReader metadata, string fullName)
+		{
+			const string embeddedAttribute = "Microsoft.CodeAnalysis.EmbeddedAttribute";
+			const string isReadOnlyAttribute = "System.Runtime.CompilerServices.IsReadOnlyAttribute";
+			if (fullName == isReadOnlyAttribute)
+				return true;
+			if (fullName != embeddedAttribute)
+				return false;
+
+			// Recompiling readonly syntax uses the local marker when it is present. Keep the marker's
+			// own EmbeddedAttribute definition as well so its source remains self-contained.
+			foreach (var handle in metadata.GetTopLevelTypeDefinitions())
+			{
+				var type = metadata.GetTypeDefinition(handle);
+				if (metadata.GetString(type.Namespace) == "System.Runtime.CompilerServices"
+					&& metadata.GetString(type.Name) == "IsReadOnlyAttribute"
+					&& type.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.Embedded))
+					return true;
+			}
+			return false;
 		}
 
 		protected virtual TextWriter CreateFile(string path)

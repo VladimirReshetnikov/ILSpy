@@ -149,7 +149,7 @@ public sealed class WholeProjectDecompilerTests
 	}
 
 	[Test]
-	public async Task CompilerSupportTypesAreExcludedOnlyWhenEmbedded()
+	public async Task EmbeddedReadonlySupportTypesArePreserved()
 	{
 		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "EmbeddedCompilerAttributes.il");
 		string assembly = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
@@ -164,7 +164,7 @@ public sealed class WholeProjectDecompilerTests
 			{
 				Assert.That(decompiler.ContainsSource("class IsReadOnlyAttribute"), Is.True);
 				Assert.That(decompiler.ContainsSource("class IsByRefLikeAttribute"), Is.False);
-				Assert.That(decompiler.ContainsSource("class EmbeddedAttribute"), Is.False);
+				Assert.That(decompiler.ContainsSource("class EmbeddedAttribute"), Is.True);
 			}
 		}
 		finally
