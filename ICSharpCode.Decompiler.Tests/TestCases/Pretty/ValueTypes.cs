@@ -71,6 +71,13 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			{
 				UseField(Get<S>().Field);
 			}
+
+#if CS120
+			public readonly void CallRefReadonlyOnThis()
+			{
+				AcceptRefReadOnly(in this);
+			}
+#endif
 		}
 
 #if CS72

@@ -4672,7 +4672,8 @@ namespace ICSharpCode.Decompiler.CSharp
 		{
 			if (!(input.Expression is DirectionExpression dirExpr && input.ResolveResult is ByReferenceResolveResult brrr))
 				return input;
-			if ((isAddressOf || dirExpr.Expression is ThisReferenceExpression) && kind is ReferenceKind.In or ReferenceKind.RefReadOnly)
+			if ((isAddressOf && kind is ReferenceKind.In or ReferenceKind.RefReadOnly)
+				|| (dirExpr.Expression is ThisReferenceExpression && kind == ReferenceKind.In))
 			{
 				return input.UnwrapChild(dirExpr.Expression);
 			}
