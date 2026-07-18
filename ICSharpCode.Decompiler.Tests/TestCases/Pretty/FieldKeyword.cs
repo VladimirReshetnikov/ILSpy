@@ -41,6 +41,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
+		internal readonly struct ReadonlyStructConstructorAssignedGetterOnlyProperty
+		{
+			public string Text => field ?? string.Empty;
+
+			public ReadonlyStructConstructorAssignedGetterOnlyProperty(string text)
+			{
+				Text = text;
+			}
+		}
+
 		internal class PrimaryConstructorParameter(string field)
 		{
 			public string Value => @field;

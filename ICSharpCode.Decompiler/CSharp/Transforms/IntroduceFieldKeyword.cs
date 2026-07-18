@@ -159,13 +159,17 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 				return;
 			}
-			// Roslyn always emits a mutable backing field for a field-backed property, even when
-			// the property has only a getter. Replacing an initonly metadata field with the C# 14
-			// contextual keyword would therefore silently drop the readonly flag. Keep an explicit
-			// field in that case so its metadata and constructor-only assignment semantics survive.
+			// Roslyn emits a mutable backing field for a field-backed property, even when the property
+			// has only a getter, unless the containing type is a readonly struct. Replacing an initonly
+			// metadata field with the C# 14 contextual keyword would therefore usually drop the readonly
+			// flag. Keep an explicit field unless the synthesized instance field is necessarily initonly.
 			// An already-reconstructed auto-property has no accessor references and exits above;
 			// its { get; } syntax correctly recreates an initonly backing field.
-			if (field.IsReadOnly)
+			bool synthesizedFieldIsReadOnly = !property.IsStatic
+				&& propertyDeclaration.Setter is null
+				&& declaringType.Kind == TypeKind.Struct
+				&& declaringType.IsReadOnly;
+			if (field.IsReadOnly && !synthesizedFieldIsReadOnly)
 			{
 				RematerializeHiddenBackingField(typeDeclaration, field,
 					accessorReferences.Concat(constructorAssignmentReferences)
