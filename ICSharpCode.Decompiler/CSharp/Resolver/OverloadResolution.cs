@@ -879,6 +879,13 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 				if (r != 0)
 					return r;
 
+				// The remaining tie-breakers only make sense for candidates that have the same
+				// number of parameters. Candidates that differ in parameter count and were not
+				// ordered above (i.e. they are not both applicable in expanded form) are equally
+				// good; the C# compiler reports such a call as ambiguous (CS0121).
+				if (c1.Parameters.Count != c2.Parameters.Count)
+					return 0;
+
 				// prefer non-lifted operators
 				ILiftedOperator lift1 = c1.Member as ILiftedOperator;
 				ILiftedOperator lift2 = c2.Member as ILiftedOperator;
@@ -984,12 +991,19 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 
 		int MoreSpecificFormalParameters(Candidate c1, Candidate c2)
 		{
-			// prefer the member with more formal parameters (in case both have different number of optional parameters)
-			int r = c1.Parameters.Count.CompareTo(c2.Parameters.Count);
-			if (r > 0)
-				return 1;
-			else if (r < 0)
-				return 2;
+			if (c1.Parameters.Count != c2.Parameters.Count)
+			{
+				// The candidates differ in their number of formal parameters. Per the C#
+				// specification this breaks the tie only for candidates applicable in their
+				// expanded (params) form, where the one with more declared parameters is better.
+				// For normal-form candidates that merely differ in optional-parameter count the
+				// C# compiler reports an ambiguity (CS0121), so leave them unordered here instead
+				// of preferring one; otherwise the decompiler would omit trailing optional
+				// arguments and emit a call that no longer binds to a single overload.
+				if (c1.IsExpandedForm && c2.IsExpandedForm)
+					return c1.Parameters.Count > c2.Parameters.Count ? 1 : 2;
+				return 0;
+			}
 
 			return MoreSpecificFormalParameters(c1.Parameters.Select(p => p.Type), c2.Parameters.Select(p => p.Type));
 		}

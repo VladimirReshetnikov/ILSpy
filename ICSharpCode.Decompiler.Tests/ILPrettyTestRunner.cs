@@ -83,6 +83,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task AmbiguousTrailingOptionalArguments()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task ExternalFieldNameCollision()
 		{
 			var libraryFile = Path.Combine(TestCasePath, "ExternalFieldNameCollision.Library.il");
