@@ -2308,7 +2308,15 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					decl.Attributes.AddRange(ConvertAttributes(accessor.Parameters.Last().GetAttributes(), "param"));
 				}
 			}
-			if (this.ShowAccessibility && accessor.Accessibility != ownerAccessibility)
+			// An explicit accessor modifier is only legal when it is strictly more restrictive
+			// than the property. Across assembly boundaries C# reduces a "protected internal"
+			// (ProtectedOrInternal) member to "protected": MetadataProperty applies that reduction
+			// to the property, but the accessor method keeps its metadata accessibility. Emitting
+			// the metadata value would then produce a "protected internal" accessor on a "protected"
+			// property, which is broader than the property and rejected by the C# compiler. Suppress
+			// the modifier whenever the accessor is not more restrictive than the property.
+			if (this.ShowAccessibility && accessor.Accessibility != ownerAccessibility
+				&& accessor.Accessibility.LessThanOrEqual(ownerAccessibility))
 				decl.Modifiers = ModifierFromAccessibility(accessor.Accessibility, UsePrivateProtectedAccessibility);
 			if (this.ShowModifiers && accessor.HasReadonlyModifier())
 				decl.Modifiers |= Modifiers.Readonly;
