@@ -222,6 +222,8 @@
     <None Include="TestCases\ILPretty\ExternalFieldNameCollision.cs" />
     <Compile Remove="TestCases\ILPretty\ProtectedInternalCrossAssemblyOverride.cs" />
     <None Include="TestCases\ILPretty\ProtectedInternalCrossAssemblyOverride.cs" />
+    <Compile Remove="TestCases\ILPretty\ProtectedInternalFriendAssemblyOverride.cs" />
+    <None Include="TestCases\ILPretty\ProtectedInternalFriendAssemblyOverride.cs" />
     <Compile Remove="TestCases\ILPretty\ExpressionTreeDeinlinedInArrayInitializer.cs" />
     <None Include="TestCases\ILPretty\ExpressionTreeDeinlinedInArrayInitializer.cs" />
     <Compile Remove="TestCases\ILPretty\FieldKeywordCollision.cs" />

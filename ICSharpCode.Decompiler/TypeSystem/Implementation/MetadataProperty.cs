@@ -265,9 +265,14 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 					{
 						// See https://github.com/icsharpcode/ILSpy/issues/2653
 						// "protected internal" (ProtectedOrInternal) accessibility is "reduced"
-						// to "protected" accessibility across assembly boundaries.
+						// to "protected" accessibility across assembly boundaries, because the
+						// "internal" half is not accessible outside the declaring assembly.
+						// It stays accessible, however, when the base member's assembly grants
+						// this assembly friend access via [InternalsVisibleTo]; C# then requires
+						// the override to keep "protected internal" rather than reduce it.
 						if (baseMember.Accessibility == Accessibility.ProtectedOrInternal
-							&& this.ParentModule?.MetadataFile != baseMember.ParentModule?.MetadataFile)
+							&& this.ParentModule?.MetadataFile != baseMember.ParentModule?.MetadataFile
+							&& !(baseMember.ParentModule?.InternalsVisibleTo(this.ParentModule) ?? false))
 						{
 							return Accessibility.Protected;
 						}

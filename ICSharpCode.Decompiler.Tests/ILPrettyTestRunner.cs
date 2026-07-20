@@ -113,6 +113,21 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ProtectedInternalFriendAssemblyOverride()
+		{
+			var libraryFile = Path.Combine(TestCasePath, "ProtectedInternalFriendAssemblyOverride.Library.il");
+			var library = await Tester.AssembleIL(libraryFile, AssemblerOptions.Library).ConfigureAwait(false);
+			try
+			{
+				await Run();
+			}
+			finally
+			{
+				Tester.RepeatOnIOError(() => File.Delete(library));
+			}
+		}
+
+		[Test]
 		public async Task CrossRootMemberCollision()
 		{
 			var ilFile = Path.Combine(TestCasePath, "CrossRootMemberCollision.il");
