@@ -144,6 +144,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						{
 							case "System.Security.UnverifiableCodeAttribute":
 							case "System.Runtime.CompilerServices.RefSafetyRulesAttribute":
+							case "System.Runtime.CompilerServices.NullablePublicOnlyAttribute":
 								attribute.Remove();
 								break;
 						}
@@ -173,6 +174,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			"System.Runtime.CompilerServices.IsUnmanagedAttribute",
 			"System.Runtime.CompilerServices.NullableAttribute",
 			"System.Runtime.CompilerServices.NullableContextAttribute",
+			"System.Runtime.CompilerServices.NullablePublicOnlyAttribute",
 			"System.Runtime.CompilerServices.NativeIntegerAttribute",
 			"System.Runtime.CompilerServices.ParamCollectionAttribute",
 			"System.Runtime.CompilerServices.RefSafetyRulesAttribute",

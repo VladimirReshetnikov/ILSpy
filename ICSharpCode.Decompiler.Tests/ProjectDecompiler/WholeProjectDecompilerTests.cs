@@ -174,6 +174,32 @@ public sealed class WholeProjectDecompilerTests
 	}
 
 	[Test]
+	public async Task EmbeddedNullablePublicOnlyAttributeIsRemoved()
+	{
+		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "EmbeddedCompilerAttributes.il");
+		string assembly = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
+		try
+		{
+			using PEFile module = new(assembly);
+			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(assembly, false, null));
+			using StringWriter project = new();
+			decompiler.DecompileProject(module, Path.GetRandomFileName(), project);
+
+			using (Assert.EnterMultipleScope())
+			{
+				// The embedded attribute type definition must not be emitted as source.
+				Assert.That(decompiler.ContainsSource("class NullablePublicOnlyAttribute"), Is.False);
+				// The [module: NullablePublicOnly(false)] usage must not be emitted either.
+				Assert.That(decompiler.ContainsSource("NullablePublicOnly(false)"), Is.False);
+			}
+		}
+		finally
+		{
+			Tester.RepeatOnIOError(() => File.Delete(assembly));
+		}
+	}
+
+	[Test]
 	public async Task ProjectNullableContextPreservesAnnotatedExtensionMarkerName()
 	{
 		string sourceFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "ObliviousExtensionBlock.cs");

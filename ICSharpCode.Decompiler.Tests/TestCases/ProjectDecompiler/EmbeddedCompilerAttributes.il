@@ -8,6 +8,10 @@
 
 .module EmbeddedCompilerAttributes.dll
 
+.custom instance void System.Runtime.CompilerServices.NullablePublicOnlyAttribute::.ctor(bool) = (
+	01 00 00 00 00
+)
+
 .class private auto ansi sealed beforefieldinit Microsoft.CodeAnalysis.EmbeddedAttribute
 	extends [mscorlib]System.Attribute
 {
@@ -36,6 +40,27 @@
 	{
 		ldarg.0
 		call instance void [mscorlib]System.Attribute::.ctor()
+		ret
+	}
+}
+
+.class private auto ansi sealed beforefieldinit System.Runtime.CompilerServices.NullablePublicOnlyAttribute
+	extends [mscorlib]System.Attribute
+{
+	.custom instance void Microsoft.CodeAnalysis.EmbeddedAttribute::.ctor() = (
+		01 00 00 00
+	)
+
+	.field public initonly bool IncludesInternals
+
+	.method public hidebysig specialname rtspecialname
+		instance void .ctor (bool includesInternals) cil managed
+	{
+		ldarg.0
+		call instance void [mscorlib]System.Attribute::.ctor()
+		ldarg.0
+		ldarg.1
+		stfld bool System.Runtime.CompilerServices.NullablePublicOnlyAttribute::IncludesInternals
 		ret
 	}
 }
