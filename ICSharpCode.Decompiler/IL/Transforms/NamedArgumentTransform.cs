@@ -16,6 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Diagnostics;
 using System.Linq;
 
@@ -56,6 +57,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			}
 			if (call.Method.Parameters.Any(p => string.IsNullOrEmpty(p.Name)))
 				return FindResult.Stop; // cannot use named arguments
+			if (NamedArgumentsCannotDisambiguateOverloads(call.Method))
+				return FindResult.Stop; // named arguments would leave the call ambiguous (CS0121)
 			for (int i = child.ChildIndex; i < call.Arguments.Count; i++)
 			{
 				var r = ILInlining.FindLoadInNext(call.Arguments[i], v, expressionBeingMoved, InliningOptions.None);
@@ -65,6 +68,56 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				}
 			}
 			return FindResult.Stop;
+		}
+
+		/// <summary>
+		/// Named arguments select an overload purely by parameter name. If another overload with the
+		/// same name and arity lists the same parameter names in a different order, the named form is
+		/// applicable to both overloads and the C# compiler cannot disambiguate the call (CS0121),
+		/// even though a positional call is unambiguous. In that case the reordered value has to stay
+		/// in an explicit local and the call must remain positional, so named arguments must not be
+		/// introduced.
+		/// </summary>
+		static bool NamedArgumentsCannotDisambiguateOverloads(IMethod method)
+		{
+			var parameters = method.Parameters;
+			int count = parameters.Count;
+			if (count < 2)
+				return false;
+			var declaringType = method.DeclaringType;
+			if (declaringType == null)
+				return false;
+			var names = new string[count];
+			for (int i = 0; i < count; i++)
+			{
+				names[i] = parameters[i].Name;
+			}
+			var sortedNames = names.OrderBy(static n => n, StringComparer.Ordinal).ToArray();
+			foreach (var sibling in declaringType.GetMethods(
+				m => m.Name == method.Name && m.TypeParameters.Count == method.TypeParameters.Count))
+			{
+				var siblingParameters = sibling.Parameters;
+				if (siblingParameters.Count != count)
+					continue;
+				bool sameOrder = true;
+				for (int i = 0; i < count; i++)
+				{
+					if (!string.Equals(siblingParameters[i].Name, names[i], StringComparison.Ordinal))
+					{
+						sameOrder = false;
+						break;
+					}
+				}
+				// Identical name order matches the method itself and can never be a swapped overload.
+				if (sameOrder)
+					continue;
+				bool sameNameSet = sortedNames.SequenceEqual(
+					siblingParameters.Select(static p => p.Name).OrderBy(static n => n, StringComparer.Ordinal),
+					StringComparer.Ordinal);
+				if (sameNameSet)
+					return true;
+			}
+			return false;
 		}
 
 		internal static FindResult CanExtendNamedArgument(Block block, ILVariable v, ILInstruction expressionBeingMoved)

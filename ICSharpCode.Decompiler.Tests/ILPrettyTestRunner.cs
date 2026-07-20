@@ -77,6 +77,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task NamedArgumentOverloadCollision()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task ExternalFieldNameCollision()
 		{
 			var libraryFile = Path.Combine(TestCasePath, "ExternalFieldNameCollision.Library.il");
