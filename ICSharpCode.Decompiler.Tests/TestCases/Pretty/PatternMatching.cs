@@ -896,5 +896,24 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 			return false;
 		}
+
+		// A pattern variable that is read must never be emitted as the discard designator 'is T _':
+		// '_' is contextually a discard, so a later read would be a bare '_' that does not bind
+		// (CS0103). Without debug names, this variable's name is synthesized from its single use
+		// site; passing it to a parameter that is itself the discard '_' must not make the
+		// synthesized name '_'.
+		public object UsedPatternVariableWithDiscardNamedCallee(object o)
+		{
+			if (o is X x)
+			{
+				return Consume(x);
+			}
+			return null;
+		}
+
+		private object Consume(X _)
+		{
+			return _;
+		}
 	}
 }

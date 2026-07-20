@@ -962,6 +962,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			string lowerCaseName = char.ToLower(name[0]) + name.Substring(1);
 			if (CSharp.OutputVisitor.CSharpOutputVisitor.IsKeyword(lowerCaseName))
 				return null;
+			// "_" is contextually a discard in patterns, deconstruction, and lambda parameters, so it
+			// must never be adopted as a synthesized variable name (e.g. from a callee parameter or a
+			// field literally named "_"). A pattern designator named "_" is a discard, so a later read
+			// of the variable is emitted as a bare "_" that does not bind (CS0103). Reject it like a
+			// keyword so the caller falls back to a type-based name.
+			if (lowerCaseName == "_")
+				return null;
 			return lowerCaseName;
 		}
 
