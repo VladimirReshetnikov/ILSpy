@@ -2103,17 +2103,20 @@ namespace ICSharpCode.Decompiler.CSharp
 					eventDecl.ReturnType = eventReturnType.Clone();
 				eventDecl.PrivateImplementationType = astBuilder.ConvertType(interfaceEvent.DeclaringType);
 				eventDecl.Name = interfaceEvent.Name;
+				// The forwarder targets the public member by name. A field-like EventDeclaration
+				// exposes no Name (it lives in the VariableInitializer), so take the name from the
+				// event symbol rather than from memberDecl, which would be empty for an automatic event.
 				var addAccessor = new Accessor { Body = new BlockStatement() };
-				var addReference = new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name);
+				var addReference = new MemberReferenceExpression(new ThisReferenceExpression(), @event.Name);
 				addReference.AddAnnotation(new MemberResolveResult(new ThisResolveResult(@event.DeclaringType), @event));
 				var addStatement = new ExpressionStatement(new AssignmentExpression(
 					addReference,
 					AssignmentOperatorType.Add, new IdentifierExpression("value")));
-				addStatement.AddLeadingTrivia(InterfaceImplComment(memberDecl.Name));
+				addStatement.AddLeadingTrivia(InterfaceImplComment(@event.Name));
 				addAccessor.Body.Add(addStatement);
 				eventDecl.AddAccessor = addAccessor;
 				var removeAccessor = new Accessor { Body = new BlockStatement() };
-				var removeReference = new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name);
+				var removeReference = new MemberReferenceExpression(new ThisReferenceExpression(), @event.Name);
 				removeReference.AddAnnotation(new MemberResolveResult(new ThisResolveResult(@event.DeclaringType), @event));
 				removeAccessor.Body.Add(new ExpressionStatement(new AssignmentExpression(
 					removeReference,

@@ -57,15 +57,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 			this = default(SequentialGeneratedFieldOrder);
 			First = first;
-			this.Changed = changed;
+			Changed = changed;
 			Last = last;
 		}
 
 		public void Raise()
 		{
-			if (this.Changed != null)
+			if (Changed != null)
 			{
-				this.Changed();
+				Changed();
 			}
 		}
 	}
