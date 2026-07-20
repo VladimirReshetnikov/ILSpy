@@ -221,17 +221,19 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return base.VisitPropertyDeclaration(propertyDeclaration);
 		}
 
-		public override AstNode VisitCustomEventDeclaration(CustomEventDeclaration eventDeclaration)
+		public override AstNode VisitEventDeclaration(EventDeclaration eventDeclaration)
 		{
-			// first apply transforms to the accessor bodies
-			base.VisitCustomEventDeclaration(eventDeclaration);
-			if (context.Settings.AutomaticEvents)
+			// A field-like event declaration hides its backing field; remove the field declaration
+			// if it was emitted because other members reference it. (This happens for events that
+			// CSharpDecompiler.DoDecompile already recognized as automatic: the backing field is
+			// hidden from the normal member list, but re-emitted via the work list when referenced.)
+			if (context.Settings.AutomaticEvents && eventDeclaration.GetSymbol() is IEvent symbol)
 			{
-				AstNode? result = TransformAutomaticEvents(eventDeclaration);
-				if (result != null)
-					return result;
+				var fieldDecl = eventDeclaration.Parent?.Children.OfType<FieldDeclaration>()
+					.FirstOrDefault(fd => IsEventBackingFieldDeclaration(fd, symbol));
+				fieldDecl?.Remove();
 			}
-			return eventDeclaration;
+			return base.VisitEventDeclaration(eventDeclaration);
 		}
 
 		public override AstNode VisitMethodDeclaration(MethodDeclaration methodDeclaration)
@@ -956,12 +958,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return null;
 		}
 
-		void RemoveCompilerGeneratedAttribute(AstNodeCollection<AttributeSection> attributeSections)
+		static void RemoveCompilerGeneratedAttribute(AstNodeCollection<AttributeSection> attributeSections)
 		{
 			RemoveCompilerGeneratedAttribute(attributeSections, "System.Runtime.CompilerServices.CompilerGeneratedAttribute");
 		}
 
-		void RemoveCompilerGeneratedAttribute(AstNodeCollection<AttributeSection> attributeSections, params string[] attributesToRemove)
+		static void RemoveCompilerGeneratedAttribute(AstNodeCollection<AttributeSection> attributeSections, params string[] attributesToRemove)
 		{
 			foreach (AttributeSection section in attributeSections)
 			{
@@ -990,12 +992,6 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					context.EndStep(newIdentifier);
 					return newIdentifier;
 				}
-			}
-			if (context.Settings.AutomaticEvents)
-			{
-				var newIdentifier = ReplaceEventFieldAnnotation(identifier);
-				if (newIdentifier != null)
-					return newIdentifier;
 			}
 			return base.VisitIdentifier(identifier);
 		}
@@ -1056,300 +1052,23 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return null;
 		}
 
-		Identifier? ReplaceEventFieldAnnotation(Identifier identifier)
-		{
-			var parent = identifier.Parent;
-			if (parent == null)
-				return null;
-			var mrr = parent.Annotation<MemberResolveResult>();
-			if (mrr?.Member is not IField field || field.Accessibility != Accessibility.Private)
-				return null;
-			var module = field.ParentModule as MetadataModule;
-			if (module == null)
-				return null;
-			if (module.MetadataFile.PropertyAndEventBackingFieldLookup.IsEventBackingField((FieldDefinitionHandle)field.MetadataToken, out var eventHandle))
-			{
-				var eventDef = module.ResolveEntity(eventHandle) as IEvent;
-				if (eventDef != null && currentMethod?.AccessorOwner != eventDef)
-				{
-					context.Step("Replace event backing field use with event", identifier);
-					parent.RemoveAnnotations<MemberResolveResult>();
-					parent.AddAnnotation(new MemberResolveResult(mrr.TargetResult, eventDef));
-					identifier.Name = eventDef.Name;
-					return identifier;
-				}
-			}
-			return null;
-		}
-
 		#region Automatic Events
-		static readonly Expression fieldReferencePattern = new Choice {
-			new IdentifierExpression(Pattern.AnyString),
-			new MemberReferenceExpression {
-				Target = new Choice { new ThisReferenceExpression(), new TypeReferenceExpression { Type = new AnyNode() } },
-				MemberName = Pattern.AnyString
-			}
-		};
-
-		static readonly Accessor automaticEventPatternV2 = new Accessor {
-			Attributes = { new Repeat(new AnyNode()) },
-			Body = new BlockStatement {
-				new AssignmentExpression {
-					Left = new NamedNode("field", fieldReferencePattern),
-					Operator = AssignmentOperatorType.Assign,
-					Right = new CastExpression(
-						new AnyNode("type"),
-						new InvocationExpression(new AnyNode("delegateCombine").ToExpression(), new Backreference("field"), new IdentifierExpression("value"))
-					)
-				},
-			}
-		};
-
-		static readonly Accessor automaticEventPatternV4 = new Accessor {
-			Attributes = { new Repeat(new AnyNode()) },
-			Body = new BlockStatement {
-				new AssignmentExpression {
-					Left = new NamedNode("var1", new IdentifierExpression(Pattern.AnyString)),
-					Operator = AssignmentOperatorType.Assign,
-					Right = new NamedNode("field", fieldReferencePattern)
-				},
-				new DoWhileStatement {
-					EmbeddedStatement = new BlockStatement {
-						new AssignmentExpression(new NamedNode("var2", new IdentifierExpression(Pattern.AnyString)), new IdentifierExpressionBackreference("var1")),
-						new AssignmentExpression {
-							Left = new NamedNode("var3", new IdentifierExpression(Pattern.AnyString)),
-							Operator = AssignmentOperatorType.Assign,
-							Right = new CastExpression(new AnyNode("type"), new InvocationExpression(new AnyNode("delegateCombine").ToExpression(), new IdentifierExpressionBackreference("var2"), new IdentifierExpression("value")))
-						},
-						new AssignmentExpression {
-							Left = new IdentifierExpressionBackreference("var1"),
-							Right = new InvocationExpression(new MemberReferenceExpression(new TypeReferenceExpression(new TypePattern(typeof(System.Threading.Interlocked)).ToType()),
-								"CompareExchange"),
-								new Expression[] { // arguments
-									new DirectionExpression { FieldDirection = FieldDirection.Ref, Expression = new Backreference("field") },
-									new IdentifierExpressionBackreference("var3"),
-									new IdentifierExpressionBackreference("var2")
-								}
-							)}
-					},
-					Condition = new BinaryOperatorExpression {
-						Left = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var1")),
-						Operator = BinaryOperatorType.InEquality,
-						Right = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var2"))
-					},
-				}
-			}
-		};
-
-		static readonly Accessor automaticEventPatternV4AggressivelyInlined = new Accessor {
-			Attributes = { new Repeat(new AnyNode()) },
-			Body = new BlockStatement {
-				new AssignmentExpression {
-					Left = new NamedNode("var1", new IdentifierExpression(Pattern.AnyString)),
-					Operator = AssignmentOperatorType.Assign,
-					Right = new NamedNode("field", fieldReferencePattern)
-				},
-				new DoWhileStatement {
-					EmbeddedStatement = new BlockStatement {
-						new AssignmentExpression(new NamedNode("var2", new IdentifierExpression(Pattern.AnyString)), new IdentifierExpressionBackreference("var1")),
-						new AssignmentExpression {
-							Left = new IdentifierExpressionBackreference("var1"),
-							Right = new InvocationExpression(new MemberReferenceExpression(new TypeReferenceExpression(new TypePattern(typeof(System.Threading.Interlocked)).ToType()),
-								"CompareExchange"),
-								new Expression[] { // arguments
-									new NamedArgumentExpression("value", new CastExpression(new AnyNode("type"), new InvocationExpression(new AnyNode("delegateCombine").ToExpression(), new IdentifierExpressionBackreference("var2"), new IdentifierExpression("value")))),
-									new NamedArgumentExpression("location1", new DirectionExpression { FieldDirection = FieldDirection.Ref, Expression = new Backreference("field") }),
-									new NamedArgumentExpression("comparand", new IdentifierExpressionBackreference("var2"))
-								}
-							)}
-					},
-					Condition = new BinaryOperatorExpression {
-						Left = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var1")),
-						Operator = BinaryOperatorType.InEquality,
-						Right = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var2"))
-					},
-				}
-			}
-		};
-
-		static readonly Accessor automaticEventPatternV4MCS = new Accessor {
-			Attributes = { new Repeat(new AnyNode()) },
-			Body = new BlockStatement {
-				new AssignmentExpression {
-					Left = new NamedNode("var1", new IdentifierExpression(Pattern.AnyString)),
-					Operator = AssignmentOperatorType.Assign,
-					Right = new NamedNode(
-						"field",
-						new MemberReferenceExpression {
-								Target = new Choice { new ThisReferenceExpression(), new TypeReferenceExpression { Type = new AnyNode() } },
-								MemberName = Pattern.AnyString
-						}
-					)
-				},
-				new DoWhileStatement {
-					EmbeddedStatement = new BlockStatement {
-						new AssignmentExpression(new NamedNode("var2", new IdentifierExpression(Pattern.AnyString)), new IdentifierExpressionBackreference("var1")),
-						new AssignmentExpression {
-							Left = new IdentifierExpressionBackreference("var1"),
-							Right = new InvocationExpression(new MemberReferenceExpression(new TypeReferenceExpression(new TypePattern(typeof(System.Threading.Interlocked)).ToType()),
-								"CompareExchange",
-								new AstType[] { new Repeat(new AnyNode()) }), // optional type arguments
-								new Expression[] { // arguments
-									new DirectionExpression { FieldDirection = FieldDirection.Ref, Expression = new Backreference("field") },
-									new CastExpression(new AnyNode("type"), new InvocationExpression(new AnyNode("delegateCombine").ToExpression(), new IdentifierExpressionBackreference("var2"), new IdentifierExpression("value"))),
-									new IdentifierExpressionBackreference("var1")
-								}
-							)
-						}
-					},
-					Condition = new BinaryOperatorExpression {
-						Left = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var1")),
-						Operator = BinaryOperatorType.InEquality,
-						Right = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var2"))
-					},
-				}
-			}
-		};
-
-		bool CheckAutomaticEventMatch(Match m, CustomEventDeclaration ev, bool isAddAccessor)
-		{
-			if (!m.Success)
-				return false;
-			Expression fieldExpression = m.Get<Expression>("field").Single();
-			IField? eventField = fieldExpression.GetSymbol() as IField;
-			if (eventField == null)
-				return false;
-			var module = eventField.ParentModule as MetadataModule;
-			if (module == null)
-				return false;
-			if (!module.MetadataFile.PropertyAndEventBackingFieldLookup.IsEventBackingField((FieldDefinitionHandle)eventField.MetadataToken, out _))
-				return false;
-			var returnType = ev.ReturnType.GetResolveResult().Type;
-			var eventType = m.Get<AstType>("type").Single().GetResolveResult().Type;
-			// ignore tuple element names, dynamic and nullability
-			if (!NormalizeTypeVisitor.TypeErasure.EquivalentTypes(returnType, eventType))
-				return false;
-			var combineMethod = m.Get<AstNode>("delegateCombine").Single().Parent!.GetSymbol() as IMethod;
-			if (combineMethod == null || combineMethod.Name != (isAddAccessor ? "Combine" : "Remove"))
-				return false;
-			return combineMethod.DeclaringType.FullName == "System.Delegate";
-		}
-
-		static readonly string[] attributeTypesToRemoveFromAutoEvents = new[] {
-			"System.Runtime.CompilerServices.CompilerGeneratedAttribute",
-			"System.Diagnostics.DebuggerBrowsableAttribute",
-			"System.Runtime.CompilerServices.MethodImplAttribute"
-		};
-
 		internal static readonly string[] attributeTypesToRemoveFromAutoProperties = new[] {
 			"System.Runtime.CompilerServices.CompilerGeneratedAttribute",
 			"System.Diagnostics.DebuggerBrowsableAttribute"
 		};
 
-		bool CheckAutomaticEventV4(CustomEventDeclaration ev)
+		static bool IsEventBackingFieldDeclaration(FieldDeclaration fd, IEvent ev)
 		{
-			Match addMatch = automaticEventPatternV4.Match(ev.AddAccessor);
-			if (!CheckAutomaticEventMatch(addMatch, ev, isAddAccessor: true))
+			if (fd.Variables.Count > 1)
 				return false;
-			Match removeMatch = automaticEventPatternV4.Match(ev.RemoveAccessor);
-			if (!CheckAutomaticEventMatch(removeMatch, ev, isAddAccessor: false))
+			if (fd.GetSymbol() is not IField f)
 				return false;
-			return true;
-		}
-
-		bool CheckAutomaticEventV4AggressivelyInlined(CustomEventDeclaration ev)
-		{
-			if (!context.Settings.AggressiveInlining)
+			if (f.ParentModule is not MetadataModule module)
 				return false;
-			Match addMatch = automaticEventPatternV4AggressivelyInlined.Match(ev.AddAccessor);
-			if (!CheckAutomaticEventMatch(addMatch, ev, isAddAccessor: true))
-				return false;
-			Match removeMatch = automaticEventPatternV4AggressivelyInlined.Match(ev.RemoveAccessor);
-			if (!CheckAutomaticEventMatch(removeMatch, ev, isAddAccessor: false))
-				return false;
-			return true;
-		}
-
-		bool CheckAutomaticEventV2(CustomEventDeclaration ev)
-		{
-			Match addMatch = automaticEventPatternV2.Match(ev.AddAccessor);
-			if (!CheckAutomaticEventMatch(addMatch, ev, isAddAccessor: true))
-				return false;
-			Match removeMatch = automaticEventPatternV2.Match(ev.RemoveAccessor);
-			if (!CheckAutomaticEventMatch(removeMatch, ev, isAddAccessor: false))
-				return false;
-			return true;
-		}
-
-		bool CheckAutomaticEventV4MCS(CustomEventDeclaration ev)
-		{
-			Match addMatch = automaticEventPatternV4MCS.Match(ev.AddAccessor);
-			if (!CheckAutomaticEventMatch(addMatch, ev, true))
-				return false;
-			Match removeMatch = automaticEventPatternV4MCS.Match(ev.RemoveAccessor);
-			if (!CheckAutomaticEventMatch(removeMatch, ev, false))
-				return false;
-			return true;
-		}
-
-		EventDeclaration? TransformAutomaticEvents(CustomEventDeclaration ev)
-		{
-			if (ev.PrivateImplementationType is not null)
-				return null;
-			const Modifiers withoutBody = Modifiers.Abstract | Modifiers.Extern;
-			if (ev.GetSymbol() is not IEvent symbol)
-				return null;
-			if ((ev.Modifiers & withoutBody) == 0)
-			{
-				if (!CheckAutomaticEventV4AggressivelyInlined(ev) && !CheckAutomaticEventV4(ev) && !CheckAutomaticEventV2(ev) && !CheckAutomaticEventV4MCS(ev))
-					return null;
-			}
-			if (ev.AddAccessor is not { } addAccessor)
-				return null;
-			context.Step("Convert custom event to field-like event", ev);
-			RemoveCompilerGeneratedAttribute(addAccessor.Attributes, attributeTypesToRemoveFromAutoEvents);
-			EventDeclaration ed = new EventDeclaration();
-			ev.Attributes.MoveTo(ed.Attributes);
-			foreach (var attr in addAccessor.Attributes)
-			{
-				attr.AttributeTarget = "method";
-				ed.Attributes.Add(attr.Detach());
-			}
-			ed.ReturnType = ev.ReturnType.Detach();
-			ed.Modifiers = ev.Modifiers;
-			ed.Variables.Add(new VariableInitializer(ev.Name));
-			ed.CopyAnnotationsFrom(ev);
-
-			var fieldDecl = ev.Parent?.Children.OfType<FieldDeclaration>()
-				.FirstOrDefault(IsEventBackingField);
-			if (fieldDecl != null)
-			{
-				fieldDecl.Remove();
-				CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.CompilerGenerated);
-				CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.DebuggerBrowsable);
-				foreach (var section in fieldDecl.Attributes)
-				{
-					section.AttributeTarget = "field";
-					ed.Attributes.Add(section.Detach());
-				}
-			}
-
-			ev.ReplaceWith(ed);
-			context.EndStep(ed);
-			return ed;
-
-			bool IsEventBackingField(FieldDeclaration fd)
-			{
-				if (fd.Variables.Count > 1)
-					return false;
-				if (fd.GetSymbol() is not IField f)
-					return false;
-				if (f.ParentModule is not MetadataModule module)
-					return false;
-				return f.Accessibility == Accessibility.Private
-					&& symbol.ReturnType.Equals(f.ReturnType)
-					&& module.MetadataFile.PropertyAndEventBackingFieldLookup.IsEventBackingField((FieldDefinitionHandle)f.MetadataToken, out _);
-			}
+			return f.Accessibility == Accessibility.Private
+				&& ev.ReturnType.Equals(f.ReturnType)
+				&& module.MetadataFile.PropertyAndEventBackingFieldLookup.IsEventBackingField((FieldDefinitionHandle)f.MetadataToken, out _);
 		}
 		#endregion
 

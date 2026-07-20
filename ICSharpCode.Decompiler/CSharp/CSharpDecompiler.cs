@@ -188,6 +188,56 @@ namespace ICSharpCode.Decompiler.CSharp
 			};
 		}
 
+		/// <summary>
+		/// Decompiles the body of <paramref name="method"/> to ILAst for structural analysis,
+		/// e.g. for recognizing compiler-generated code (see RecordDecompiler, AutoEventDecompiler).
+		/// Runs the IL transform pipeline with a fixed set of decompiler settings, so the
+		/// resulting shape is independent of the user-visible settings, and stops before the
+		/// late transforms (variable naming etc.) that are only needed for code output.
+		/// </summary>
+		internal static Block? DecompileBodyForAnalysis(IMethod method, IDecompilerTypeSystem typeSystem, CancellationToken cancellationToken)
+		{
+			if (method.MetadataToken.IsNil)
+				return null;
+			var module = typeSystem.MainModule;
+			var metadata = module.metadata;
+
+			var methodDefHandle = (MethodDefinitionHandle)method.MetadataToken;
+			var methodDef = metadata.GetMethodDefinition(methodDefHandle);
+			if (!methodDef.HasBody())
+				return null;
+
+			var genericContext = new GenericContext(
+				classTypeParameters: method.DeclaringTypeDefinition?.TypeParameters,
+				methodTypeParameters: null);
+			var body = module.MetadataFile.GetMethodBody(methodDef.RelativeVirtualAddress);
+			var ilReader = new ILReader(module);
+			var il = ilReader.ReadIL(methodDefHandle, body, genericContext, ILFunctionKind.TopLevelFunction, cancellationToken);
+			var settings = new DecompilerSettings(LanguageVersion.CSharp1);
+			var transforms = GetILTransforms();
+			// Remove the last couple transforms -- we don't need variable names etc. here
+			int lastBlockTransform = transforms.FindLastIndex(t => t is BlockILTransform);
+			transforms.RemoveRange(lastBlockTransform + 1, transforms.Count - (lastBlockTransform + 1));
+			// Use CombineExitsTransform so that "return other != null && ...;" is a single statement even in release builds
+			transforms.Add(new CombineExitsTransform());
+			il.RunTransforms(transforms,
+				new ILTransformContext(il, typeSystem, debugInfo: null, settings) {
+					CancellationToken = cancellationToken
+				});
+			if (il.Body is BlockContainer container)
+			{
+				return container.EntryPoint;
+			}
+			else if (il.Body is Block block)
+			{
+				return block;
+			}
+			else
+			{
+				return null;
+			}
+		}
+
 		List<IAstTransform> astTransforms = GetAstTransforms();
 
 		public Stepper Stepper { get; set; } = new Stepper();
@@ -574,20 +624,6 @@ namespace ICSharpCode.Decompiler.CSharp
 		static bool IsSwitchOnStringCache(SRM.FieldDefinition field, MetadataReader metadata)
 		{
 			return metadata.GetString(field.Name).StartsWith("<>f__switch", StringComparison.Ordinal);
-		}
-
-		internal static bool IsEventBackingFieldName(string fieldName, string eventName, out int suffixLength)
-		{
-			suffixLength = 0;
-			if (fieldName == eventName)
-				return true;
-			var vbSuffixLength = "Event".Length;
-			if (fieldName.Length == eventName.Length + vbSuffixLength && fieldName.StartsWith(eventName, StringComparison.Ordinal) && fieldName.EndsWith("Event", StringComparison.Ordinal))
-			{
-				suffixLength = vbSuffixLength;
-				return true;
-			}
-			return false;
 		}
 
 		static bool IsAnonymousMethodCacheField(SRM.FieldDefinition field, MetadataReader metadata)
@@ -2260,7 +2296,12 @@ namespace ICSharpCode.Decompiler.CSharp
 				// Decompile members that are not compiler-generated.
 				foreach (var entity in allOrderedEntities)
 				{
-					if (entity.MetadataToken.IsNil || MemberIsHidden(module.MetadataFile, entity.MetadataToken, settings))
+					if (entity.MetadataToken.IsNil)
+					{
+						continue;
+					}
+					if (MemberIsHidden(module.MetadataFile, entity.MetadataToken, settings)
+						&& !IsBackingFieldOfNonAutomaticEvent(entity))
 					{
 						continue;
 					}
@@ -2364,6 +2405,25 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				watch.Stop();
 				Instrumentation.DecompilerEventSource.Log.DoDecompileTypeDefinition(typeDef.FullName, watch.ElapsedMilliseconds);
+			}
+
+			// MemberIsHidden identifies event backing fields from the metadata name association
+			// alone. When the event's accessors turn out not to be compiler-generated, the event
+			// is decompiled with explicit accessors and no field-like declaration takes the
+			// field's place, so the field must stay in the output even if no decompiled body
+			// references it (referenced hidden members are re-added via the work list).
+			bool IsBackingFieldOfNonAutomaticEvent(IEntity entity)
+			{
+				if (entity is not IField field || !settings.AutomaticEvents)
+					return false;
+				if (!module.MetadataFile.PropertyAndEventBackingFieldLookup.IsEventBackingField((FieldDefinitionHandle)field.MetadataToken, out var eventHandle))
+					return false;
+				if (AutoEventDecompiler.IsAutomaticEvent(typeSystem, module.GetDefinition(eventHandle), decompileRun, CancellationToken, out _))
+					return false;
+				// The field may be hidden for an unrelated reason as well; keep it hidden then.
+				var settingsWithoutAutomaticEvents = settings.Clone();
+				settingsWithoutAutomaticEvents.AutomaticEvents = false;
+				return !MemberIsHidden(module.MetadataFile, field.MetadataToken, settingsWithoutAutomaticEvents);
 			}
 
 			void DoDecompileMember(IEntity entity, RecordDecompiler? recordDecompiler, PartialTypeInfo? partialType, ExtensionInfo? extensionInfo)
@@ -3153,27 +3213,41 @@ namespace ICSharpCode.Decompiler.CSharp
 				bool adderHasBody = ev.CanAdd && ev.AddAccessor!.HasBody;
 				bool removerHasBody = ev.CanRemove && ev.RemoveAccessor!.HasBody;
 				var typeSystemAstBuilder = CreateAstBuilder(decompileRun.Settings);
-				typeSystemAstBuilder.UseCustomEvents = ev.DeclaringTypeDefinition!.Kind != TypeKind.Interface
-					|| ev.IsExplicitInterfaceImplementation
-					|| adderHasBody
-					|| removerHasBody;
+				IField? backingField = null;
+				bool isAutomaticEvent = adderHasBody && removerHasBody && decompileRun.Settings.AutomaticEvents
+					&& AutoEventDecompiler.IsAutomaticEvent(typeSystem, ev, decompileRun, CancellationToken, out backingField);
+				// A recognized automatic event is built in field-like form directly; its
+				// compiler-generated accessor bodies are never decompiled. Accessors without
+				// bodies (abstract, extern, interface members) cannot be expressed as custom
+				// accessors in C#, so only the field-like form is valid for them as well.
+				typeSystemAstBuilder.UseCustomEvents = !isAutomaticEvent
+					&& (ev.IsExplicitInterfaceImplementation
+						|| adderHasBody
+						|| removerHasBody);
 				var eventDecl = typeSystemAstBuilder.ConvertEntity(ev);
 				int lastDot = ev.Name.LastIndexOf('.');
 				if (ev.IsExplicitInterfaceImplementation)
 				{
 					eventDecl.Name = ev.Name.Substring(lastDot + 1);
 				}
-				if (adderHasBody)
+				if (isAutomaticEvent)
 				{
-					DecompileBody(ev.AddAccessor!, ((CustomEventDeclaration)eventDecl).AddAccessor!, decompileRun, decompilationContext, null);
+					AutoEventDecompiler.AddFieldLikeEventAttributes((EventDeclaration)eventDecl, typeSystemAstBuilder, ev, backingField!);
 				}
-				if (removerHasBody)
+				else
 				{
-					DecompileBody(ev.RemoveAccessor!, ((CustomEventDeclaration)eventDecl).RemoveAccessor!, decompileRun, decompilationContext, null);
-				}
-				if (!adderHasBody && !removerHasBody && !ev.IsAbstract && ev.DeclaringType.Kind != TypeKind.Interface)
-				{
-					eventDecl.Modifiers |= Modifiers.Extern;
+					if (adderHasBody)
+					{
+						DecompileBody(ev.AddAccessor!, ((CustomEventDeclaration)eventDecl).AddAccessor!, decompileRun, decompilationContext, null);
+					}
+					if (removerHasBody)
+					{
+						DecompileBody(ev.RemoveAccessor!, ((CustomEventDeclaration)eventDecl).RemoveAccessor!, decompileRun, decompilationContext, null);
+					}
+					if (!adderHasBody && !removerHasBody && !ev.IsAbstract && ev.DeclaringType.Kind != TypeKind.Interface)
+					{
+						eventDecl.Modifiers |= Modifiers.Extern;
+					}
 				}
 				var accessor = metadata.GetMethodDefinition((MethodDefinitionHandle)(ev.AddAccessor ?? ev.RemoveAccessor)!.MetadataToken);
 				if (accessor.HasFlag(System.Reflection.MethodAttributes.Virtual) == accessor.HasFlag(System.Reflection.MethodAttributes.NewSlot))
