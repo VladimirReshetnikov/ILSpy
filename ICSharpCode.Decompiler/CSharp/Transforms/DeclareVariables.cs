@@ -849,7 +849,47 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						AstType unsafeType = context.TypeSystemAstBuilder.ConvertType(
 							context.TypeSystem.FindType(KnownTypeCode.Unsafe));
 						AstNode insertedNode;
-						if (context.Settings.OutVariables)
+						if (v.Type.Kind == TypeKind.ByReference)
+						{
+							// A ref local cannot be left uninitialized in C#, and it cannot be passed
+							// as an 'out' argument: 'ref T x;' (CS8174) and 'Unsafe.SkipInit(out ref T x)'
+							// (CS8388) are both illegal. The IL leaves the managed pointer unassigned and
+							// reassigns it (via 'x = ref ...') before any read, so bind the ref local to a
+							// null reference at its declaration. 'ref T x = ref Unsafe.NullRef<T>();' is the
+							// closest legal equivalent and keeps the later ref reassignments valid.
+							//
+							// 'Unsafe.NullRef<T>()' returns a reference whose ref-safe-context is the
+							// calling method, so a plain 'ref T x' would reject a later reassignment from a
+							// method-local reference (CS8374). Such a ref local starts unassigned, so it
+							// never legitimately escapes; declare it 'scoped' to narrow its ref-safe-context
+							// enough to admit those reassignments.
+							if (v.ILVariable.IsRefReadOnly && type is ComposedType composedRefType
+								&& composedRefType.HasRefSpecifier)
+							{
+								composedRefType.HasReadOnlySpecifier = true;
+							}
+							AstType elementType = context.TypeSystemAstBuilder.ConvertType(
+								((ByReferenceType)v.Type).ElementType);
+							vds.Variables.Single().Initializer = new DirectionExpression(
+								FieldDirection.Ref,
+								new InvocationExpression {
+									Target = new MemberReferenceExpression {
+										Target = new TypeReferenceExpression(unsafeType),
+										MemberName = "NullRef",
+										TypeArguments = { elementType }
+									}
+								});
+							if (context.Settings.ScopedRef)
+							{
+								vds.IsScopedRef = true;
+							}
+							insertionParent.InsertChildBefore(
+								v.InsertionPoint.nextNode,
+								vds,
+								Slots.Statement);
+							insertedNode = vds;
+						}
+						else if (context.Settings.OutVariables)
 						{
 							var outVarDecl = new OutVarDeclarationExpression(type.Clone(), v.Name);
 							outVarDecl.Variable.AddAnnotation(new ILVariableResolveResult(ilVariable));
