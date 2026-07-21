@@ -62,31 +62,44 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 		/// <summary>
 		/// Equality comparer used for the name-assignment mapping. It unifies local ILVariables that
-		/// share a locals-signature slot (so they receive the same name), matching
-		/// <see cref="ILVariableEqualityComparer"/> - except for by-ref locals. Live-range splitting can
-		/// produce several ref locals sharing one slot; each needs its own 'ref T x = ref ...;'
-		/// declaration because a ref local cannot be declared without an initializer. Sharing a name
-		/// would force DeclareVariables to merge those declarations (they collide under CS0136) into an
-		/// illegal uninitialized 'ref T x;', so ref locals are compared by identity and thus keep
-		/// distinct names.
+		/// share a locals-signature slot or state-machine field (so they receive the same name),
+		/// matching <see cref="ILVariableEqualityComparer"/> - except for variables that DeclareVariables
+		/// never merges into a shared declaration. Live-range splitting can produce several such
+		/// variables that share one slot or hoisted field; each is emitted as its own in-place
+		/// declaration, so they must keep distinct names.
+		///
+		/// A by-ref local cannot be declared without an initializer, so several split ref locals sharing
+		/// one slot cannot be merged into a single hoisted declaration; sharing a name would force
+		/// DeclareVariables to merge them (they collide under CS0136) into an illegal uninitialized
+		/// 'ref T x;'. A using-declaration local ('using T x = ...;') has a scope extending to the end of
+		/// its enclosing block and is never merged (DeclareVariables.VariableNeedsDeclaration excludes it);
+		/// when SplitVariables turns one hoisted async/iterator field into disjoint live ranges - one
+		/// nested inside a block that exits and one in the enclosing scope - sharing a name places the same
+		/// identifier in nested scopes (CS0136) with no merge available to reconcile it. Both kinds are
+		/// therefore compared by identity so distinct instances keep distinct names. (Foreach, fixed and
+		/// catch locals are scoped to their own statement, so they never collide across scopes this way.)
 		/// </summary>
 		sealed class NamingVariableComparer : IEqualityComparer<ILVariable>
 		{
 			public static readonly NamingVariableComparer Instance = new();
 
-			static bool IsDistinctRefLocal(ILVariable v)
-				=> v.Kind == VariableKind.Local && v.StackType == StackType.Ref;
+			static bool IsDistinctLocal(ILVariable v)
+			{
+				if (v.Kind == VariableKind.Local && v.StackType == StackType.Ref)
+					return true;
+				return v.Kind == VariableKind.UsingLocal;
+			}
 
 			public bool Equals(ILVariable x, ILVariable y)
 			{
-				if ((x != null && IsDistinctRefLocal(x)) || (y != null && IsDistinctRefLocal(y)))
+				if ((x != null && IsDistinctLocal(x)) || (y != null && IsDistinctLocal(y)))
 					return ReferenceEquals(x, y);
 				return ILVariableEqualityComparer.Instance.Equals(x, y);
 			}
 
 			public int GetHashCode(ILVariable obj)
 			{
-				if (IsDistinctRefLocal(obj))
+				if (IsDistinctLocal(obj))
 					return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
 				return ILVariableEqualityComparer.Instance.GetHashCode(obj);
 			}
