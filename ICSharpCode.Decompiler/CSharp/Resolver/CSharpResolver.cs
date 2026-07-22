@@ -2216,6 +2216,12 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			return
 				from c in ns.Types
 				where c.IsStatic && c.HasExtensions && c.TypeParameters.Count == 0 && lookup.IsAccessible(c, false)
+					// Modules loaded only to make their type names visible to short-name ambiguity
+					// checks are not part of the decompiled module's reference closure; letting
+					// their extension methods join method groups would create phantom overload
+					// candidates (e.g. System.MemoryExtensions.Contains forcing an explicit type
+					// argument on an unrelated Contains method-group conversion).
+					&& c.ParentModule is not MetadataModule { IsNameLookupOnly: true }
 				from m in c.Methods
 				where m.IsExtensionMethod
 				select m;

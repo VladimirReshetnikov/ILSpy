@@ -38,6 +38,16 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	public class MetadataModule : IModule
 	{
 		public ICompilation Compilation { get; }
+
+		/// <summary>
+		/// Whether this module was added to the compilation only so that its type names are visible
+		/// to short-name ambiguity checks (see the namespace-completion references in
+		/// <see cref="DecompilerTypeSystem"/>). The decompiled module does not reference such an
+		/// assembly, so its members must not act as resolution candidates: in particular, its
+		/// extension methods are excluded from method-group candidate collection.
+		/// </summary>
+		internal bool IsNameLookupOnly { get; }
+
 		internal readonly MetadataReader metadata;
 		readonly TypeSystemOptions options;
 		internal readonly TypeProvider TypeProvider;
@@ -51,12 +61,13 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		readonly MetadataEvent[] eventDefs;
 		readonly IModule[] referencedAssemblies;
 
-		internal MetadataModule(ICompilation compilation, MetadataFile peFile, TypeSystemOptions options)
+		internal MetadataModule(ICompilation compilation, MetadataFile peFile, TypeSystemOptions options, bool isNameLookupOnly = false)
 		{
 			this.Compilation = compilation;
 			this.MetadataFile = peFile;
 			this.metadata = peFile.Metadata;
 			this.options = options;
+			this.IsNameLookupOnly = isNameLookupOnly;
 			this.TypeProvider = new TypeProvider(this);
 
 			// assembly metadata

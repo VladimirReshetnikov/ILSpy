@@ -267,16 +267,58 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			InitializeAsync(mainModule, assemblyResolver).GetAwaiter().GetResult();
 		}
 
+		// Assemblies that are added to the compilation of a .NET Core / .NET 5 or newer module even
+		// though nothing in its metadata references them. They hold compile-time-only types
+		// (DllImport, MarshalAs, Unsafe, ...) that the decompiled C# has to be able to name.
 		static readonly string[] implicitReferences = new[] {
 			"System.Runtime.InteropServices",
 			"System.Runtime.CompilerServices.Unsafe"
 		};
+
+		// Assemblies that complete the root "System" namespace: the reference packs spread it over
+		// System.Runtime plus exactly this handful of assemblies, and a project generated from the
+		// decompilation compiles against all of them, while the module's own reference closure usually
+		// stops at System.Runtime. Since practically every decompiled file imports "System", a type
+		// that is invisible here lets the C# output claim a short name is unambiguous when it is not:
+		// an interface named IServiceProvider would be printed unqualified and then collide with
+		// System.IServiceProvider (declared in System.ComponentModel.dll) in the generated project.
+		//
+		// Unlike the implicit references above, these assemblies are loaded solely so that name
+		// qualification checks can see their type names. They join the compilation as
+		// name-lookup-only modules (MetadataModule.IsNameLookupOnly): the decompiled module does not
+		// reference them, so their members - most importantly extension methods such as
+		// System.MemoryExtensions.* - must not become overload candidates during resolution.
+		static readonly string[] namespaceCompletionReferences = new[] {
+			"System.ComponentModel",
+			"System.ComponentModel.TypeConverter",
+			"System.Console",
+			"System.Memory",
+			"System.Threading.Thread"
+		};
+
+		sealed class NameLookupOnlyModuleReference : IModuleReference
+		{
+			readonly MetadataFile file;
+			readonly TypeSystemOptions options;
+
+			public NameLookupOnlyModuleReference(MetadataFile file, TypeSystemOptions options)
+			{
+				this.file = file;
+				this.options = options;
+			}
+
+			IModule IModuleReference.Resolve(ITypeResolveContext context)
+			{
+				return new MetadataModule(context.Compilation, file, options, isNameLookupOnly: true);
+			}
+		}
 
 		private async Task InitializeAsync(MetadataFile mainModule, IAssemblyResolver assemblyResolver)
 		{
 			// Load referenced assemblies and type-forwarder references.
 			// This is necessary to make .NET Core/PCL binaries work better.
 			var referencedAssemblies = new List<MetadataFile>();
+			var nameLookupOnlyAssemblyNames = new HashSet<string>();
 			var assemblyReferenceQueue = new Queue<(bool IsAssembly, MetadataFile MainModule, object Reference, Task<MetadataFile> ResolveTask)>();
 			var comparer = KeyComparer.Create(((bool IsAssembly, MetadataFile MainModule, object Reference) reference) =>
 				reference.IsAssembly ? "A:" + ((IAssemblyReference)reference.Reference).FullName :
@@ -341,12 +383,16 @@ namespace ICSharpCode.Decompiler.TypeSystem
 						case TargetFrameworkIdentifier.NETCoreApp:
 						case TargetFrameworkIdentifier.NETStandard:
 						case TargetFrameworkIdentifier.NET:
-							foreach (var item in implicitReferences)
+							foreach (var item in implicitReferences.Concat(namespaceCompletionReferences))
 							{
 								var existing = referencedAssemblies.FirstOrDefault(asm => asm.Name == item);
 								if (existing == null)
 								{
 									AddToQueue(true, mainModule, AssemblyNameReference.Parse(item + ", Version=" + version.ToString(3) + ".0, Culture=neutral"));
+									if (Array.IndexOf(namespaceCompletionReferences, item) >= 0)
+									{
+										nameLookupOnlyAssemblyNames.Add(item);
+									}
 								}
 							}
 							break;
@@ -373,7 +419,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 					{
 						if (newFileVersion >= info.version)
 						{
-							referencedAssembliesWithOptions[info.insertionIndex] = file.WithOptions(typeSystemOptions);
+							referencedAssembliesWithOptions[info.insertionIndex] = CreateModuleReference(file);
 							referenceAssemblyVersionMap[file.Name] = (newFileVersion, info.insertionIndex);
 						}
 						continue;
@@ -383,7 +429,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 						referenceAssemblyVersionMap[file.Name] = (file.Metadata.GetAssemblyDefinition().Version, referencedAssembliesWithOptions.Count);
 					}
 				}
-				referencedAssembliesWithOptions.Add(file.WithOptions(typeSystemOptions));
+				referencedAssembliesWithOptions.Add(CreateModuleReference(file));
 			}
 			// Primitive types are necessary to avoid assertions in ILReader.
 			// Other known types are necessary in order for transforms to work (e.g. Task<T> for async transform).
@@ -398,6 +444,15 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				Init(mainModuleWithOptions, referencedAssembliesWithOptions);
 			}
 			this.mainModule = (MetadataModule)base.MainModule;
+
+			IModuleReference CreateModuleReference(MetadataFile file)
+			{
+				if (nameLookupOnlyAssemblyNames.Contains(file.Name))
+				{
+					return new NameLookupOnlyModuleReference(file, typeSystemOptions);
+				}
+				return file.WithOptions(typeSystemOptions);
+			}
 
 			void AddToQueue(bool isAssembly, MetadataFile mainModule, object reference)
 			{
