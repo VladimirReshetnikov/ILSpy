@@ -179,6 +179,18 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				base.VisitForeachStatement(foreachStatement);
 			}
 
+			public override void VisitUnaryOperatorExpression(UnaryOperatorExpression unaryOperatorExpression)
+			{
+				// The GetAwaiter() call is consumed by the async decompiler and has no syntax node of its
+				// own, so an extension GetAwaiter() would leave no trace of its namespace in the AST.
+				if (unaryOperatorExpression.Operator == UnaryOperatorType.Await
+					&& unaryOperatorExpression.Annotation<Await>() is { GetAwaiterMethod: { IsExtensionMethod: true, DeclaringType: var type } })
+				{
+					AddImportedNamespace(type);
+				}
+				base.VisitUnaryOperatorExpression(unaryOperatorExpression);
+			}
+
 			public override void VisitParenthesizedVariableDesignation(ParenthesizedVariableDesignation parenthesizedVariableDesignation)
 			{
 				var annotation = parenthesizedVariableDesignation.Annotation<MatchInstruction>();
