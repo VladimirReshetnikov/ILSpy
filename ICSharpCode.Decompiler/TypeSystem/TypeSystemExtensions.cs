@@ -879,9 +879,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			{
 				throw new ArgumentNullException(nameof(member));
 			}
+			// A member whose declaring type has no definition cannot sit inside an extension
+			// container: that happens for members synthesized from metadata references which could
+			// not be resolved, where the declaring type stays an unresolved type reference rather
+			// than becoming a type definition.
 			var td = member.DeclaringTypeDefinition;
-			Debug.Assert(td != null, "IMember.DeclaringTypeDefinition should never be null");
-			return td.DeclaringTypeDefinition?.ExtensionInfo ?? td.DeclaringTypeDefinition?.DeclaringTypeDefinition?.ExtensionInfo;
+			return td?.DeclaringTypeDefinition?.ExtensionInfo ?? td?.DeclaringTypeDefinition?.DeclaringTypeDefinition?.ExtensionInfo;
 		}
 	}
 }
