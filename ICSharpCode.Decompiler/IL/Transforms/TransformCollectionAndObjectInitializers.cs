@@ -20,6 +20,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Resolver;
@@ -52,6 +53,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			// initializer). Without that guarantee a plain struct copy followed by member
 			// assignments is legitimate separate statements and must be left untouched.
 			bool requireInitOnlyForValueTypeWith = false;
+			// The record clone call of a 'with' expression, if that is what starts this initializer.
+			CallInstruction? recordCloneCall = null;
 			// we allow a castclass instruction to wrap the init instruction:
 			// this is needed, for example, for inherited record types used on .NET runtimes (e.g., .NET 4.x),
 			// where covariant return types are not supported.
@@ -101,6 +104,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				case CallInstruction ci when context.Settings.WithExpressions && IsRecordCloneMethodCall(ci):
 					instType = ci.Method.DeclaringType;
 					blockKind = BlockKind.WithInitializer;
+					recordCloneCall = ci;
 					initInst = ci.Arguments.Single();
 					break;
 				default:
@@ -134,6 +138,43 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (pos < block.Instructions.Count && block.Instructions[pos + 1] is StLoc { Variable: { Kind: VariableKind.StackSlot, IsSingleDefinition: true }, Value: LdLoca ldLoca } stLocStack && ldLoca.Variable == v)
 			{
 				CopyPropagation.Propagate(stLocStack, context);
+			}
+			if (recordCloneCall != null && v.IsSingleDefinition)
+			{
+				// C# evaluates 'src with { M = value }' by cloning src first and computing the values
+				// afterwards. When computing a value takes statements of its own, the clone result has
+				// to survive those statements on the IL stack, which surfaces as a second variable
+				// aliasing the clone. Propagate the alias away, so all member assignments name the
+				// clone variable itself.
+				if (TryPropagateCloneAlias(block, pos, v, instType, context))
+				{
+					// Propagation removes a statement and re-runs inlining, so restart from scratch.
+					context.RequestRerun(pos);
+					return;
+				}
+				// Those same value-computing statements sit between the clone call and the member
+				// assignments, where the scan below cannot cross them. Move the clone call, together
+				// with the member assignments it belongs to, down in front of the last one. That puts
+				// the with-initializer back together and orders the decompiled statements the way C#
+				// requires them: the computations first, the with-expression after them.
+				if (TryPlanDetachedWithInitializer(block, pos, v, instType, recordCloneCall, context, out var itemPositions))
+				{
+					context.Step("Move record clone call down to its with-initializer", inst);
+					int landingPos = itemPositions[itemPositions.Count - 1] - itemPositions.Count;
+					var moved = new List<ILInstruction>(itemPositions.Count + 1) { inst };
+					foreach (int itemPos in itemPositions)
+						moved.Add(block.Instructions[itemPos]);
+					for (int i = itemPositions.Count - 1; i >= 0; i--)
+						block.Instructions.RemoveAt(itemPositions[i]);
+					block.Instructions.RemoveAt(pos);
+					for (int i = 0; i < moved.Count; i++)
+						block.Instructions.Insert(landingPos + i, moved[i]);
+					// The initializer items are contiguous at the new position, so re-running the
+					// statement transforms there folds them into a with-expression.
+					context.RequestRerun(landingPos);
+					context.EndStep(inst);
+					return;
+				}
 			}
 			int initializerItemsCount = 0;
 			bool initializerContainsInitOnlyItems = false;
@@ -210,6 +251,156 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			siblings[insertionPos] = initializerBlock;
 			ILInlining.InlineIfPossible(block, pos, context);
 			context.EndStep(initializerBlock);
+		}
+
+		/// <summary>
+		/// Replaces a variable that merely aliases the record clone stored in <paramref name="v"/>
+		/// with <paramref name="v"/> itself, provided the alias is used for nothing but member
+		/// assignments. Returns true if such an alias was found and removed.
+		/// </summary>
+		static bool TryPropagateCloneAlias(Block block, int pos, ILVariable v, IType instType, StatementTransformContext context)
+		{
+			for (int i = pos + 1; i < block.Instructions.Count; i++)
+			{
+				ILInstruction current = block.Instructions[i];
+				if (current is StLoc { Variable: { IsSingleDefinition: true, AddressCount: 0, LoadCount: > 0 } alias } aliasStore
+					&& aliasStore.Value.MatchLdLoc(v)
+					&& alias.LoadInstructions.All(IsPropertySetterTarget))
+				{
+					CopyPropagation.Propagate(aliasStore, context);
+					return true;
+				}
+				// Only look past the member assignments of the clone itself; anything else means the
+				// alias, if any, belongs to unrelated code.
+				var (kind, path, _, targetVariable, _) = AccessPathElement.GetAccessPath(current, instType, context.Settings, context.CSharpResolver);
+				if (kind != AccessPathKind.Setter || targetVariable != v || path.Count != 1)
+					return false;
+			}
+			return false;
+
+			static bool IsPropertySetterTarget(LdLoc load)
+			{
+				return load.Parent is CallInstruction { Method: { IsAccessor: true, IsStatic: false } method } call
+					&& method.AccessorKind == System.Reflection.MethodSemanticsAttributes.Setter
+					&& call.Arguments[0] == load;
+			}
+		}
+
+		/// <summary>
+		/// Scans the statements after <paramref name="pos"/> for the member assignments belonging to
+		/// the record clone stored in <paramref name="v"/>. Returns true if statements computing
+		/// initializer values are interleaved with them and the clone call may be moved down past
+		/// those statements, in which case <paramref name="itemPositions"/> holds the indices of the
+		/// member assignments that have to move along with it.
+		/// </summary>
+		static bool TryPlanDetachedWithInitializer(Block block, int pos, ILVariable v, IType instType,
+			CallInstruction cloneCall, StatementTransformContext context, [NotNullWhen(true)] out List<int>? itemPositions)
+		{
+			itemPositions = null;
+			if (!IsSideEffectFreeRecordCopy(cloneCall.Method.DeclaringTypeDefinition))
+				return false;
+			// The instruction producing the object being cloned moves down as well, so it must be
+			// unaffected by the statements it moves past.
+			ILInstruction source = cloneCall.Arguments[0];
+			if (!SemanticHelper.IsPure(source.Flags))
+				return false;
+			var items = new List<int>();
+			var itemValues = new List<ILInstruction>();
+			var fillersBeforeItem = new List<int>();
+			int fillerCount = 0;
+			for (int i = pos + 1; i < block.Instructions.Count; i++)
+			{
+				ILInstruction current = block.Instructions[i];
+				var (kind, path, values, targetVariable, _) = AccessPathElement.GetAccessPath(current, instType, context.Settings, context.CSharpResolver);
+				if (kind == AccessPathKind.Setter && targetVariable == v && path.Count == 1 && values?.Count == 1)
+				{
+					items.Add(i);
+					itemValues.Add(values[0]);
+					fillersBeforeItem.Add(fillerCount);
+					continue;
+				}
+				// A statement mentioning the clone variable would observe the clone, or worse, depend
+				// on it having happened already.
+				if (current.Descendants.OfType<IInstructionWithVariableOperand>().Any(load => load.Variable == v))
+					break;
+				if (!SemanticHelper.MayReorder(source, current))
+					break;
+				// The values of the member assignments found so far move past this statement, too.
+				if (itemValues.Any(value => !SemanticHelper.MayReorder(value, current)))
+					break;
+				fillerCount++;
+			}
+			// Every member assignment but the last one moves down past the value-computing statements
+			// that follow it, taking its own value and its setter along, so both must be free of
+			// interfering side effects. Give up on the assignments beyond the first one that is not.
+			int keep = items.Count;
+			for (int i = 0; i + 1 < keep; i++)
+			{
+				if (!SemanticHelper.IsPure(itemValues[i].Flags)
+					|| block.Instructions[items[i]] is not CallInstruction { Method: var setter }
+					|| !setter.IsCompilerGenerated())
+				{
+					keep = i + 1;
+					break;
+				}
+			}
+			items.RemoveRange(keep, items.Count - keep);
+			// Nothing was skipped: the regular scan already handles this shape.
+			if (items.Count == 0 || fillersBeforeItem[items.Count - 1] == 0)
+				return false;
+			if (!AreAllUsesStatementsInBlockAfter(v, block, pos))
+				return false;
+			itemPositions = items;
+			return true;
+		}
+
+		/// <summary>
+		/// Gets whether every use of the record clone stored in <paramref name="v"/> is a statement of
+		/// <paramref name="block"/> following <paramref name="pos"/>. Only then is it guaranteed that
+		/// no code observes the clone before the position it is moved to - not even when one of the
+		/// statements it is moved past throws.
+		/// </summary>
+		static bool AreAllUsesStatementsInBlockAfter(ILVariable v, Block block, int pos)
+		{
+			foreach (var use in v.LoadInstructions.Concat<ILInstruction>(v.AddressInstructions))
+			{
+				ILInstruction? statement = use;
+				while (statement != null && statement.Parent != block)
+					statement = statement.Parent;
+				if (statement == null || statement.ChildIndex <= pos)
+					return false;
+			}
+			return true;
+		}
+
+		/// <summary>
+		/// Gets whether cloning an instance of the given record type runs no user code.
+		/// A compiler-generated copy constructor performs a plain memberwise copy and chains to the
+		/// base record's copy constructor, so the clone is unobservable apart from the allocation.
+		/// A hand-written copy constructor may do anything and pins the clone to its original place.
+		/// </summary>
+		/// <remarks>
+		/// '&lt;Clone&gt;$' is virtual, so a record derived from <paramref name="recordType"/> could
+		/// still contribute a hand-written copy constructor. That case is not detected here.
+		/// </remarks>
+		static bool IsSideEffectFreeRecordCopy(ITypeDefinition? recordType)
+		{
+			while (recordType != null && recordType.IsRecord)
+			{
+				IMethod? copyConstructor = null;
+				foreach (var ctor in recordType.GetConstructors())
+				{
+					if (ctor.Parameters.Count == 1 && ctor.Parameters[0].Type.GetDefinition() == recordType)
+					{
+						copyConstructor = ctor;
+						break;
+					}
+				}
+				if (copyConstructor == null || !copyConstructor.IsCompilerGenerated())
+					return false;
+				recordType = recordType.DirectBaseTypes.FirstOrDefault(t => t.Kind == TypeKind.Class)?.GetDefinition();
+			}
+			return true;
 		}
 
 		private static bool TypeContainsInitOnlyOrRequiredMembers(ITypeDefinition? typeDefinition, bool includeRequiredMembers)
