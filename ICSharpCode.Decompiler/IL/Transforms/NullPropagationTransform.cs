@@ -20,6 +20,7 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 
+using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.IL.Transforms
@@ -385,13 +386,85 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 			bool CanTransformToExtensionMethodCall(CallInstruction call, ILTransformContext context)
 			{
-				return context.CSharpResolver.CanTransformToExtensionMethodCall(call.Method);
+				if (!context.CSharpResolver.CanTransformToExtensionMethodCall(call.Method))
+					return false;
+				// The check above only validates the method against its own declared parameter types.
+				// Whether the call is really printed in extension-method syntax is decided later, by
+				// IntroduceExtensionMethods, which runs overload resolution on the types supplied at
+				// this call site. If that resolution picks a different member, the call keeps its
+				// static-call syntax and the '?.' introduced here ends up stranded inside the first
+				// argument, where it no longer lifts the result of the whole expression. Repeat the
+				// check with the types of this call site, but only where all of them are known: an
+				// argument whose static type cannot be determined yet leaves the decision to the
+				// declaration-level check above.
+				IType targetType = KnownStaticType(call.Arguments[0], context.TypeSystem);
+				if (targetType == null)
+					return true;
+				var arguments = new ResolveResult[call.Arguments.Count - 1];
+				for (int i = 0; i < arguments.Length; i++)
+				{
+					IType type = KnownStaticType(call.Arguments[i + 1], context.TypeSystem);
+					if (type == null)
+						return true;
+					arguments[i] = new ResolveResult(type);
+				}
+				return context.CSharpResolver.CanTransformToExtensionMethodCall(
+					call.Method, call.Method.TypeArguments, new ResolveResult(targetType), arguments,
+					argumentNames: null);
 			}
 		}
 
 		static bool IsGetter(IMethod method)
 		{
 			return method.AccessorKind == System.Reflection.MethodSemanticsAttributes.Getter;
+		}
+
+		/// <summary>
+		/// Returns the static type that the C# expression built from <paramref name="inst"/> will
+		/// have, or null if it cannot be determined at this point of the pipeline. In particular,
+		/// stack slots are still typed by their stack type while the IL transforms run
+		/// ('object' for every reference type), so their loads report an unknown type.
+		/// </summary>
+		static IType KnownStaticType(ILInstruction inst, ICompilation compilation)
+		{
+			IType type;
+			switch (inst)
+			{
+				case NewObj newObj:
+					type = newObj.Method.DeclaringType;
+					break;
+				case Call call:
+					type = call.Method.ReturnType;
+					break;
+				case CallVirt callVirt:
+					type = callVirt.Method.ReturnType;
+					break;
+				case LdObj ldobj:
+					type = ldobj.Type;
+					break;
+				case LdLoc ldloc when ldloc.Variable.Kind != VariableKind.StackSlot:
+					type = ldloc.Variable.Type;
+					break;
+				case LdStr:
+					type = compilation.FindType(KnownTypeCode.String);
+					break;
+				default:
+					return null;
+			}
+			if (type == null)
+				return null;
+			switch (type.Kind)
+			{
+				case TypeKind.Unknown:
+				case TypeKind.None:
+				case TypeKind.Null:
+				case TypeKind.Void:
+				case TypeKind.ByReference:
+				case TypeKind.Pointer:
+					return null;
+				default:
+					return type;
+			}
 		}
 
 		private void IntroduceUnwrap(ILVariable testedVar, ILInstruction varLoad, Mode mode)

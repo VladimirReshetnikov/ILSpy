@@ -433,6 +433,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task NullPropagationExtensionMethod()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task Issue3552()
 		{
 			await Run();
