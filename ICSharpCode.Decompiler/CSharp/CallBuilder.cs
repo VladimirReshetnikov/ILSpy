@@ -1590,6 +1590,15 @@ namespace ICSharpCode.Decompiler.CSharp
 									targetResolveResult = null;
 								allowedTransforms &= ~CallTransformation.RequireTarget;
 							}
+							else if (target.Type.IsByRefLike
+								&& !NormalizeTypeVisitor.TypeErasure.EquivalentTypes(target.Type, method.DeclaringType))
+							{
+								// A ref struct value has no conversion to any other type, so casting
+								// the receiver (e.g. '((object)span).ToString()' for a constrained
+								// call whose resolution failed) can never produce compilable code.
+								// Skip this fallback and keep the receiver as-is.
+								targetCasted = true;
+							}
 							else
 							{
 								targetCasted = true;

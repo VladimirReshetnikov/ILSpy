@@ -485,7 +485,6 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 
 			bool MatchCaptureThrowCalls(ILInstruction inst)
 			{
-				var exceptionDispatchInfoType = context.TypeSystem.FindType(typeof(System.Runtime.ExceptionServices.ExceptionDispatchInfo));
 				if (inst is not CallVirt callVirt || callVirt.Arguments.Count != 1)
 					return false;
 
@@ -496,9 +495,23 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 				}
 
 				return callVirt.Method.Name == "Throw"
-					&& callVirt.Method.DeclaringType.Equals(exceptionDispatchInfoType)
+					&& IsExceptionDispatchInfo(callVirt.Method.DeclaringType)
 					&& call.Method.Name == "Capture"
-					&& call.Method.DeclaringType.Equals(exceptionDispatchInfoType);
+					&& IsExceptionDispatchInfo(call.Method.DeclaringType);
+
+				// Matched by name rather than by comparing with FindType(typeof(...)): the latter
+				// resolves through the default core library, which is not necessarily the module
+				// where the compiler-emitted Capture/Throw calls resolved their declaring type
+				// (e.g. when the reference set mixes reference and implementation assemblies, or
+				// when the reference is unresolved). Failing to match here would leave the
+				// exception in an 'object' variable and emit 'catch (object)' / 'throw obj',
+				// which is never valid C#.
+				static bool IsExceptionDispatchInfo(IType type)
+				{
+					return type.Name == "ExceptionDispatchInfo"
+						&& type.Namespace == "System.Runtime.ExceptionServices"
+						&& type.TypeParameterCount == 0;
+				}
 			}
 		}
 	}

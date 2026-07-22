@@ -77,6 +77,24 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task AwaitInCatchUnresolvedExceptionDispatchInfo()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task ConstrainedCallOnRefStruct()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task FakeMethodOnGenericInstance()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task NamedArgumentOverloadCollision()
 		{
 			await Run();

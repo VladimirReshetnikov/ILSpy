@@ -562,6 +562,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				if (method == null)
 				{
 					method = CreateFakeMethod(declaringType, name, signature);
+					// CreateFakeMethod already substituted the declaring type's class type
+					// arguments into the signature. Specializing with classTypeArguments once more
+					// would substitute by index into the result of that first substitution, where a
+					// class type parameter belongs to the module's current generic context - e.g. a
+					// type parameter of the calling type - and must not be rewritten.
+					classTypeArguments = null;
 				}
 			}
 			if (classTypeArguments != null || methodTypeArguments != null)
@@ -610,7 +616,6 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			var m = new FakeMethod(Compilation, symbolKind);
 			m.DeclaringType = declaringType;
 			m.Name = name;
-			m.ReturnType = signature.ReturnType;
 			m.IsStatic = !signature.Header.IsInstance;
 
 			TypeParameterSubstitution substitution = null;
@@ -628,6 +633,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			{
 				substitution = declaringType.GetSubstitution();
 			}
+			m.ReturnType = substitution != null ? signature.ReturnType.AcceptVisitor(substitution) : signature.ReturnType;
 			var parameters = new List<IParameter>();
 			for (int i = 0; i < signature.RequiredParameterCount; i++)
 			{
@@ -671,7 +677,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 					m.AccessorKind = MethodSemanticsAttributes.Getter;
 					m.AccessorOwner = fakeProperty;
 					fakeProperty.Getter = m;
-					fakeProperty.ReturnType = signature.ReturnType;
+					fakeProperty.ReturnType = m.ReturnType;
 					fakeProperty.IsIndexer = parameters.Count > 0;
 					fakeProperty.Parameters = parameters;
 					return;
