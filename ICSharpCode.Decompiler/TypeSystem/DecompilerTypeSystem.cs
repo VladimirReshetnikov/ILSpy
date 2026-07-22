@@ -283,6 +283,13 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		// an interface named IServiceProvider would be printed unqualified and then collide with
 		// System.IServiceProvider (declared in System.ComponentModel.dll) in the generated project.
 		//
+		// The same reasoning extends to short names that the reference packs declare in two commonly
+		// imported System sub-namespaces, with the two declarations in different assemblies: a file
+		// importing both namespaces must qualify such a name, which the decompiler can only know when
+		// both declaring assemblies are loaded. "ThreadState" is the known case - System.Threading
+		// (System.Threading.Thread.dll, listed above) vs. System.Diagnostics
+		// (System.Diagnostics.Process.dll).
+		//
 		// Unlike the implicit references above, these assemblies are loaded solely so that name
 		// qualification checks can see their type names. They join the compilation as
 		// name-lookup-only modules (MetadataModule.IsNameLookupOnly): the decompiled module does not
@@ -292,6 +299,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			"System.ComponentModel",
 			"System.ComponentModel.TypeConverter",
 			"System.Console",
+			"System.Diagnostics.Process",
 			"System.Memory",
 			"System.Threading.Thread"
 		};
