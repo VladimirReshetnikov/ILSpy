@@ -219,6 +219,8 @@
     <None Include="TestCases\ILPretty\CrossRootMemberCollision.cs" />
     <Compile Remove="TestCases\ILPretty\ExplicitInterfacePropertyOverride.cs" />
     <None Include="TestCases\ILPretty\ExplicitInterfacePropertyOverride.cs" />
+    <Compile Remove="TestCases\ILPretty\ImplicitInterfaceAccessorForwarders.cs" />
+    <None Include="TestCases\ILPretty\ImplicitInterfaceAccessorForwarders.cs" />
     <Compile Remove="TestCases\ILPretty\ExternalFieldNameCollision.cs" />
     <None Include="TestCases\ILPretty\ExternalFieldNameCollision.cs" />
     <Compile Remove="TestCases\ILPretty\ProtectedInternalCrossAssemblyOverride.cs" />

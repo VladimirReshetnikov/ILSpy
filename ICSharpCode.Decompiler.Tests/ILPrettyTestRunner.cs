@@ -301,6 +301,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ImplicitInterfaceAccessorForwarders()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task EvalOrder()
 		{
 			await Run();

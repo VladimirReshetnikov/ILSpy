@@ -1706,6 +1706,17 @@ namespace ICSharpCode.Decompiler.CSharp
 				yield break;
 			if (method.DeclaringTypeDefinition is not { } declaringType)
 				yield break;
+			if (declaringType.Kind == TypeKind.Interface)
+			{
+				// Interface mapping exists only for classes and structs: a member of an interface never
+				// implicitly implements a member of a base interface, however well the names and
+				// signatures line up. A default interface method can implement one only through an
+				// explicit MethodImpl, which GetInterfaceMethodImplementations already reports.
+				// Tlbimp-generated interop assemblies make the shape common, because a derived interface
+				// re-declares every inherited member, and a parameterized property of the base interface
+				// turns into a plain method carrying the accessor name.
+				yield break;
+			}
 
 			var seen = new HashSet<IMethod>();
 			foreach (IType directInterface in declaringType.DirectBaseTypes.Where(t => t.Kind == TypeKind.Interface))
@@ -1845,6 +1856,13 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				if (!method.Equals(getter ?? setter))
 					return null; // emit the grouped property only alongside its first accessor
+				if (interfaceProperty.Parameters.Count > 0 && !interfaceProperty.IsIndexer)
+				{
+					// Only an indexer can declare parameters in C#. A parameterized property has nowhere
+					// to declare them, so the forwarding call would pass identifiers that are not in
+					// scope. Leave the implementing methods to stand on their own instead.
+					return null;
+				}
 
 				var parameters = interfaceProperty.Parameters.Select(astBuilder.ConvertParameter).ToList();
 				AstType returnType = astBuilder.ConvertType(interfaceProperty.ReturnType);
