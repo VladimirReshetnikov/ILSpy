@@ -62,6 +62,20 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				initInst = arg;
 			}
+			// A 'with' whose receiver statically has a generic type parameter type (constrained to
+			// a record class) is lowered with generic conversions around the clone call:
+			// unbox.any T (callvirt <Clone>$ (box T (receiver))). Because the type parameter is
+			// reference-constrained, both conversions are no-op reference conversions, so the
+			// with-expression (whose C# type is the type parameter itself) can be recovered by
+			// looking through them.
+			else if (initInst.MatchUnboxAny(out arg, out var unboxedType)
+				&& unboxedType is ITypeParameter && unboxedType.IsReferenceType == true
+				&& arg is CallInstruction unboxedCloneCall
+				&& IsRecordCloneMethodCall(unboxedCloneCall))
+			{
+				targetType = unboxedType;
+				initInst = unboxedCloneCall;
+			}
 			switch (initInst)
 			{
 				case NewObj newObjInst:
@@ -106,6 +120,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					blockKind = BlockKind.WithInitializer;
 					recordCloneCall = ci;
 					initInst = ci.Arguments.Single();
+					// For a receiver of generic type parameter type, the clone call's receiver is
+					// boxed to the record class the parameter is constrained to; the box is a no-op
+					// reference conversion, so the receiver expression is the unboxed value itself.
+					if (initInst is Box { Type: ITypeParameter { IsReferenceType: true } } box)
+					{
+						initInst = box.Argument;
+					}
 					break;
 				default:
 					var typeDef = v.Type.GetDefinition();
@@ -611,6 +632,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						if (inst is LdObjIfRef ldObjIfRef)
 						{
 							inst = ldObjIfRef.Target;
+						}
+						// Setters of a with-expression whose receiver has a generic type parameter
+						// type are called on the receiver boxed to the record class the parameter is
+						// constrained to. That box is a no-op reference conversion, so the write goes
+						// through to the object the variable refers to.
+						if (inst is Box { Type: ITypeParameter { IsReferenceType: true } } box)
+						{
+							inst = box.Argument;
 						}
 						if (method.IsAccessor)
 						{

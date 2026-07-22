@@ -46,6 +46,18 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #endif
 		}
 
+		// A 'with' whose receiver statically has a generic type parameter type (constrained to a
+		// record class) is lowered with generic conversions around the clone: the receiver is
+		// boxed to the record class for the clone call and for each setter, and the clone result
+		// is converted back to the type parameter with unbox.any. All of these are no-op
+		// reference conversions, so the with-expression is recovered across them.
+		public T RenameConstrained<T>(T request, string name) where T : Request
+		{
+			return request with {
+				Name = name
+			};
+		}
+
 		// A member assigned a simple expression has to move along with the clone call when a later
 		// member needs statements of its own, so that both stay in the same initializer.
 		public Request AppendAndRename(Request request, string entry, string name)
