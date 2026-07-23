@@ -2502,11 +2502,38 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		protected internal override TranslatedExpression VisitCall(Call inst, TranslationContext context)
 		{
+			if (TranslateRecordCloneCall(inst, out var withExpression))
+				return withExpression;
 			return WrapInRef(new CallBuilder(this, typeSystem, settings).Build(inst), inst.Method.ReturnType);
+		}
+
+		/// <summary>
+		/// A call to a record's compiler-generated clone member that no initializer was folded into
+		/// still has to be written as a with-expression: '&lt;Clone&gt;$' has no name that can be
+		/// spoken in C#, so emitting the call verbatim produces source that cannot compile. An empty
+		/// initializer says exactly what the call does, namely copy the record.
+		/// </summary>
+		bool TranslateRecordCloneCall(CallInstruction inst, out TranslatedExpression result)
+		{
+			result = default;
+			if (!settings.WithExpressions)
+				return false;
+			if (!TransformCollectionAndObjectInitializers.IsRecordCloneMethodCall(inst))
+				return false;
+			var targetType = inst.Method.DeclaringType;
+			var withInitializerExpression = new WithInitializerExpression {
+				Expression = Translate(inst.Arguments[0], targetType),
+				Initializer = new ArrayInitializerExpression()
+			};
+			result = withInitializerExpression.WithILInstruction(inst)
+				.WithRR(new ResolveResult(targetType));
+			return true;
 		}
 
 		protected internal override TranslatedExpression VisitCallVirt(CallVirt inst, TranslationContext context)
 		{
+			if (TranslateRecordCloneCall(inst, out var withExpression))
+				return withExpression;
 			return WrapInRef(new CallBuilder(this, typeSystem, settings).Build(inst), inst.Method.ReturnType);
 		}
 

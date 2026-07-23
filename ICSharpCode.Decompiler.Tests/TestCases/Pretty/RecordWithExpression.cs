@@ -58,6 +58,13 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			};
 		}
 
+		// A copy with no members changed still compiles to a call of the record's clone member,
+		// whose name cannot be written in C#, so it has to come back as an empty with-expression.
+		public Request Copy(Request request)
+		{
+			return request with { };
+		}
+
 		// A member assigned a simple expression has to move along with the clone call when a later
 		// member needs statements of its own, so that both stay in the same initializer.
 		public Request AppendAndRename(Request request, string entry, string name)
