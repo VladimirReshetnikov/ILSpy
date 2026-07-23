@@ -442,6 +442,43 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		}
 #endif
 
+#if CS72
+		public class InParameterBase<T>
+		{
+			public InParameterBase(in T value)
+			{
+			}
+		}
+
+		// A base constructor with an 'in' parameter, invoked from a ': base(...)' initializer with an
+		// argument that has no address. C# passes such an argument to an 'in' parameter by value: the
+		// initializer is evaluated outside the constructor body, so anything declared inside the body
+		// is out of scope for it.
+		public class InParameterChain<T> : InParameterBase<T>
+		{
+			public InParameterChain()
+				: base(default(T))
+			{
+			}
+		}
+
+		public class InParameterBaseWithOptional<T>
+		{
+			public InParameterBaseWithOptional(in T value, IEnumerable<T> values = null)
+			{
+			}
+		}
+
+		// The same, with a trailing optional parameter supplied explicitly.
+		public class InParameterChainWithOptional<T> : InParameterBaseWithOptional<T>
+		{
+			public InParameterChainWithOptional(IEnumerable<T> values)
+				: base(default(T), values)
+			{
+			}
+		}
+#endif
+
 #if CS100
 		public class PrimaryCtorClassThisChain(Guid id)
 		{

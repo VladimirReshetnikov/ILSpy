@@ -568,8 +568,20 @@ namespace ICSharpCode.Decompiler.CSharp
 						argumentToParameterMap: argumentList.GetArgumentToParameterMap()));
 			}
 
+			CallTransformation allowedTransforms = CallTransformation.All;
+			if (callOpCode != OpCode.NewObj && method.IsConstructor)
+			{
+				// A base-/this-constructor call is emitted as a constructor initializer, which is evaluated
+				// outside the constructor body and therefore cannot reach the helper local function that
+				// EnforceExplicitIn's 'in' argument refers to. Overload resolution cannot validate the
+				// explicit 'in' for such a call either, because member lookup never surfaces constructors,
+				// so the wrapper would be introduced blindly; an argument that has no address is passed to
+				// an 'in' parameter by value instead.
+				allowedTransforms &= ~CallTransformation.EnforceExplicitIn;
+			}
+
 			var transform = GetRequiredTransformationsForCall(expectedTargetDetails, method, ref target,
-				ref argumentList, CallTransformation.All, out IParameterizedMember? foundMethod);
+				ref argumentList, allowedTransforms, out IParameterizedMember? foundMethod);
 			// GetRequiredTransformationsForCall always assigns foundMethod (the resolved overload or 'method').
 			Debug.Assert(foundMethod != null);
 			PreserveTupleElementNamesInDefaultArguments(foundMethod!, ref argumentList);
