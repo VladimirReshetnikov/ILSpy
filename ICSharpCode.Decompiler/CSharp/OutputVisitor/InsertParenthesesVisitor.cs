@@ -458,6 +458,15 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			base.VisitConditionalExpression(conditionalExpression);
 		}
 
+		public override void VisitThrowExpression(ThrowExpression throwExpression)
+		{
+			// A throw expression takes a null-coalescing-expression as its operand, so anything of
+			// lower precedence has to be parenthesized. Without it `x ?? throw c ? a : b` reads as
+			// `(x ?? throw c) ? a : b`, which throws the condition instead of the exception.
+			ParenthesizeIfRequired(throwExpression.Expression, PrecedenceLevel.NullCoalescing);
+			base.VisitThrowExpression(throwExpression);
+		}
+
 		private bool IsConditionalRefExpression(ConditionalExpression conditionalExpression)
 		{
 			return conditionalExpression.TrueExpression is DirectionExpression

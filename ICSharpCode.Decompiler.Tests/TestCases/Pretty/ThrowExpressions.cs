@@ -196,6 +196,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			Use(inst?.NullableDataProperty?.NullableDataProperty?.NullableIntField ?? throw new Exception());
 		}
 
+		// Only a null-coalescing-expression may follow 'throw', so a conditional operand needs
+		// parentheses to stay the thing being thrown: without them this reads as
+		// '(field ?? throw disposed) ? ... : ...'.
+		public object ThrowConditionalException(object field, bool disposed)
+		{
+			return field ?? throw (disposed ? new InvalidOperationException("disposed") : new InvalidOperationException("not ready"));
+		}
+
 		public static void Use<T>(T usage)
 		{
 
