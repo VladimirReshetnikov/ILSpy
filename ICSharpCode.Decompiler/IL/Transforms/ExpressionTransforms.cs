@@ -320,6 +320,22 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			}
 		}
 
+		protected internal override void VisitNullCoalescingInstruction(NullCoalescingInstruction inst)
+		{
+			base.VisitNullCoalescingInstruction(inst);
+			if (inst.Kind == NullCoalescingKind.Ref && inst.ValueInst.MatchLdNull())
+			{
+				// The left operand is always null, so the operator always yields the fallback.
+				// Keeping the operator would emit `null ?? fallback`, which does not compile: the
+				// null literal has no type for the operator to apply to.
+				context.Step("null ?? fallback => fallback", inst);
+				var fallback = inst.FallbackInst;
+				fallback.AddILRange(inst);
+				inst.ReplaceWith(fallback);
+				context.EndStep(fallback);
+			}
+		}
+
 		protected internal override void VisitLdElema(LdElema inst)
 		{
 			base.VisitLdElema(inst);

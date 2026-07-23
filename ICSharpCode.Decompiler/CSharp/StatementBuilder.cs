@@ -376,6 +376,14 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				if (currentIsIterator)
 					return new YieldBreakStatement().WithILInstruction(inst);
+				else if (inst.Value is Throw throwInst)
+				{
+					// The method never gets to return: it throws. C# has no `return throw ...;`,
+					// so the throw has to be written as the statement it is.
+					var exception = exprBuilder.compilation.FindType(KnownTypeCode.Exception);
+					return new ThrowStatement(exprBuilder.Translate(throwInst.Argument, exception,
+						typeHintIsTargetType: true)).WithILInstruction(inst);
+				}
 				else if (!inst.Value.MatchNop())
 				{
 					bool isLambdaOrExprTree = currentFunction.Kind is ILFunctionKind.ExpressionTree or ILFunctionKind.Delegate;
