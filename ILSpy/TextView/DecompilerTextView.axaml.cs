@@ -1202,10 +1202,15 @@ namespace ICSharpCode.ILSpy.TextView
 			if (DataContext is not DecompilerTabPageModel model || segment.Reference == null)
 				return;
 
+			// Hover-only references (synthesized dynamic members, the dynamic keyword) carry a tooltip
+			// but are neither navigable nor highlightable — a click does nothing.
+			if (segment.Kind == ReferenceMode.HoverOnly)
+				return;
+
 			// Local references stay inside this document — paint every match and let the user
 			// scrub through them. Cross-document references clear any existing marks since the
 			// view is about to refresh anyway.
-			if (segment.IsLocal)
+			if (segment.Kind == ReferenceMode.LocalHighlight)
 			{
 				HighlightLocalReferences(model, segment.Reference);
 				return;
@@ -1471,6 +1476,21 @@ namespace ICSharpCode.ILSpy.TextView
 		internal HoverContent? BuildHoverContent(DecompilerTabPageModel model, ReferenceSegment segment)
 		{
 			var language = model.Language;
+			if (segment.Reference is Decompiler.IL.ILVariable variable && language != null)
+			{
+				// Local variables have no metadata symbol, so render the declared type and name directly.
+				string kind = variable.Kind == Decompiler.IL.VariableKind.Parameter ? "parameter" : "local variable";
+				var localRenderer = CreateTooltipRenderer();
+				localRenderer.AddSignatureBlock(new RichText($"({kind}) ") + language.GetRichText(variable.Type) + new RichText($" {variable.Name}"));
+				return new HoverContent(localRenderer.CreateView(), IsRich: true);
+			}
+			if (segment.Reference is IType { Kind: TypeKind.Dynamic } dynamicType && language != null)
+			{
+				// dynamic has no metadata entity; render the keyword as its own hover.
+				var dynamicRenderer = CreateTooltipRenderer();
+				dynamicRenderer.AddSignatureBlock(language.GetRichText(dynamicType));
+				return new HoverContent(dynamicRenderer.CreateView(), IsRich: true);
+			}
 			var resolved = ResolveEntity(model, segment.Reference);
 			switch (resolved)
 			{

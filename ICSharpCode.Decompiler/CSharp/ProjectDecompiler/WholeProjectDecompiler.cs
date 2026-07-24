@@ -32,6 +32,7 @@ using ICSharpCode.Decompiler.CSharp.OutputVisitor;
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Transforms;
 using ICSharpCode.Decompiler.DebugInfo;
+using ICSharpCode.Decompiler.Instrumentation;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.Solution;
@@ -155,26 +156,37 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			{
 				throw new InvalidOperationException("Must set TargetDirectory");
 			}
-			TargetDirectory = targetDirectory;
-			directories.Clear();
-			var resources = WriteResourceFilesInProject(file).ToList();
-			xamlBuildRegeneratesInternalTypeHelper = resources.Any(item => item.ItemType is "Page" or "ApplicationDefinition");
-			var files = WriteCodeFilesInProject(file, resources.SelectMany(r => r.PartialTypes ?? Enumerable.Empty<PartialTypeInfo>()).ToList(), cancellationToken).ToList();
-			files.AddRange(resources);
-			var module = file as PEFile;
-			if (module != null)
+			DecompilerEventSource.Log.ProjectDecompilationStart(file.Name);
+			int codeFileCount = 0, resourceFileCount = 0;
+			try
 			{
-				files.AddRange(WriteMiscellaneousFilesInProject(module));
+				TargetDirectory = targetDirectory;
+				directories.Clear();
+				var resources = WriteResourceFilesInProject(file).ToList();
+				resourceFileCount = resources.Count;
+				xamlBuildRegeneratesInternalTypeHelper = resources.Any(item => item.ItemType is "Page" or "ApplicationDefinition");
+				var files = WriteCodeFilesInProject(file, resources.SelectMany(r => r.PartialTypes ?? Enumerable.Empty<PartialTypeInfo>()).ToList(), cancellationToken).ToList();
+				codeFileCount = files.Count;
+				files.AddRange(resources);
+				var module = file as PEFile;
+				if (module != null)
+				{
+					files.AddRange(WriteMiscellaneousFilesInProject(module));
+				}
+				if (StrongNameKeyFile != null)
+				{
+					File.Copy(StrongNameKeyFile, Path.Combine(targetDirectory, Path.GetFileName(StrongNameKeyFile)), overwrite: true);
+				}
+
+				projectWriter.Write(projectFileWriter, this, files, file);
+
+				string platformName = module != null ? TargetServices.GetPlatformName(module) : "AnyCPU";
+				return new ProjectId(platformName, ProjectGuid, ProjectTypeGuids.CSharpWindows);
 			}
-			if (StrongNameKeyFile != null)
+			finally
 			{
-				File.Copy(StrongNameKeyFile, Path.Combine(targetDirectory, Path.GetFileName(StrongNameKeyFile)), overwrite: true);
+				DecompilerEventSource.Log.ProjectDecompilationStop(file.Name, codeFileCount, resourceFileCount);
 			}
-
-			projectWriter.Write(projectFileWriter, this, files, file);
-
-			string platformName = module != null ? TargetServices.GetPlatformName(module) : "AnyCPU";
-			return new ProjectId(platformName, ProjectGuid, ProjectTypeGuids.CSharpWindows);
 		}
 
 		#region WriteCodeFilesInProject
@@ -318,6 +330,8 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 						CancellationToken = cancellationToken
 					},
 					delegate (IGrouping<string, TypeDefinitionHandle> file) {
+						var declaredTypes = file.ToArray();
+						DecompilerEventSource.Log.ProjectFileStart(file.Key, declaredTypes.Length);
 						try
 						{
 							using var w = CreateFile(Path.Combine(TargetDirectory, file.Key));
@@ -329,7 +343,6 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 							}
 
 							decompiler.CancellationToken = cancellationToken;
-							var declaredTypes = file.ToArray();
 							var syntaxTree = decompiler.DecompileTypes(declaredTypes);
 							if (Settings.NullableReferenceTypes)
 							{
@@ -365,6 +378,10 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 						catch (Exception innerException) when (!(innerException is OperationCanceledException || innerException is DecompilerException))
 						{
 							throw new DecompilerException(module, $"Error decompiling for '{file.Key}'", innerException);
+						}
+						finally
+						{
+							DecompilerEventSource.Log.ProjectFileStop(file.Key);
 						}
 						progress.Status = file.Key;
 						Interlocked.Increment(ref progress.UnitsCompleted);

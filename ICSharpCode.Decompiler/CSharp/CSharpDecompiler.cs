@@ -40,6 +40,7 @@ using ICSharpCode.Decompiler.Documentation;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.IL.ControlFlow;
 using ICSharpCode.Decompiler.IL.Transforms;
+using ICSharpCode.Decompiler.Instrumentation;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -860,13 +861,17 @@ namespace ICSharpCode.Decompiler.CSharp
 			// The tree handed to the pipeline must already be well-formed; check it once up front so a
 			// malformed builder output is caught here rather than blamed on the first transform (DEBUG only).
 			rootNode.CheckInvariant();
+			bool traceTransforms = DecompilerEventSource.Log.IsTransformTracingEnabled();
 			try
 			{
 				foreach (var transform in astTransforms)
 				{
 					CancellationToken.ThrowIfCancellationRequested();
 					context.StepStartGroup(transform.GetType().Name);
+					long traceStart = traceTransforms ? Stopwatch.GetTimestamp() : 0;
 					transform.Run(rootNode, context);
+					if (traceTransforms)
+						DecompilerEventSource.Log.AstTransformExecuted(transform, traceStart);
 					// Verify the slot structure survived the transform (DEBUG only); mirrors the IL
 					// pipeline's per-transform ILInstruction.CheckInvariant.
 					rootNode.CheckInvariant();
@@ -2236,7 +2241,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		EntityDeclaration DoDecompile(ITypeDefinition typeDef, DecompileRun decompileRun, ITypeResolveContext decompilationContext, bool asExtension = false)
 		{
 			Debug.Assert(decompilationContext.CurrentTypeDefinition == typeDef);
-			var watch = System.Diagnostics.Stopwatch.StartNew();
+			DecompilerEventSource.Log.DecompileTypeStart(typeDef);
 			var entityMap = new MultiDictionary<IEntity, EntityDeclaration>();
 			var workList = new Queue<IEntity>();
 			TypeSystemAstBuilder typeSystemAstBuilder;
@@ -2424,8 +2429,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 			finally
 			{
-				watch.Stop();
-				Instrumentation.DecompilerEventSource.Log.DoDecompileTypeDefinition(typeDef.FullName, watch.ElapsedMilliseconds);
+				DecompilerEventSource.Log.DecompileTypeStop(typeDef);
 			}
 
 			// MemberIsHidden identifies event backing fields from the metadata name association
@@ -2688,7 +2692,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		EntityDeclaration DoDecompile(IMethod method, DecompileRun decompileRun, ITypeResolveContext decompilationContext, ExtensionInfo? extensionInfo)
 		{
 			Debug.Assert(decompilationContext.CurrentMember == method);
-			var watch = System.Diagnostics.Stopwatch.StartNew();
+			DecompilerEventSource.Log.DecompileMemberStart(method, DecompiledMemberKind.Method);
 			try
 			{
 				var typeSystemAstBuilder = CreateAstBuilder(decompileRun.Settings);
@@ -2761,8 +2765,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 			finally
 			{
-				watch.Stop();
-				Instrumentation.DecompilerEventSource.Log.DoDecompileMethod(method.FullName, watch.ElapsedMilliseconds);
+				DecompilerEventSource.Log.DecompileMemberStop(method, DecompiledMemberKind.Method);
 			}
 		}
 
@@ -3072,7 +3075,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		EntityDeclaration DoDecompile(IField field, DecompileRun decompileRun, ITypeResolveContext decompilationContext)
 		{
 			Debug.Assert(decompilationContext.CurrentMember == field);
-			var watch = System.Diagnostics.Stopwatch.StartNew();
+			DecompilerEventSource.Log.DecompileMemberStart(field, DecompiledMemberKind.Field);
 			try
 			{
 				var typeSystemAstBuilder = CreateAstBuilder(decompileRun.Settings);
@@ -3082,7 +3085,18 @@ namespace ICSharpCode.Decompiler.CSharp
 					object? constantValue = field.GetConstantValue();
 					if (constantValue != null)
 					{
-						enumDec.Initializer = typeSystemAstBuilder.ConvertConstantValue(decompilationContext.CurrentTypeDefinition.EnumUnderlyingType!, constantValue);
+						TypeCode underlyingTypeCode = ReflectionHelper.GetTypeCode(decompilationContext.CurrentTypeDefinition.EnumUnderlyingType);
+						if (underlyingTypeCode is >= TypeCode.SByte and <= TypeCode.UInt64)
+						{
+							long initValue = (long)CSharpPrimitiveCast.Cast(TypeCode.Int64, constantValue, false);
+							enumDec.Initializer = typeSystemAstBuilder.ConvertEnumValue(decompilationContext.CurrentTypeDefinition, initValue, field);
+						}
+						else
+						{
+							// Unusual underlying types (bool, native int, ...) cannot be losslessly
+							// squeezed through the long-based member-reference beautification.
+							enumDec.Initializer = typeSystemAstBuilder.ConvertConstantValue(decompilationContext.CurrentTypeDefinition.EnumUnderlyingType!, constantValue);
+						}
 					}
 					enumDec.Attributes.AddRange(field.GetAttributes().Select(a => new AttributeSection(typeSystemAstBuilder.ConvertAttribute(a))));
 					enumDec.AddAnnotation(new MemberResolveResult(null, field));
@@ -3134,8 +3148,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 			finally
 			{
-				watch.Stop();
-				Instrumentation.DecompilerEventSource.Log.DoDecompileField(field.FullName, watch.ElapsedMilliseconds);
+				DecompilerEventSource.Log.DecompileMemberStop(field, DecompiledMemberKind.Field);
 			}
 		}
 
@@ -3159,7 +3172,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		EntityDeclaration DoDecompile(IProperty property, DecompileRun decompileRun, ITypeResolveContext decompilationContext, ExtensionInfo? extensionInfo)
 		{
 			Debug.Assert(decompilationContext.CurrentMember == property);
-			var watch = System.Diagnostics.Stopwatch.StartNew();
+			DecompilerEventSource.Log.DecompileMemberStart(property, DecompiledMemberKind.Property);
 			try
 			{
 				var typeSystemAstBuilder = CreateAstBuilder(decompileRun.Settings);
@@ -3220,15 +3233,14 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 			finally
 			{
-				watch.Stop();
-				Instrumentation.DecompilerEventSource.Log.DoDecompileProperty(property.FullName, watch.ElapsedMilliseconds);
+				DecompilerEventSource.Log.DecompileMemberStop(property, DecompiledMemberKind.Property);
 			}
 		}
 
 		EntityDeclaration DoDecompile(IEvent ev, DecompileRun decompileRun, ITypeResolveContext decompilationContext)
 		{
 			Debug.Assert(decompilationContext.CurrentMember == ev);
-			var watch = System.Diagnostics.Stopwatch.StartNew();
+			DecompilerEventSource.Log.DecompileMemberStart(ev, DecompiledMemberKind.Event);
 			try
 			{
 				bool adderHasBody = ev.CanAdd && ev.AddAccessor!.HasBody;
@@ -3283,8 +3295,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 			finally
 			{
-				watch.Stop();
-				Instrumentation.DecompilerEventSource.Log.DoDecompileEvent(ev.FullName, watch.ElapsedMilliseconds);
+				DecompilerEventSource.Log.DecompileMemberStop(ev, DecompiledMemberKind.Event);
 			}
 		}
 
