@@ -43,7 +43,7 @@ public class FieldInitsBeforeBaseCall : BaseType
 	public FieldInitsBeforeBaseCall(int seed)
 	{
 		int num = seed + 1;
-		Flag = num > 0 && num < 1000;
+		Flag = (num > 0) & (num < 1000);
 		Value = num;
 	}
 }
