@@ -393,16 +393,24 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		static bool NothingWithSideEffectsPrecedes(Expression use, Statement statement)
 		{
 			AstNode node = use;
-			while (node != statement && node.Parent != null)
+			while (node != statement && node.Parent is { } parent)
 			{
-				foreach (var sibling in node.Parent.Children)
+				foreach (var sibling in parent.Children)
 				{
 					if (sibling == node)
 						break;
+					// The callee of the call being built is named, not evaluated; what runs before the
+					// arguments is only its receiver.
+					if (parent is InvocationExpression invocation && sibling == invocation.Target)
+					{
+						if (sibling is MemberReferenceExpression callee && !IsSideEffectFree(callee.Target))
+							return false;
+						continue;
+					}
 					if (sibling is Expression expression && !IsSideEffectFree(expression))
 						return false;
 				}
-				node = node.Parent;
+				node = parent;
 			}
 			return true;
 		}
@@ -421,9 +429,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				case DefaultValueExpression:
 					return true;
 				case IdentifierExpression identifier:
-					return identifier.GetILVariable() != null || identifier.GetSymbol() is IField;
+					// A method name is the target of the call being built, not a call of its own.
+					return identifier.GetILVariable() != null || identifier.GetSymbol() is IField or IMethod;
 				case MemberReferenceExpression member:
-					return member.GetSymbol() is IField && IsSideEffectFree(member.Target);
+					return member.GetSymbol() is IField or IMethod && IsSideEffectFree(member.Target);
 				case ParenthesizedExpression parenthesized:
 					return IsSideEffectFree(parenthesized.Expression);
 				case CastExpression cast:

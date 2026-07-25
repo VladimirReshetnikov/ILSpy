@@ -165,6 +165,18 @@ namespace ICSharpCode.Decompiler.Tests
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
 		}, executesCompiledOutput: true);
 
+		static readonly CompilerOptions[] roslynLatestOnlyOptions = Tester.SupportedOnCurrentPlatform(new[]
+		{
+			CompilerOptions.UseRoslynLatest,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
+		}, executesCompiledOutput: true);
+
+		[Test]
+		public async Task CollectionExpressions([ValueSource(nameof(roslynLatestOnlyOptions))] CompilerOptions options)
+		{
+			await RunCS(options: options);
+		}
+
 		[Test]
 		public async Task Comparisons([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
