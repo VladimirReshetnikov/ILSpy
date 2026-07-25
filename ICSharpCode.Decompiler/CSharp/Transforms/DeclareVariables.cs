@@ -816,8 +816,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					// Insert a separate declaration statement.
 					Expression? initializer = null;
 					AstType type = context.TypeSystemAstBuilder.ConvertType(v.Type);
-					if (v.DefaultInitialization == VariableInitKind.NeedsDefaultValue)
+					if (v.DefaultInitialization == VariableInitKind.NeedsDefaultValue
+						|| (v.DefaultInitialization == VariableInitKind.NeedsSkipInit && v.Type.Kind == TypeKind.Pointer))
 					{
+						// A pointer cannot be a generic type argument, so Unsafe.SkipInit<T> has no
+						// spelling for one (CS0306). A null pointer is the closest stand-in: the local
+						// is assigned before it is read either way, so what it starts as is not
+						// observable.
 						initializer = new DefaultValueExpression(type.Clone());
 					}
 					var vds = new VariableDeclarationStatement(type, v.Name, initializer);
@@ -844,7 +849,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					AstNode insertionNode = v.InsertionPoint.nextNode;
 					AstNode insertionParent = insertionNode.Parent
 						?? throw new InvalidOperationException("Variable insertion point has no parent.");
-					if (v.DefaultInitialization == VariableInitKind.NeedsSkipInit)
+					if (v.DefaultInitialization == VariableInitKind.NeedsSkipInit && v.Type.Kind != TypeKind.Pointer)
 					{
 						AstType unsafeType = context.TypeSystemAstBuilder.ConvertType(
 							context.TypeSystem.FindType(KnownTypeCode.Unsafe));

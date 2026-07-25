@@ -976,6 +976,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			// Exactly one of resultVariable/leaveTarget must be null
 			if ((resultVariable == null) == (leaveTarget == null))
 				return;
+			// C# has no ref switch expression: a switch whose sections yield managed references has
+			// to stay a statement, each section returning by reference on its own.
+			if (resultType == StackType.Ref)
+				return;
 			if (switchInst.Value is StringToInt str2int)
 			{
 				// validate that each integer is used for exactly one value

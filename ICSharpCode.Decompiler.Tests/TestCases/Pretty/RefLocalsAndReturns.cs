@@ -26,6 +26,31 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 	internal class RefLocalsAndReturns
 	{
+		public class RefReturningSwitch
+		{
+			private int _first;
+
+			private int _second;
+
+			private int[] _rest;
+
+			// A switch whose sections return by reference has to stay a statement: C# has no ref
+			// switch expression.
+			public ref int this[int index] {
+				get {
+					switch (index)
+					{
+						case 0:
+							return ref _first;
+						case 1:
+							return ref _second;
+						default:
+							return ref _rest[index - 2];
+					}
+				}
+			}
+		}
+
 		public struct Issue1630
 		{
 			private object data;
