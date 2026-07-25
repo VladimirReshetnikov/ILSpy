@@ -2351,6 +2351,22 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		}
 
 		/// <summary>
+		/// Returns whether the receiver can carry the 'this' modifier. A by-reference receiver is only
+		/// allowed on a value type or on a type parameter constrained to struct (CS8337/CS8338);
+		/// Visual Basic writes extension methods that take a class by reference, and those have to
+		/// stay plain static methods, called in static form.
+		/// </summary>
+		static bool CanBeWrittenAsExtensionMethod(IParameter receiver)
+		{
+			if (receiver.ReferenceKind == ReferenceKind.None)
+				return true;
+			var type = receiver.Type is ByReferenceType byReference ? byReference.ElementType : receiver.Type;
+			if (type is ITypeParameter typeParameter)
+				return typeParameter.HasValueTypeConstraint;
+			return type.IsReferenceType == false;
+		}
+
+		/// <summary>
 		/// Returns the accessibility C# must see on a member. An override cannot change it, so a
 		/// compiler that narrowed "protected internal" to "protected" in the override - Visual Basic
 		/// writes it that way - leaves metadata whose faithful rendering is rejected (CS0507). The
@@ -2606,8 +2622,11 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				decl.Parameters.Add(ConvertParameter(p));
 			}
-			if (method.IsExtensionMethod && method.ReducedFrom == null && decl.Parameters.Any())
+			if (method.IsExtensionMethod && method.ReducedFrom == null && decl.Parameters.Any()
+				&& CanBeWrittenAsExtensionMethod(method.Parameters[0]))
+			{
 				decl.Parameters.First().HasThisModifier = true;
+			}
 
 			if (this.ShowTypeParameters && this.ShowTypeParameterConstraints)
 			{

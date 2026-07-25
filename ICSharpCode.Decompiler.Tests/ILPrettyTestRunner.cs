@@ -397,6 +397,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ByRefExtensionOnReferenceType()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task UninitializedPointerLocal()
 		{
 			await Run();
