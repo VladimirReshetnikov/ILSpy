@@ -378,11 +378,17 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return IsSpanOf(method.Parameters[index].Type, elementType);
 		}
 
+		/// <summary>
+		/// The element types are compared by name rather than by identity: the buffer's element type
+		/// and the parameter's are resolved along different paths, and a reference set that carries
+		/// two copies of the same assembly resolves them to distinct types that are nonetheless the
+		/// same type.
+		/// </summary>
 		static bool IsSpanOf(IType type, IType elementType)
 		{
 			return (type.IsKnownType(KnownTypeCode.SpanOfT) || type.IsKnownType(KnownTypeCode.ReadOnlySpanOfT))
 				&& type.TypeArguments.Count == 1
-				&& type.TypeArguments[0].Equals(elementType);
+				&& type.TypeArguments[0].ReflectionName == elementType.ReflectionName;
 		}
 
 		/// <summary>
@@ -407,12 +413,40 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							return false;
 						continue;
 					}
+					// Likewise, the target of an assignment only evaluates what addresses the storage
+					// location; the store itself happens after the value.
+					if (parent is AssignmentExpression assignment && sibling == assignment.Left)
+					{
+						if (!IsTargetEvaluationSideEffectFree(assignment.Left))
+							return false;
+						continue;
+					}
 					if (sibling is Expression expression && !IsSideEffectFree(expression))
 						return false;
 				}
 				node = parent;
 			}
 			return true;
+		}
+
+		/// <summary>
+		/// Returns whether naming the storage location <paramref name="target"/> is free of side
+		/// effects, ignoring the store itself: a member access evaluates its receiver, an element
+		/// access also its indices, and a local or field name evaluates nothing.
+		/// </summary>
+		static bool IsTargetEvaluationSideEffectFree(Expression target)
+		{
+			switch (target)
+			{
+				case IdentifierExpression:
+					return true;
+				case MemberReferenceExpression { Target: { } receiver }:
+					return IsSideEffectFree(receiver);
+				case IndexerExpression { Target: { } collection } indexer:
+					return IsSideEffectFree(collection) && indexer.Arguments.All(IsSideEffectFree);
+				default:
+					return IsSideEffectFree(target);
+			}
 		}
 
 		static bool IsSideEffectFree(Expression expression)
@@ -504,6 +538,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				case ReturnStatement:
 				case InvocationExpression:
 				case ObjectCreateExpression:
+				// A member of an object initializer is typed by the member being assigned.
+				case NamedExpression:
 					return true;
 				default:
 					return false;
