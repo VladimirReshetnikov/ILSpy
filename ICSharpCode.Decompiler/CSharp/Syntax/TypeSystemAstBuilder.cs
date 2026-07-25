@@ -889,6 +889,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		internal IEnumerable<AttributeSection> ConvertAttributes(IEnumerable<IAttribute> attributes, string? target = null)
 		{
+			attributes = WithoutRepeatedSingleUseAttributes(attributes);
 			if (SortAttributes)
 				attributes = attributes.OrderBy(a => a, new DelegateComparer<IAttribute>((a, b) => CompareAttribute(a!, b!)));
 			return attributes.Select(a => {
@@ -2072,6 +2073,56 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return ext;
 		}
 
+		/// <summary>
+		/// Drops repeated applications of an attribute whose AttributeUsage does not allow multiple.
+		/// Metadata can carry them - a Visual Basic Module ends up with two StandardModuleAttribute
+		/// rows, for instance - but C# has no syntax for a second application and rejects one
+		/// (CS0579). The first application is the one kept; where the repeats differ in their
+		/// arguments there is nothing better to do, since none of them can be written alongside
+		/// another.
+		/// </summary>
+		static IEnumerable<IAttribute> WithoutRepeatedSingleUseAttributes(IEnumerable<IAttribute> attributes)
+		{
+			List<IAttribute>? kept = null;
+			HashSet<string>? singleUseSeen = null;
+			int index = 0;
+			foreach (var attribute in attributes)
+			{
+				bool drop = !AllowsMultipleApplications(attribute.AttributeType)
+					&& !(singleUseSeen ??= new HashSet<string>()).Add(attribute.AttributeType.ReflectionName);
+				if (drop && kept == null)
+				{
+					// The first repeat is also the first reason to materialize the list.
+					kept = attributes.Take(index).ToList();
+				}
+				if (!drop)
+				{
+					kept?.Add(attribute);
+				}
+				index++;
+			}
+			return kept ?? attributes;
+		}
+
+		static bool AllowsMultipleApplications(IType attributeType)
+		{
+			var definition = attributeType.GetDefinition();
+			if (definition == null)
+				return true; // an unresolved attribute says nothing; keep every application
+			foreach (var usage in definition.GetAttributes())
+			{
+				if (usage.AttributeType.FullName != "System.AttributeUsageAttribute")
+					continue;
+				foreach (var argument in usage.NamedArguments)
+				{
+					if (argument.Name == "AllowMultiple")
+						return argument.Value is true;
+				}
+				break;
+			}
+			return false; // AttributeUsage defaults AllowMultiple to false, as does its absence
+		}
+
 		// A Visual Basic Module compiles to a sealed (but not abstract) class carrying
 		// StandardModuleAttribute and holding only static members. The C# equivalent is a static
 		// class; rendering it as a plain sealed class leaves any extension methods it declares in a
@@ -2350,6 +2401,29 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			}
 		}
 
+		/// <summary>
+		/// Returns the accessibility C# must see on an accessor. An override cannot change
+		/// accessibility, so what counts there is what the overridden accessor declared, not the
+		/// value in this metadata: a compiler that wrote the override's accessor as "protected"
+		/// against a "protected internal" base leaves the two disagreeing, and repeating the
+		/// narrower one is rejected (CS0507).
+		/// </summary>
+		static Accessibility EffectiveAccessorAccessibility(IMethod accessor, MethodSemanticsAttributes kind, IProperty? owner)
+		{
+			if (owner is not { IsOverride: true })
+				return accessor.Accessibility;
+			foreach (var baseMember in InheritanceHelper.GetBaseMembers(owner, includeImplementedInterfaces: false))
+			{
+				if (baseMember.IsOverride)
+					continue;
+				if (baseMember is not IProperty baseProperty)
+					break;
+				var baseAccessor = kind == MethodSemanticsAttributes.Getter ? baseProperty.Getter : baseProperty.Setter;
+				return baseAccessor?.Accessibility ?? accessor.Accessibility;
+			}
+			return accessor.Accessibility;
+		}
+
 		Accessor? ConvertAccessor(IMethod? accessor, MethodSemanticsAttributes kind, Accessibility ownerAccessibility, bool addParameterAttribute, IProperty? owner = null)
 		{
 			if (accessor == null)
@@ -2373,9 +2447,10 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			// the metadata value would then produce a "protected internal" accessor on a "protected"
 			// property, which is broader than the property and rejected by the C# compiler. Suppress
 			// the modifier whenever the accessor is not more restrictive than the property.
-			if (this.ShowAccessibility && accessor.Accessibility != ownerAccessibility
-				&& accessor.Accessibility.LessThanOrEqual(ownerAccessibility))
-				decl.Modifiers = ModifierFromAccessibility(accessor.Accessibility, UsePrivateProtectedAccessibility);
+			var accessorAccessibility = EffectiveAccessorAccessibility(accessor, kind, owner);
+			if (this.ShowAccessibility && accessorAccessibility != ownerAccessibility
+				&& accessorAccessibility.LessThanOrEqual(ownerAccessibility))
+				decl.Modifiers = ModifierFromAccessibility(accessorAccessibility, UsePrivateProtectedAccessibility);
 			if (this.ShowModifiers && accessor.HasReadonlyModifier())
 				decl.Modifiers |= Modifiers.Readonly;
 			AccessorKind accessorKind = kind switch {

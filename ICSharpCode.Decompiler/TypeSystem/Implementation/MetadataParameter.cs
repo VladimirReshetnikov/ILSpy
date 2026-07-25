@@ -57,6 +57,20 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		public EntityHandle MetadataToken => handle;
 
+		/// <summary>
+		/// Returns whether the signature default can be written as a DefaultParameterValue argument.
+		/// Visual Basic stores an optional parameter's default as a null constant even where the
+		/// parameter is a value type; C# requires the argument to match the parameter type (CS1908),
+		/// so such a default has no C# spelling and is dropped rather than emitted unusably.
+		/// </summary>
+		bool CanTypeDefaultValue(object constantValue)
+		{
+			if (constantValue != null)
+				return true;
+			var parameterType = Type is ByReferenceType byReference ? byReference.ElementType : Type;
+			return parameterType.IsReferenceType != false;
+		}
+
 		#region Attributes
 		public IEnumerable<IAttribute> GetAttributes()
 		{
@@ -81,7 +95,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				// (short)3 instead of a bare int literal. Other parameter types are not affected.
 				if (Type.Kind == TypeKind.Enum || Type.IsCSharpSmallIntegerType())
 					b.Add(KnownAttribute.DefaultParameterValue, Type, constantValue);
-				else
+				else if (CanTypeDefaultValue(constantValue))
 					b.Add(KnownAttribute.DefaultParameterValue, KnownTypeCode.Object, constantValue);
 			}
 

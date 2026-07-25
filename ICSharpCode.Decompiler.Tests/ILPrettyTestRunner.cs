@@ -397,6 +397,24 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task OptionalNullDefaultOnValueType()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task OverrideNarrowsAccessorAccessibility()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task RepeatedSingleUseAttribute()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task Issue1638()
 		{
 			await Run();
