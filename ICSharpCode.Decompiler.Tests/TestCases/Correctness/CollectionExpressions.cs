@@ -43,6 +43,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 			Print(SpreadOfImmutable([9]));
 			Console.WriteLine(SpreadOfSpan([1, 2, 3]));
 
+			Console.WriteLine("Overload selection:");
+			Console.WriteLine("  " + Overloaded((IEnumerable<string>)["a", "b"]));
+			Console.WriteLine("  " + Overloaded((ReadOnlySpan<int>)[1, 2]));
+			Console.WriteLine("  " + Overloaded((List<int>)[1, 2]));
+			Console.WriteLine("  " + Overloaded((string[])["a", "b"]));
+
 			Console.WriteLine("Evaluation order:");
 			counter = 0;
 			Console.WriteLine(OrderOfSideEffects());
@@ -139,6 +145,26 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 		private static int SpreadOfSpan(ReadOnlySpan<int> source)
 		{
 			return Sum([1, .. source]);
+		}
+
+		private static string Overloaded(IEnumerable<string> values)
+		{
+			return "enumerable(" + string.Join(",", values) + ")";
+		}
+
+		private static string Overloaded(string[] values)
+		{
+			return "array(" + string.Join(",", values) + ")";
+		}
+
+		private static string Overloaded(ReadOnlySpan<int> values)
+		{
+			return "span(" + Sum(values) + ")";
+		}
+
+		private static string Overloaded(List<int> values)
+		{
+			return "list(" + values.Count + ")";
 		}
 
 		private static int OrderOfSideEffects()

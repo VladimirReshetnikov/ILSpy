@@ -25,6 +25,7 @@ using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
+using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.TypeSystem;
 
@@ -46,11 +47,22 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 	/// </summary>
 	class IntroduceCollectionExpressions : DepthFirstAstVisitor, IAstTransform
 	{
+		[AllowNull]
+		TransformContext context;
+
 		public void Run(AstNode rootNode, TransformContext context)
 		{
 			if (!context.Settings.CollectionExpressions)
 				return;
-			rootNode.AcceptVisitor(this);
+			this.context = context;
+			try
+			{
+				rootNode.AcceptVisitor(this);
+			}
+			finally
+			{
+				this.context = null;
+			}
 		}
 
 		public override void VisitArrayCreateExpression(ArrayCreateExpression arrayCreateExpression)
@@ -60,9 +72,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return;
 			if (arrayCreateExpression.Initializer is not { } initializer)
 				return;
-			if (!CanTargetType(arrayCreateExpression))
+			if (!CanTargetType(arrayCreateExpression, out var castTo))
 				return;
-			ReplaceWithCollectionExpression(arrayCreateExpression, initializer.Elements);
+			ReplaceWithCollectionExpression(arrayCreateExpression, initializer.Elements, castTo);
 		}
 
 		public override void VisitInvocationExpression(InvocationExpression invocationExpression)
@@ -80,18 +92,18 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 			if (invocationExpression.Arguments.Count != 1)
 				return;
-			if (!CanTargetType(invocationExpression))
+			if (!CanTargetType(invocationExpression, out var castTo))
 				return;
 			switch (invocationExpression.Arguments.Single())
 			{
 				case ArrayCreateExpression { Initializer: { } initializer }:
-					ReplaceWithCollectionExpression(invocationExpression, initializer.Elements);
+					ReplaceWithCollectionExpression(invocationExpression, initializer.Elements, castTo);
 					break;
 				// A collection expression that is nothing but one spread copies the source wholesale.
 				case InvocationExpression toArray when TryGetToArraySource(toArray, out var source):
 					source.Remove();
-					invocationExpression.ReplaceWith(
-						new CollectionExpression(new SpreadElement(source)).CopyAnnotationsFrom(invocationExpression));
+					var spread = new CollectionExpression(new SpreadElement(source)).CopyAnnotationsFrom(invocationExpression);
+					invocationExpression.ReplaceWith(Cast(spread, castTo, invocationExpression.GetResolveResult()));
 					break;
 			}
 		}
@@ -110,13 +122,43 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			if (objectCreateExpression.Arguments.Count != 1)
 				return;
 			var argument = objectCreateExpression.Arguments.Single();
-			if (argument is ArrayCreateExpression { Initializer: { } initializer } && CanTargetType(objectCreateExpression))
+			if (argument is ArrayCreateExpression { Initializer: { } initializer }
+				&& CanTargetType(objectCreateExpression, out var castTo))
 			{
-				ReplaceWithCollectionExpression(objectCreateExpression, initializer.Elements);
+				ReplaceWithCollectionExpression(objectCreateExpression, initializer.Elements, castTo);
 				return;
 			}
 			argument.Remove();
-			objectCreateExpression.ReplaceWith(argument);
+			objectCreateExpression.ReplaceWith(KeepArgumentTyped(objectCreateExpression, argument));
+		}
+
+		/// <summary>
+		/// Restores the type the wrapper contributed to the call, for a wrapper that could not become
+		/// a collection expression. The wrapper is what picked the overload - it implements only the
+		/// read-only collection interfaces - whereas its argument is an array, which several
+		/// overloads can accept. Only argument positions need this; elsewhere the one target type
+		/// converts the array on its own.
+		/// </summary>
+		Expression KeepArgumentTyped(Expression wrapper, Expression argument)
+		{
+			if (wrapper.Parent is not (InvocationExpression or ObjectCreateExpression))
+				return argument;
+			if (!TryGetParameterTypeIgnoringOverloads(wrapper, out var parameterType))
+				return argument;
+			if (parameterType.Equals(argument.GetResolveResult().Type))
+				return argument;
+			return new CastExpression(context.TypeSystemAstBuilder.ConvertType(parameterType), argument)
+				.WithRR(new ConversionResolveResult(parameterType, argument.GetResolveResult(), Conversion.ImplicitReferenceConversion));
+		}
+
+		static bool TryGetParameterTypeIgnoringOverloads(Expression argument, [NotNullWhen(true)] out IType? parameterType)
+		{
+			parameterType = argument.Parent switch {
+				InvocationExpression invocation => GetParameterTypeAt(invocation.GetSymbol() as IMethod, invocation.Arguments, argument),
+				ObjectCreateExpression create => GetParameterTypeAt(create.GetSymbol() as IMethod, create.Arguments, argument),
+				_ => null
+			};
+			return parameterType is { Kind: not TypeKind.Unknown and not TypeKind.None };
 		}
 
 		/// <summary>
@@ -403,7 +445,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return false;
 			if (use.GetParent<Statement>() is not { } useStatement || useStatement.GetPrevSibling(n => n is Statement) != lastStatement)
 				return false;
-			if (!CanTargetType(use))
+			if (!CanTargetType(use, out var castTo))
 				return false;
 
 			var hoisted = HoistedDeclarationsBefore(firstStatement);
@@ -418,7 +460,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				detached[i] = elements[i].IsSpread ? new SpreadElement(values[i]) : values[i];
 			}
 			var collectionExpression = new CollectionExpression(detached).CopyAnnotationsFrom(use);
-			use.ReplaceWith(collectionExpression);
+			use.ReplaceWith(Cast(collectionExpression, castTo, use.GetResolveResult()));
 			foreach (var element in elements)
 			{
 				element.HoistedDeclaration?.Remove();
@@ -747,12 +789,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			var use = candidates[0];
 			if (use.GetParent<Statement>() is not { } useStatement || useStatement.GetPrevSibling(n => n is Statement) != lastStore)
 				return false;
-			if (!IsSpanTargetedPosition(use, buffer.Type.GetInlineArrayElementType()))
+			if (!IsSpanTargetedPosition(use, buffer.Type.GetInlineArrayElementType(), out var castTo))
 				return false;
 			if (!NothingWithSideEffectsPrecedes(use, useStatement) && !elements.All(IsSideEffectFree))
 				return false;
 
-			ReplaceWithCollectionExpression(use, elements);
+			ReplaceWithCollectionExpression(use, elements, castTo);
 			RemoveRange(statement, lastStore);
 			return true;
 		}
@@ -859,6 +901,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// <c>ReadOnlySpan&lt;T&gt;</c> over <paramref name="elementType"/> is expected, which is what
 		/// gives a collection expression in that position its target type.
 		/// </summary>
+		bool IsSpanTargetedPosition(Expression expression, IType elementType, out AstType? castTo)
+		{
+			castTo = null;
+			if (!IsSpanTargetedPosition(expression, elementType))
+				return false;
+			return CanTargetType(expression, out castTo);
+		}
+
 		static bool IsSpanTargetedPosition(Expression expression, IType elementType)
 		{
 			switch (expression.Parent)
@@ -872,6 +922,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					return IsSpanParameter(invocation.GetSymbol() as IMethod, invocation.Arguments, expression, elementType);
 				case ObjectCreateExpression create:
 					return IsSpanParameter(create.GetSymbol() as IMethod, create.Arguments, expression, elementType);
+				case CastExpression cast:
+					return IsSpanOf(cast.Type.GetResolveResult().Type, elementType);
 				default:
 					return false;
 			}
@@ -1019,7 +1071,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// Replaces <paramref name="expression"/> with a collection expression over
 		/// <paramref name="elements"/>, which are detached from their current parent.
 		/// </summary>
-		static void ReplaceWithCollectionExpression(Expression expression, IEnumerable<Expression> elements)
+		static void ReplaceWithCollectionExpression(Expression expression, IEnumerable<Expression> elements, AstType? castTo = null)
 		{
 			var detached = elements.ToArray();
 			foreach (var element in detached)
@@ -1027,7 +1079,20 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				element.Remove();
 			}
 			var collectionExpression = new CollectionExpression(detached).CopyAnnotationsFrom(expression);
-			expression.ReplaceWith(collectionExpression);
+			expression.ReplaceWith(Cast(collectionExpression, castTo, expression.GetResolveResult()));
+		}
+
+		/// <summary>
+		/// Casts a collection expression to <paramref name="castTo"/>, which pins down the one
+		/// conversion the position had before. Without it the collection expression would offer
+		/// itself to every collection overload at once.
+		/// </summary>
+		static Expression Cast(Expression collectionExpression, AstType? castTo, ResolveResult resolveResult)
+		{
+			if (castTo == null)
+				return collectionExpression;
+			return new CastExpression(castTo, collectionExpression)
+				.WithRR(new ConversionResolveResult(castTo.GetResolveResult().Type, resolveResult, Conversion.IdentityConversion));
 		}
 
 		/// <summary>
@@ -1035,9 +1100,52 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// expression a target type. The list is an allow-list: a position that is not known to
 		/// target-type its operand keeps the original syntax.
 		/// </summary>
-		static bool CanTargetType(Expression expression)
+		bool CanTargetType(Expression expression)
 		{
-			return TryGetTargetType(expression, out var targetType) && IsCollectionExpressionTarget(targetType);
+			return CanTargetType(expression, out _);
+		}
+
+		/// <summary>
+		/// As <see cref="CanTargetType(Expression)"/>, additionally reporting through
+		/// <paramref name="castTo"/> the type the collection expression must be cast to for the
+		/// position to keep its meaning.
+		/// </summary>
+		bool CanTargetType(Expression expression, out AstType? castTo)
+		{
+			castTo = null;
+			if (!TryGetTargetType(expression, out var targetType, out bool needsCast))
+				return false;
+			if (!IsCollectionExpressionTarget(targetType))
+				return false;
+			if (!needsCast)
+				return true;
+			var type = context.TypeSystemAstBuilder.ConvertType(targetType);
+			if (!ParsesAsCastOfCollectionExpression(type))
+				return false;
+			castTo = type;
+			return true;
+		}
+
+		/// <summary>
+		/// Returns whether <c>(type)[...]</c> reads as a cast rather than as an element access on a
+		/// parenthesized expression. The two are told apart by the type syntax alone: a bare name
+		/// could equally be an expression, while type arguments, an array or pointer suffix, a
+		/// predefined type keyword or a <c>global::</c> qualifier could not.
+		/// </summary>
+		static bool ParsesAsCastOfCollectionExpression(AstType type)
+		{
+			switch (type)
+			{
+				case Syntax.PrimitiveType:
+				case ComposedType:
+					return true;
+				case SimpleType simple:
+					return simple.TypeArguments.Count > 0;
+				case MemberType member:
+					return member.TypeArguments.Count > 0 || member.IsDoubleColon;
+				default:
+					return false;
+			}
 		}
 
 		/// <summary>
@@ -1045,9 +1153,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// read off the syntax is reported as no target at all, so the collection expression is not
 		/// written there.
 		/// </summary>
-		static bool TryGetTargetType(Expression expression, [NotNullWhen(true)] out IType? targetType)
+		static bool TryGetTargetType(Expression expression, [NotNullWhen(true)] out IType? targetType, out bool needsCast)
 		{
 			targetType = null;
+			needsCast = false;
 			switch (expression.Parent)
 			{
 				case VariableInitializer { Parent: VariableDeclarationStatement declaration }:
@@ -1067,10 +1176,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					targetType = GetReturnedType(returnStatement);
 					break;
 				case InvocationExpression invocation:
-					targetType = GetParameterType(invocation.GetSymbol() as IMethod, invocation.Arguments, expression);
+					targetType = GetParameterType(invocation.GetSymbol() as IMethod, invocation.Arguments, expression, out needsCast);
 					break;
 				case ObjectCreateExpression create:
-					targetType = GetParameterType(create.GetSymbol() as IMethod, create.Arguments, expression);
+					targetType = GetParameterType(create.GetSymbol() as IMethod, create.Arguments, expression, out needsCast);
+					break;
+				// An expression already carrying a cast is typed by it; the spread builders in
+				// particular end up inside the cast the wrapper strip leaves behind.
+				case CastExpression cast:
+					targetType = cast.Type.GetResolveResult().Type;
 					break;
 				default:
 					return false;
@@ -1095,12 +1209,50 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return null;
 		}
 
-		static IType? GetParameterType(IMethod? method, AstNodeCollection<Expression> arguments, Expression argument)
+		static IType? GetParameterType(IMethod? method, AstNodeCollection<Expression> arguments, Expression argument, out bool needsCast)
+		{
+			needsCast = false;
+			if (method == null)
+				return null;
+			int index = arguments.TakeWhile(a => a != argument).Count();
+			if (index >= method.Parameters.Count)
+				return null;
+			needsCast = !KeepsOverloadResolution(method, index);
+			return method.Parameters[index].Type;
+		}
+
+		static IType? GetParameterTypeAt(IMethod? method, AstNodeCollection<Expression> arguments, Expression argument)
 		{
 			if (method == null)
 				return null;
 			int index = arguments.TakeWhile(a => a != argument).Count();
 			return index < method.Parameters.Count ? method.Parameters[index].Type : null;
+		}
+
+		/// <summary>
+		/// Returns whether writing a collection expression at an argument position still selects the
+		/// overload the lowered call selected. The lowered argument has a definite type and so can
+		/// name one particular overload, while a collection expression converts to every collection
+		/// parameter type at once: a second overload taking a collection there makes the call
+		/// ambiguous.
+		/// </summary>
+		static bool KeepsOverloadResolution(IMethod method, int index)
+		{
+			var chosen = method.Parameters[index].Type;
+			var candidates = method.IsConstructor
+				? method.DeclaringType.GetConstructors()
+				: method.DeclaringType.GetMethods(m => m.Name == method.Name);
+			foreach (var candidate in candidates)
+			{
+				if (candidate.Parameters.Count != method.Parameters.Count)
+					continue;
+				var parameterType = candidate.Parameters[index].Type;
+				if (parameterType.ReflectionName == chosen.ReflectionName)
+					continue;
+				if (IsCollectionExpressionTarget(parameterType))
+					return false;
+			}
+			return true;
 		}
 
 		/// <summary>

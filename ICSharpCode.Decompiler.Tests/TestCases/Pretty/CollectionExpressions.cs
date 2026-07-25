@@ -135,6 +135,41 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 		}
 
+		public string Overloaded(IEnumerable<string> values)
+		{
+			return "enumerable";
+		}
+
+		public string Overloaded(string[] values)
+		{
+			return "array";
+		}
+
+		public string Overloaded(ReadOnlySpan<int> values)
+		{
+			return "span";
+		}
+
+		public string Overloaded(List<int> values)
+		{
+			return "list";
+		}
+
+		public string CastKeepsTheWrapperOverload(string a, string b)
+		{
+			return Overloaded((IEnumerable<string>)[a, b]);
+		}
+
+		public string CastKeepsTheSpanOverload(int a, int b)
+		{
+			return Overloaded((ReadOnlySpan<int>)[a, b]);
+		}
+
+		public string CastKeepsTheSpreadOverload(string a, string[] rest)
+		{
+			return Overloaded((IEnumerable<string>)[a, .. rest]);
+		}
+
 		public int[] NotACollectionExpression()
 		{
 			return new int[3] { 1, 2, 3 };
