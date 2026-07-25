@@ -9,6 +9,14 @@
 }
 .module OptionalNullDefaultOnValueType.dll
 
+.class public auto ansi sealed Flavor
+       extends [mscorlib]System.Enum
+{
+  .field public specialname rtspecialname int32 value__
+  .field public static literal valuetype Flavor None = int32(0)
+  .field public static literal valuetype Flavor Some = int32(1)
+}
+
 .class public sequential ansi sealed beforefieldinit OptionalHandle
        extends [mscorlib]System.ValueType
 {
@@ -47,6 +55,14 @@
   .method public hidebysig instance void ByValueInt([opt] int32 i) cil managed
   {
     .param [1] = int32(3)
+    ret
+  }
+
+  // The signature default of a by-ref enum is stored as its underlying int; typing the argument
+  // has to see through the by-ref to reach the enum.
+  .method public hidebysig instance void RefEnum([opt] valuetype Flavor& f) cil managed
+  {
+    .param [1] = int32(0)
     ret
   }
 

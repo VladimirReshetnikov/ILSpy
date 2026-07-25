@@ -889,7 +889,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		internal IEnumerable<AttributeSection> ConvertAttributes(IEnumerable<IAttribute> attributes, string? target = null)
 		{
-			attributes = WithoutRepeatedSingleUseAttributes(attributes);
 			if (SortAttributes)
 				attributes = attributes.OrderBy(a => a, new DelegateComparer<IAttribute>((a, b) => CompareAttribute(a!, b!)));
 			return attributes.Select(a => {
@@ -2073,56 +2072,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return ext;
 		}
 
-		/// <summary>
-		/// Drops repeated applications of an attribute whose AttributeUsage does not allow multiple.
-		/// Metadata can carry them - a Visual Basic Module ends up with two StandardModuleAttribute
-		/// rows, for instance - but C# has no syntax for a second application and rejects one
-		/// (CS0579). The first application is the one kept; where the repeats differ in their
-		/// arguments there is nothing better to do, since none of them can be written alongside
-		/// another.
-		/// </summary>
-		static IEnumerable<IAttribute> WithoutRepeatedSingleUseAttributes(IEnumerable<IAttribute> attributes)
-		{
-			List<IAttribute>? kept = null;
-			HashSet<string>? singleUseSeen = null;
-			int index = 0;
-			foreach (var attribute in attributes)
-			{
-				bool drop = !AllowsMultipleApplications(attribute.AttributeType)
-					&& !(singleUseSeen ??= new HashSet<string>()).Add(attribute.AttributeType.ReflectionName);
-				if (drop && kept == null)
-				{
-					// The first repeat is also the first reason to materialize the list.
-					kept = attributes.Take(index).ToList();
-				}
-				if (!drop)
-				{
-					kept?.Add(attribute);
-				}
-				index++;
-			}
-			return kept ?? attributes;
-		}
-
-		static bool AllowsMultipleApplications(IType attributeType)
-		{
-			var definition = attributeType.GetDefinition();
-			if (definition == null)
-				return true; // an unresolved attribute says nothing; keep every application
-			foreach (var usage in definition.GetAttributes())
-			{
-				if (usage.AttributeType.FullName != "System.AttributeUsageAttribute")
-					continue;
-				foreach (var argument in usage.NamedArguments)
-				{
-					if (argument.Name == "AllowMultiple")
-						return argument.Value is true;
-				}
-				break;
-			}
-			return false; // AttributeUsage defaults AllowMultiple to false, as does its absence
-		}
-
 		// A Visual Basic Module compiles to a sealed (but not abstract) class carrying
 		// StandardModuleAttribute and holding only static members. The C# equivalent is a static
 		// class; rendering it as a plain sealed class leaves any extension methods it declares in a
@@ -2399,6 +2348,41 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				return null;
 			}
+		}
+
+		/// <summary>
+		/// Returns the accessibility C# must see on a member. An override cannot change it, so a
+		/// compiler that narrowed "protected internal" to "protected" in the override - Visual Basic
+		/// writes it that way - leaves metadata whose faithful rendering is rejected (CS0507). The
+		/// narrowing is only real where the internal half is genuinely out of reach; friend access
+		/// keeps it reachable, and then C# requires the override to say "protected internal" too.
+		/// </summary>
+		static Accessibility EffectiveAccessibility(IMember member)
+		{
+			if (member.Accessibility != Accessibility.Protected || !member.IsOverride)
+				return member.Accessibility;
+			foreach (var baseMember in InheritanceHelper.GetBaseMembers(member, includeImplementedInterfaces: false))
+			{
+				if (baseMember.IsOverride)
+					continue;
+				if (baseMember.Accessibility == Accessibility.ProtectedOrInternal
+					&& IsInternalVisibleFrom(baseMember, member))
+				{
+					return Accessibility.ProtectedOrInternal;
+				}
+				break;
+			}
+			return member.Accessibility;
+		}
+
+		static bool IsInternalVisibleFrom(IMember declaring, IMember consumer)
+		{
+			var declaringModule = declaring.ParentModule;
+			var consumerModule = consumer.ParentModule;
+			if (declaringModule == null || consumerModule == null)
+				return false;
+			return declaringModule.MetadataFile == consumerModule.MetadataFile
+				|| declaringModule.InternalsVisibleTo(consumerModule);
 		}
 
 		/// <summary>
@@ -2801,7 +2785,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			Modifiers m = Modifiers.None;
 			if (this.ShowAccessibility && NeedsAccessibility(member))
 			{
-				m |= ModifierFromAccessibility(member.Accessibility, UsePrivateProtectedAccessibility);
+				m |= ModifierFromAccessibility(EffectiveAccessibility(member), UsePrivateProtectedAccessibility);
 			}
 			if (this.ShowModifiers)
 			{

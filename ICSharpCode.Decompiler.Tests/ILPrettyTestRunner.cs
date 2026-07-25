@@ -403,7 +403,7 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
-		public async Task OverrideNarrowsAccessorAccessibility()
+		public async Task OverrideNarrowsAccessibility()
 		{
 			await Run();
 		}

@@ -573,10 +573,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return false;
 
 			lastStatement = copyStatement;
-			if (copyStatement.GetNextSibling(n => n is Statement) is ExpressionStatement {
-				Expression: AssignmentExpression { Operator: AssignmentOperatorType.Add, Left: var advanced, Right: var amount }
-			} advance
-				&& IsReferenceTo(advanced, index) && IsLengthOf(amount, copySource))
+			if (copyStatement.GetNextSibling(n => n is Statement) is ExpressionStatement { Expression: AssignmentExpression assignment } advance
+				&& IsIndexAdvancedBy(assignment, index, copySource))
 			{
 				lastStatement = advance;
 			}
@@ -605,19 +603,51 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		}
 
+		/// <summary>
+		/// Matches the advance of the running index past a spread, in either the compound form
+		/// (<c>index += span.Length</c>) or the plain one (<c>index = index + span.Length</c>). Which
+		/// of the two is present depends on whether PrettifyAssignments has run yet.
+		/// </summary>
+		static bool IsIndexAdvancedBy(AssignmentExpression assignment, ILVariable index, Expression source)
+		{
+			if (!IsReferenceTo(assignment.Left, index))
+				return false;
+			return assignment.Operator switch {
+				AssignmentOperatorType.Add => IsLengthOf(assignment.Right, source),
+				AssignmentOperatorType.Assign => assignment.Right is BinaryOperatorExpression {
+					Operator: BinaryOperatorType.Add, Left: { } addend, Right: { } increment
+				} && IsReferenceTo(addend, index) && IsLengthOf(increment, source),
+				_ => false
+			};
+		}
+
+		/// <summary>
+		/// Skips the statement that steps the running index past a single element, written either as
+		/// <c>index++</c> or as <c>index = index + 1</c>.
+		/// </summary>
 		static Statement SkipIndexIncrement(Statement statement, ILVariable index)
 		{
-			if (statement.GetNextSibling(n => n is Statement) is ExpressionStatement {
-				Expression: UnaryOperatorExpression {
+			if (statement.GetNextSibling(n => n is Statement) is not ExpressionStatement next)
+				return statement;
+			switch (next.Expression)
+			{
+				case UnaryOperatorExpression {
 					Operator: UnaryOperatorType.Increment or UnaryOperatorType.PostIncrement,
 					Expression: var incremented
-				}
-			} increment
-				&& IsReferenceTo(incremented, index))
-			{
-				return increment;
+				} when IsReferenceTo(incremented, index):
+					return next;
+				case AssignmentExpression {
+					Operator: AssignmentOperatorType.Add, Left: var target, Right: PrimitiveExpression { Value: 1 }
+				} when IsReferenceTo(target, index):
+					return next;
+				case AssignmentExpression {
+					Operator: AssignmentOperatorType.Assign, Left: var target,
+					Right: BinaryOperatorExpression { Operator: BinaryOperatorType.Add, Left: { } addend, Right: PrimitiveExpression { Value: 1 } }
+				} when IsReferenceTo(target, index) && IsReferenceTo(addend, index):
+					return next;
+				default:
+					return statement;
 			}
-			return statement;
 		}
 
 		/// <summary>

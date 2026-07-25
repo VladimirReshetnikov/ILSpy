@@ -50,6 +50,38 @@
   }
 }
 
+// A method override narrowed the same way: same-assembly here, so the internal half is reachable
+// and C# requires the override to keep "protected internal".
+.class public abstract auto ansi beforefieldinit BaseMethodProtectedInternal
+       extends [mscorlib]System.Object
+{
+  .method famorassem hidebysig newslot abstract virtual instance int32 Compute() cil managed
+  {
+  }
+  .method family hidebysig specialname rtspecialname instance void .ctor() cil managed
+  {
+    ldarg.0
+    call instance void [mscorlib]System.Object::.ctor()
+    ret
+  }
+}
+
+.class public auto ansi beforefieldinit DerivedNarrowsMethod
+       extends BaseMethodProtectedInternal
+{
+  .method family hidebysig virtual instance int32 Compute() cil managed
+  {
+    ldc.i4.0
+    ret
+  }
+  .method public hidebysig specialname rtspecialname instance void .ctor() cil managed
+  {
+    ldarg.0
+    call instance void BaseMethodProtectedInternal::.ctor()
+    ret
+  }
+}
+
 // A genuinely narrower accessor on a non-override still needs its modifier.
 .class public auto ansi beforefieldinit NarrowerAccessorOnDeclaration
        extends [mscorlib]System.Object

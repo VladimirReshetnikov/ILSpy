@@ -67,8 +67,12 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		{
 			if (constantValue != null)
 				return true;
-			var parameterType = Type is ByReferenceType byReference ? byReference.ElementType : Type;
-			return parameterType.IsReferenceType != false;
+			return UnwrapByReference(Type).IsReferenceType != false;
+		}
+
+		static IType UnwrapByReference(IType type)
+		{
+			return type is ByReferenceType byReference ? byReference.ElementType : type;
 		}
 
 		#region Attributes
@@ -93,8 +97,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				// type to match the parameter type (CS1908), so for those parameter types type the
 				// synthesized argument as the parameter type - the value then renders as (MyEnum)0 /
 				// (short)3 instead of a bare int literal. Other parameter types are not affected.
-				if (Type.Kind == TypeKind.Enum || Type.IsCSharpSmallIntegerType())
-					b.Add(KnownAttribute.DefaultParameterValue, Type, constantValue);
+				var parameterType = UnwrapByReference(Type);
+				if (parameterType.Kind == TypeKind.Enum || parameterType.IsCSharpSmallIntegerType())
+					b.Add(KnownAttribute.DefaultParameterValue, parameterType, constantValue);
 				else if (CanTypeDefaultValue(constantValue))
 					b.Add(KnownAttribute.DefaultParameterValue, KnownTypeCode.Object, constantValue);
 			}

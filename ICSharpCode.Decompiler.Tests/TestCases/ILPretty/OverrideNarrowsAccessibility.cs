@@ -1,3 +1,7 @@
+public abstract class BaseMethodProtectedInternal
+{
+	protected internal abstract int Compute();
+}
 public abstract class BaseWithProtectedInternal
 {
 	protected internal abstract int Value { get; }
@@ -5,6 +9,13 @@ public abstract class BaseWithProtectedInternal
 public class DerivedNarrowsAccessor : BaseWithProtectedInternal
 {
 	protected internal override int Value => 0;
+}
+public class DerivedNarrowsMethod : BaseMethodProtectedInternal
+{
+	protected internal override int Compute()
+	{
+		return 0;
+	}
 }
 public class NarrowerAccessorOnDeclaration
 {

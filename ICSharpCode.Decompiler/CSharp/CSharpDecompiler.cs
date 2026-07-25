@@ -254,10 +254,13 @@ namespace ICSharpCode.Decompiler.CSharp
 				new IntroduceUnsafeModifier(),
 				new AddCheckedBlocks(),
 				new DeclareVariables(), // should run after most transforms that modify statements
+				// Must run after DeclareVariables and before TransformFieldAndConstructorInitializers:
+				// a collection expression collapses the statements a lowered element fill spreads out,
+				// which is what lets a constructor initializer taking one stay the first statement.
+				new IntroduceCollectionExpressions(),
 				new TransformFieldAndConstructorInitializers(), // must run after DeclareVariables
 				new IntroduceFieldKeyword(), // must run after TransformFieldAndConstructorInitializers
 				new PrettifyAssignments(), // must run after DeclareVariables
-				new IntroduceCollectionExpressions(), // must run after DeclareVariables, before IntroduceUsingDeclarations
 				new IntroduceUsingDeclarations(),
 				new IntroduceExtensionMethods(), // must run after IntroduceUsingDeclarations
 				new IntroduceQueryExpressions(), // must run after IntroduceExtensionMethods
@@ -265,6 +268,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				new NormalizeBlockStatements(),
 				new FlattenSwitchBlocks(),
 				new FixNameCollisions(),
+				new RemoveRepeatedAttributes(), // must run after the decompiler's own attribute removals
 				new AddXmlDocumentationTransform(),
 			};
 		}
