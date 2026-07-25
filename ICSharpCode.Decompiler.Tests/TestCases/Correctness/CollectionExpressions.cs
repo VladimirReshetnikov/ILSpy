@@ -34,6 +34,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 			Console.WriteLine(SpanLocal(3, 4));
 			Console.WriteLine(SpanArgument(5, 6));
 
+			Console.WriteLine("Spreads:");
+			Print(SpreadIntoArray([2, 3]));
+			Print(SpreadTwice(["a", "b"], ["c"]));
+			Print(SpreadIntoList([4, 5]));
+			Print(SpreadIntoInterface([6]));
+			Print(SpreadOfList([7, 8]));
+			Print(SpreadOfImmutable([9]));
+			Console.WriteLine(SpreadOfSpan([1, 2, 3]));
+
 			Console.WriteLine("Evaluation order:");
 			counter = 0;
 			Console.WriteLine(OrderOfSideEffects());
@@ -95,6 +104,41 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 				num += values[i];
 			}
 			return num;
+		}
+
+		private static int[] SpreadIntoArray(int[] source)
+		{
+			return [0, .. source, 9];
+		}
+
+		private static string[] SpreadTwice(string[] first, string[] second)
+		{
+			return [.. first, .. second];
+		}
+
+		private static List<int> SpreadIntoList(int[] source)
+		{
+			return [0, .. source];
+		}
+
+		private static IEnumerable<int> SpreadIntoInterface(int[] source)
+		{
+			return [.. source, 1];
+		}
+
+		private static int[] SpreadOfList(List<int> source)
+		{
+			return [1, .. source];
+		}
+
+		private static ImmutableArray<int> SpreadOfImmutable(int[] source)
+		{
+			return [.. source];
+		}
+
+		private static int SpreadOfSpan(ReadOnlySpan<int> source)
+		{
+			return Sum([1, .. source]);
 		}
 
 		private static int OrderOfSideEffects()

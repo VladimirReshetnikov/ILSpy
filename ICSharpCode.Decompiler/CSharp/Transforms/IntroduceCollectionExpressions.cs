@@ -20,9 +20,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
+using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.TypeSystem;
 
@@ -78,11 +80,20 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 			if (invocationExpression.Arguments.Count != 1)
 				return;
-			if (invocationExpression.Arguments.Single() is not ArrayCreateExpression { Initializer: { } initializer })
-				return;
 			if (!CanTargetType(invocationExpression))
 				return;
-			ReplaceWithCollectionExpression(invocationExpression, initializer.Elements);
+			switch (invocationExpression.Arguments.Single())
+			{
+				case ArrayCreateExpression { Initializer: { } initializer }:
+					ReplaceWithCollectionExpression(invocationExpression, initializer.Elements);
+					break;
+				// A collection expression that is nothing but one spread copies the source wholesale.
+				case InvocationExpression toArray when TryGetToArraySource(toArray, out var source):
+					source.Remove();
+					invocationExpression.ReplaceWith(
+						new CollectionExpression(new SpreadElement(source)).CopyAnnotationsFrom(invocationExpression));
+					break;
+			}
 		}
 
 		public override void VisitObjectCreateExpression(ObjectCreateExpression objectCreateExpression)
@@ -108,6 +119,22 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			objectCreateExpression.ReplaceWith(argument);
 		}
 
+		/// <summary>
+		/// Recovers the collection a <c>ToArray</c> call copies. Extension-method syntax is restored
+		/// later in the pipeline, so the call still appears in whichever form the call site had.
+		/// </summary>
+		static bool TryGetToArraySource(InvocationExpression invocation, [NotNullWhen(true)] out Expression? source)
+		{
+			source = null;
+			if (invocation.GetSymbol() is not IMethod { Name: "ToArray" } method)
+				return false;
+			if (method.IsStatic && invocation.Arguments.Count == 1)
+				source = invocation.Arguments.Single();
+			else if (!method.IsStatic && invocation.Arguments.Count == 0 && invocation.Target is MemberReferenceExpression { Target: { } receiver })
+				source = receiver;
+			return source != null;
+		}
+
 		static bool IsReadOnlyCollectionWrapper(ITypeDefinition? declaringType)
 		{
 			return declaringType is {
@@ -128,6 +155,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			foreach (var statement in blockStatement.Statements.ToArray())
 			{
 				if (statement.Parent != blockStatement)
+					continue;
+				if (TransformSpreadIntoArray(statement))
+					continue;
+				if (TransformSpreadIntoList(statement))
 					continue;
 				if (TransformListFill(statement))
 					continue;
@@ -200,6 +231,484 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			RemoveRange(setCountStatement, lastStore);
 			countDeclaration?.Remove();
 			return true;
+		}
+
+		/// <summary>
+		/// Folds the builder the compiler emits for a collection expression that contains a spread
+		/// whose length is known before the collection is allocated:
+		/// <code>
+		/// int index = 0;
+		/// T[] array = new T[1 + source.Length];
+		/// array[index] = v0;
+		/// index++;
+		/// ReadOnlySpan&lt;T&gt; span = new ReadOnlySpan&lt;T&gt;(source);
+		/// span.CopyTo(new Span&lt;T&gt;(array).Slice(index, span.Length));
+		/// index += span.Length;
+		/// </code>
+		/// which is <c>[v0, .. source]</c>. The allocation is sized from the spread sources up front
+		/// and every slot is then written exactly once through a running index - a shape that only
+		/// arises from lowering, and one whose length expression pins down which elements the
+		/// collection has.
+		/// </summary>
+		bool TransformSpreadIntoArray(Statement statement)
+		{
+			if (statement is not VariableDeclarationStatement {
+				Variables: [{ Initializer: ArrayCreateExpression create } arrayVariable]
+			})
+			{
+				return false;
+			}
+			if (create.Arguments.Count != 1 || create.Initializer is { Elements.Count: > 0 })
+				return false;
+			if (arrayVariable.GetILVariable() is not { } array)
+				return false;
+			if (statement.GetPrevSibling(n => n is Statement) is not VariableDeclarationStatement {
+				Variables: [{ Initializer: PrimitiveExpression { Value: 0 } } indexVariable]
+			} indexDeclaration)
+			{
+				return false;
+			}
+			if (indexVariable.GetILVariable() is not { } index)
+				return false;
+
+			bool IsArray(Expression? expression) => IsReferenceTo(expression, array);
+			bool IsArrayAsSpan(Expression? expression)
+			{
+				return expression is ObjectCreateExpression { Arguments: [var wrapped] } spanCreate
+					&& spanCreate.GetSymbol() is IMethod { IsConstructor: true } spanConstructor
+					&& spanConstructor.DeclaringType.IsKnownType(KnownTypeCode.SpanOfT)
+					&& IsArray(wrapped);
+			}
+
+			if (!TryCollectBuilderElements(statement, index, IsArray, IsArrayAsSpan, out var elements, out var lastStatement))
+				return false;
+			return CompleteSpreadBuilder(indexDeclaration, statement, lastStatement,
+				create.Arguments.Single(), array, new[] { index }, elements);
+		}
+
+		/// <summary>
+		/// The <c>List&lt;T&gt;</c> counterpart of <see cref="TransformSpreadIntoArray"/>: the list is
+		/// allocated and sized up front, and the elements are written through the span over its
+		/// storage rather than into an array.
+		/// <code>
+		/// int capacity = 1 + source.Length;
+		/// List&lt;T&gt; list = new List&lt;T&gt;(capacity);
+		/// CollectionsMarshal.SetCount(list, capacity);
+		/// Span&lt;T&gt; span = CollectionsMarshal.AsSpan(list);
+		/// int index = 0;
+		/// span[index] = v0;
+		/// index++;
+		/// ...
+		/// </code>
+		/// </summary>
+		bool TransformSpreadIntoList(Statement statement)
+		{
+			if (statement is not VariableDeclarationStatement {
+				Variables: [{ Initializer: ObjectCreateExpression create } listVariable]
+			} declaration)
+			{
+				return false;
+			}
+			if (declaration.Type.IsVar())
+				return false;
+			if (create.GetSymbol() is not IMethod { IsConstructor: true, Parameters.Count: 1 } listConstructor)
+				return false;
+			if (listConstructor.DeclaringType is not { FullName: "System.Collections.Generic.List", TypeParameterCount: 1 })
+				return false;
+			if (listVariable.GetILVariable() is not { } list)
+				return false;
+
+			// The capacity is computed into its own local, which the constructor and SetCount share.
+			if (create.Arguments.Single() is not IdentifierExpression capacityReference)
+				return false;
+			if (capacityReference.GetILVariable() is not { } capacity)
+				return false;
+			if (statement.GetPrevSibling(n => n is Statement) is not VariableDeclarationStatement {
+				Variables: [{ Initializer: { } lengthExpression } capacityVariable]
+			} capacityDeclaration)
+			{
+				return false;
+			}
+			if (capacityVariable.GetILVariable() != capacity)
+				return false;
+
+			if (statement.GetNextSibling(n => n is Statement) is not ExpressionStatement {
+				Expression: InvocationExpression setCount
+			} setCountStatement)
+			{
+				return false;
+			}
+			if (!IsCollectionsMarshalCall(setCount, "SetCount") || setCount.Arguments.Count != 2)
+				return false;
+			if (!IsReferenceTo(setCount.Arguments.First(), list) || !IsReferenceTo(setCount.Arguments.Last(), capacity))
+				return false;
+
+			if (setCountStatement.GetNextSibling(n => n is Statement) is not VariableDeclarationStatement {
+				Variables: [{ Initializer: InvocationExpression asSpan } spanVariable]
+			} spanDeclaration)
+			{
+				return false;
+			}
+			if (!IsCollectionsMarshalCall(asSpan, "AsSpan") || asSpan.Arguments.Count != 1)
+				return false;
+			if (!IsReferenceTo(asSpan.Arguments.Single(), list))
+				return false;
+			if (spanVariable.GetILVariable() is not { } span)
+				return false;
+
+			if (spanDeclaration.GetNextSibling(n => n is Statement) is not VariableDeclarationStatement {
+				Variables: [{ Initializer: PrimitiveExpression { Value: 0 } } indexVariable]
+			} indexDeclaration)
+			{
+				return false;
+			}
+			if (indexVariable.GetILVariable() is not { } index)
+				return false;
+
+			bool IsSpan(Expression? expression) => IsReferenceTo(expression, span);
+
+			if (!TryCollectBuilderElements(indexDeclaration, index, IsSpan, IsSpan, out var elements, out var lastStatement))
+				return false;
+			return CompleteSpreadBuilder(capacityDeclaration, statement, lastStatement,
+				lengthExpression, list, new[] { index, span, capacity }, elements);
+		}
+
+		/// <summary>
+		/// Checks what the element collection could not see - that the length the collection was
+		/// allocated with is exactly the elements found, that the builder's locals do not outlive it,
+		/// and that the one remaining use of the result can target-type a collection expression - and
+		/// then replaces that use with <c>[...]</c>, dropping the builder.
+		/// </summary>
+		bool CompleteSpreadBuilder(Statement firstStatement, Statement resultStatement, Statement lastStatement,
+			Expression lengthExpression, ILVariable result, ILVariable[] builderLocals, List<BuilderElement> elements)
+		{
+			if (!elements.Any(element => element.IsSpread))
+				return false; // without a spread the constant-index forms apply, or nothing does
+			if (!LengthMatchesElements(lengthExpression, elements))
+				return false;
+
+			var memberRoot = GetMemberRoot(resultStatement);
+			var consumed = StatementsBetween(firstStatement, lastStatement);
+			foreach (var local in builderLocals)
+			{
+				if (ReferencesOutside(memberRoot, local, consumed).Any())
+					return false;
+			}
+			foreach (var element in elements)
+			{
+				if (element.SpanTemp != null && ReferencesOutside(memberRoot, element.SpanTemp, consumed).Any())
+					return false;
+			}
+			if (ReferencesOutside(memberRoot, result, consumed) is not [var use])
+				return false;
+			if (use.GetParent<Statement>() is not { } useStatement || useStatement.GetPrevSibling(n => n is Statement) != lastStatement)
+				return false;
+			if (!CanTargetType(use))
+				return false;
+
+			var hoisted = HoistedDeclarationsBefore(firstStatement);
+			var values = elements.Select(element => InlineHoistedValue(element, memberRoot, consumed, hoisted)).ToArray();
+			if (!NothingWithSideEffectsPrecedes(use, useStatement) && !values.All(IsSideEffectFree))
+				return false;
+
+			var detached = new Expression[elements.Count];
+			for (int i = 0; i < elements.Count; i++)
+			{
+				values[i].Remove();
+				detached[i] = elements[i].IsSpread ? new SpreadElement(values[i]) : values[i];
+			}
+			var collectionExpression = new CollectionExpression(detached).CopyAnnotationsFrom(use);
+			use.ReplaceWith(collectionExpression);
+			foreach (var element in elements)
+			{
+				element.HoistedDeclaration?.Remove();
+			}
+			RemoveRange(firstStatement, lastStatement);
+			return true;
+		}
+
+		/// <summary>
+		/// One element of a lowered collection expression: its value (the spread source, for a
+		/// spread), the span temp the spread was copied through, and the declaration of the local the
+		/// value was hoisted into, if any.
+		/// </summary>
+		sealed class BuilderElement
+		{
+			public BuilderElement(Expression value, bool isSpread, ILVariable? spanTemp)
+			{
+				Value = value;
+				IsSpread = isSpread;
+				SpanTemp = spanTemp;
+			}
+
+			public Expression Value { get; }
+			public bool IsSpread { get; }
+			public ILVariable? SpanTemp { get; }
+			public VariableDeclarationStatement? HoistedDeclaration { get; set; }
+		}
+
+		/// <summary>
+		/// Collects the elements written into a collection through a running index, in order, until a
+		/// statement that is neither an element store nor a spread copy.
+		/// </summary>
+		bool TryCollectBuilderElements(Statement start, ILVariable index,
+			Func<Expression?, bool> isWriteTarget, Func<Expression?, bool> isCopyDestination,
+			out List<BuilderElement> elements, out Statement lastStatement)
+		{
+			elements = new List<BuilderElement>();
+			Statement current = start;
+			while (current.GetNextSibling(n => n is Statement) is Statement next)
+			{
+				if (next is ExpressionStatement {
+					Expression: AssignmentExpression {
+						Operator: AssignmentOperatorType.Assign,
+						Left: IndexerExpression { Arguments: [var indexArgument] } indexer,
+						Right: var value
+					}
+				}
+					&& isWriteTarget(indexer.Target) && IsReferenceTo(indexArgument, index))
+				{
+					elements.Add(new BuilderElement(value, isSpread: false, spanTemp: null));
+					current = SkipIndexIncrement(next, index);
+					continue;
+				}
+				if (TryMatchSpreadCopy(next, index, isCopyDestination, out var spread, out var afterSpread))
+				{
+					elements.Add(spread);
+					current = afterSpread;
+					continue;
+				}
+				break;
+			}
+			lastStatement = current;
+			return elements.Count > 0;
+		}
+
+		/// <summary>
+		/// Matches the copy of a spread source into the collection being built, optionally preceded by
+		/// the declaration of the span it is copied from and followed by the advance of the running
+		/// index. Both are absent when the compiler had no use for them.
+		/// </summary>
+		static bool TryMatchSpreadCopy(Statement statement, ILVariable index, Func<Expression?, bool> isCopyDestination,
+			[NotNullWhen(true)] out BuilderElement? element, [NotNullWhen(true)] out Statement? lastStatement)
+		{
+			element = null;
+			lastStatement = null;
+			Statement copyStatement = statement;
+			ILVariable? spanTemp = null;
+			Expression? source = null;
+			if (statement is VariableDeclarationStatement { Variables: [{ Initializer: { } spanInitializer } spanVariable] })
+			{
+				if (spanVariable.GetILVariable() is not { } temp)
+					return false;
+				if (statement.GetNextSibling(n => n is Statement) is not Statement afterDeclaration)
+					return false;
+				spanTemp = temp;
+				source = UnwrapSpanConstruction(spanInitializer);
+				copyStatement = afterDeclaration;
+			}
+			if (copyStatement is not ExpressionStatement { Expression: InvocationExpression copy })
+				return false;
+			if (copy.GetSymbol() is not IMethod { Name: "CopyTo" })
+				return false;
+			if (copy.Target is not MemberReferenceExpression { Target: { } copySource })
+				return false;
+			if (copy.Arguments is not [InvocationExpression slice])
+				return false;
+			if (slice.GetSymbol() is not IMethod { Name: "Slice" })
+				return false;
+			if (slice.Target is not MemberReferenceExpression { Target: { } sliceTarget })
+				return false;
+			if (!isCopyDestination(sliceTarget))
+				return false;
+			if (slice.Arguments is not [var sliceStart, var sliceLength])
+				return false;
+			if (!IsReferenceTo(sliceStart, index) || !IsLengthOf(sliceLength, copySource))
+				return false;
+			if (spanTemp == null)
+				source = copySource;
+			else if (!IsReferenceTo(copySource, spanTemp))
+				return false;
+
+			lastStatement = copyStatement;
+			if (copyStatement.GetNextSibling(n => n is Statement) is ExpressionStatement {
+				Expression: AssignmentExpression { Operator: AssignmentOperatorType.Add, Left: var advanced, Right: var amount }
+			} advance
+				&& IsReferenceTo(advanced, index) && IsLengthOf(amount, copySource))
+			{
+				lastStatement = advance;
+			}
+			element = new BuilderElement(source!, isSpread: true, spanTemp);
+			return true;
+		}
+
+		/// <summary>
+		/// Returns the collection a span was built over, so the spread reads as <c>.. source</c>
+		/// rather than as the span the compiler copied it through.
+		/// </summary>
+		static Expression UnwrapSpanConstruction(Expression initializer)
+		{
+			switch (initializer)
+			{
+				case ObjectCreateExpression { Arguments: [var wrapped] } create
+					when create.GetSymbol() is IMethod { IsConstructor: true } constructor
+						&& (constructor.DeclaringType.IsKnownType(KnownTypeCode.SpanOfT)
+							|| constructor.DeclaringType.IsKnownType(KnownTypeCode.ReadOnlySpanOfT)):
+					return wrapped;
+				case InvocationExpression { Arguments: [var collection] } invocation
+					when IsCollectionsMarshalCall(invocation, "AsSpan"):
+					return collection;
+				default:
+					return initializer;
+			}
+		}
+
+		static Statement SkipIndexIncrement(Statement statement, ILVariable index)
+		{
+			if (statement.GetNextSibling(n => n is Statement) is ExpressionStatement {
+				Expression: UnaryOperatorExpression {
+					Operator: UnaryOperatorType.Increment or UnaryOperatorType.PostIncrement,
+					Expression: var incremented
+				}
+			} increment
+				&& IsReferenceTo(incremented, index))
+			{
+				return increment;
+			}
+			return statement;
+		}
+
+		/// <summary>
+		/// Returns whether the length the collection was allocated with is the sum of the element
+		/// count and the lengths of the spread sources - i.e. whether the elements found account for
+		/// every slot. A mismatch would leave slots the collection expression cannot express.
+		/// </summary>
+		static bool LengthMatchesElements(Expression lengthExpression, List<BuilderElement> elements)
+		{
+			var terms = new List<Expression>();
+			FlattenSum(lengthExpression, terms);
+			var spreads = elements.Where(element => element.IsSpread).ToList();
+			int expectedCount = elements.Count - spreads.Count;
+			int spreadIndex = 0;
+			int count = 0;
+			bool sawCount = false;
+			foreach (var term in terms)
+			{
+				if (term is PrimitiveExpression { Value: int literal })
+				{
+					if (sawCount)
+						return false;
+					sawCount = true;
+					count = literal;
+					continue;
+				}
+				if (spreadIndex >= spreads.Count)
+					return false;
+				var spread = spreads[spreadIndex];
+				if (!IsLengthOf(term, spread.Value)
+					&& !(spread.SpanTemp != null && IsLengthOfVariable(term, spread.SpanTemp)))
+				{
+					return false;
+				}
+				spreadIndex++;
+			}
+			return spreadIndex == spreads.Count && count == expectedCount && (sawCount || expectedCount == 0);
+		}
+
+		static void FlattenSum(Expression expression, List<Expression> terms)
+		{
+			switch (expression)
+			{
+				case ParenthesizedExpression parenthesized:
+					FlattenSum(parenthesized.Expression, terms);
+					break;
+				case BinaryOperatorExpression { Operator: BinaryOperatorType.Add, Left: { } left, Right: { } right }:
+					FlattenSum(left, terms);
+					FlattenSum(right, terms);
+					break;
+				default:
+					terms.Add(expression);
+					break;
+			}
+		}
+
+		static bool IsLengthOf(Expression expression, Expression collection)
+		{
+			return expression is MemberReferenceExpression { MemberName: "Length" or "Count" } member
+				&& member.Target != null
+				&& member.Target.IsMatch(collection);
+		}
+
+		static bool IsLengthOfVariable(Expression expression, ILVariable variable)
+		{
+			return expression is MemberReferenceExpression { MemberName: "Length" or "Count" } member
+				&& IsReferenceTo(member.Target, variable);
+		}
+
+		/// <summary>
+		/// Replaces an element value that is a read of a local the compiler hoisted the value into
+		/// with the value itself, and records the declaration for removal. The hoist exists to keep
+		/// the value's evaluation ahead of the allocation, which writing the element back into the
+		/// collection expression restores on its own.
+		/// </summary>
+		static Expression InlineHoistedValue(BuilderElement element, AstNode memberRoot,
+			HashSet<AstNode> consumed, HashSet<AstNode> hoisted)
+		{
+			if (element.Value is not IdentifierExpression identifier)
+				return element.Value;
+			if (identifier.GetILVariable() is not { } local)
+				return element.Value;
+			var declarations = memberRoot.Descendants.OfType<VariableInitializer>()
+				.Where(initializer => initializer.GetILVariable() == local).ToArray();
+			if (declarations is not [{ Initializer: { } value } declaration])
+				return element.Value;
+			if (declaration.Parent is not VariableDeclarationStatement declarationStatement || !hoisted.Contains(declarationStatement))
+				return element.Value;
+			var scope = new HashSet<AstNode>(consumed) { declarationStatement };
+			if (ReferencesOutside(memberRoot, local, scope).Any())
+				return element.Value;
+			element.HoistedDeclaration = declarationStatement;
+			return value;
+		}
+
+		/// <summary>
+		/// Returns the run of single-variable declarations immediately preceding the builder. The
+		/// compiler hoists element values into locals there so that they are evaluated before the
+		/// collection is allocated; nothing else stands between them, so folding those values back
+		/// into the collection expression cannot move them across anything.
+		/// </summary>
+		static HashSet<AstNode> HoistedDeclarationsBefore(Statement builderStart)
+		{
+			var declarations = new HashSet<AstNode>();
+			var current = builderStart.GetPrevSibling(n => n is Statement);
+			while (current is VariableDeclarationStatement { Variables.Count: 1 })
+			{
+				declarations.Add(current);
+				current = current.GetPrevSibling(n => n is Statement);
+			}
+			return declarations;
+		}
+
+		static HashSet<AstNode> StatementsBetween(Statement first, Statement last)
+		{
+			var statements = new HashSet<AstNode>();
+			Statement? current = first;
+			while (current != null)
+			{
+				statements.Add(current);
+				if (current == last)
+					break;
+				current = current.GetNextSibling(n => n is Statement) as Statement;
+			}
+			return statements;
+		}
+
+		static IdentifierExpression[] ReferencesOutside(AstNode memberRoot, ILVariable variable, HashSet<AstNode> statements)
+		{
+			return memberRoot.Descendants.OfType<IdentifierExpression>()
+				.Where(identifier => identifier.GetILVariable() == variable
+					&& !identifier.Ancestors.Any(statements.Contains))
+				.ToArray();
 		}
 
 		/// <summary>
@@ -528,22 +1037,103 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// </summary>
 		static bool CanTargetType(Expression expression)
 		{
+			return TryGetTargetType(expression, out var targetType) && IsCollectionExpressionTarget(targetType);
+		}
+
+		/// <summary>
+		/// Determines the type the position imposes on its operand. A position whose type cannot be
+		/// read off the syntax is reported as no target at all, so the collection expression is not
+		/// written there.
+		/// </summary>
+		static bool TryGetTargetType(Expression expression, [NotNullWhen(true)] out IType? targetType)
+		{
+			targetType = null;
 			switch (expression.Parent)
 			{
 				case VariableInitializer { Parent: VariableDeclarationStatement declaration }:
 					// `var x = [1, 2];` has nothing to infer the type from.
-					return !declaration.Type.IsVar();
-				case AssignmentExpression { Operator: AssignmentOperatorType.Assign } assignment:
-					return assignment.Right == expression;
-				case ReturnStatement:
-				case InvocationExpression:
-				case ObjectCreateExpression:
+					if (declaration.Type.IsVar())
+						return false;
+					targetType = declaration.Type.GetResolveResult().Type;
+					break;
+				case AssignmentExpression { Operator: AssignmentOperatorType.Assign } assignment when assignment.Right == expression:
+					targetType = assignment.Left.GetResolveResult().Type;
+					break;
 				// A member of an object initializer is typed by the member being assigned.
-				case NamedExpression:
-					return true;
+				case NamedExpression named:
+					targetType = (named.GetSymbol() as IMember)?.ReturnType;
+					break;
+				case ReturnStatement returnStatement:
+					targetType = GetReturnedType(returnStatement);
+					break;
+				case InvocationExpression invocation:
+					targetType = GetParameterType(invocation.GetSymbol() as IMethod, invocation.Arguments, expression);
+					break;
+				case ObjectCreateExpression create:
+					targetType = GetParameterType(create.GetSymbol() as IMethod, create.Arguments, expression);
+					break;
 				default:
 					return false;
 			}
+			return targetType is { Kind: not TypeKind.Unknown and not TypeKind.None };
+		}
+
+		static IType? GetReturnedType(ReturnStatement returnStatement)
+		{
+			foreach (var ancestor in returnStatement.Ancestors)
+			{
+				switch (ancestor)
+				{
+					case LambdaExpression or AnonymousMethodExpression:
+						// The delegate the lambda was converted to is what types its returns.
+						var delegateType = ancestor.Annotation<ILFunction>()?.DelegateType ?? ancestor.GetResolveResult().Type;
+						return delegateType?.GetDelegateInvokeMethod()?.ReturnType;
+					case EntityDeclaration entity:
+						return (entity.GetSymbol() as IMethod)?.ReturnType;
+				}
+			}
+			return null;
+		}
+
+		static IType? GetParameterType(IMethod? method, AstNodeCollection<Expression> arguments, Expression argument)
+		{
+			if (method == null)
+				return null;
+			int index = arguments.TakeWhile(a => a != argument).Count();
+			return index < method.Parameters.Count ? method.Parameters[index].Type : null;
+		}
+
+		/// <summary>
+		/// Returns whether a collection expression converts to <paramref name="type"/>: an array, a
+		/// span, one of the collection interfaces, a type that names its builder, or a collection the
+		/// compiler can fill one element at a time. Types that merely happen to be enumerable, such
+		/// as <c>string</c>, and types that are only a base of the collection, such as
+		/// <c>object</c>, are not targets.
+		/// </summary>
+		static bool IsCollectionExpressionTarget(IType type)
+		{
+			if (type.Kind == TypeKind.Array)
+				return true;
+			if (type.IsKnownType(KnownTypeCode.SpanOfT) || type.IsKnownType(KnownTypeCode.ReadOnlySpanOfT))
+				return true;
+			if (type.Kind == TypeKind.Interface)
+			{
+				return type.IsKnownType(KnownTypeCode.IEnumerable)
+					|| type.IsKnownType(KnownTypeCode.IEnumerableOfT)
+					|| type.IsKnownType(KnownTypeCode.ICollectionOfT)
+					|| type.IsKnownType(KnownTypeCode.IListOfT)
+					|| type.IsKnownType(KnownTypeCode.IReadOnlyCollectionOfT)
+					|| type.IsKnownType(KnownTypeCode.IReadOnlyListOfT);
+			}
+			if (type.Kind is not (TypeKind.Class or TypeKind.Struct))
+				return false;
+			if (type.GetDefinition() is { } definition
+				&& definition.GetAttributes().Any(a => a.AttributeType.FullName == "System.Runtime.CompilerServices.CollectionBuilderAttribute"))
+			{
+				return true;
+			}
+			return type.GetAllBaseTypes().Any(baseType => baseType.IsKnownType(KnownTypeCode.IEnumerable))
+				&& type.GetMethods(m => !m.IsStatic && m.Name == "Add" && m.Parameters.Count == 1).Any();
 		}
 	}
 }

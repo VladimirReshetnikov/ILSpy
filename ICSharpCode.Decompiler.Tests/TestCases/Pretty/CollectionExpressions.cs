@@ -82,6 +82,55 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return num;
 		}
 
+		public int[] SpreadIntoArray(int[] source)
+		{
+			return [0, .. source, 9];
+		}
+
+		public string[] SpreadTwice(string[] first, string[] second)
+		{
+			return [.. first, .. second];
+		}
+
+		public List<int> SpreadIntoList(int[] source)
+		{
+			return [0, .. source];
+		}
+
+		public IEnumerable<int> SpreadIntoInterface(int[] source)
+		{
+			return [.. source, 1];
+		}
+
+		public int[] SpreadOfList(List<int> source)
+		{
+			return [1, .. source];
+		}
+
+		public int[] SpreadOfSpan(ReadOnlySpan<int> source)
+		{
+			return [1, .. source];
+		}
+
+		public ImmutableArray<int> SpreadIntoImmutable(int[] source)
+		{
+			return [.. source];
+		}
+
+		public int[] SpreadOfEnumerable(IEnumerable<int> source)
+		{
+#if EXPECTED_OUTPUT
+			// An enumerable of unknown length is appended one element at a time, which is also what
+			// hand-written code looks like, so the collection expression is not recovered.
+			List<int> list = new List<int>();
+			list.Add(1);
+			list.AddRange(source);
+			return list.ToArray();
+#else
+			return [1, .. source];
+#endif
+		}
+
 		public void Use(IReadOnlyList<string> list)
 		{
 		}

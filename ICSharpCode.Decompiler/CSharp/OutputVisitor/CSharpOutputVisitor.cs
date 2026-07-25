@@ -655,6 +655,15 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			EndNode(collectionExpression);
 		}
 
+		public virtual void VisitSpreadElement(SpreadElement spreadElement)
+		{
+			StartNode(spreadElement);
+			WriteToken(BinaryOperatorExpression.RangeToken);
+			Space();
+			spreadElement.Expression.AcceptVisitor(this);
+			EndNode(spreadElement);
+		}
+
 		protected bool CanBeConfusedWithObjectInitializer(Expression expr)
 		{
 			// "int a; new List<int> { a = 1 };" is an object initalizers and invalid, but
