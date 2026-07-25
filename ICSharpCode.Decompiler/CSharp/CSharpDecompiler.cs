@@ -257,6 +257,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				new TransformFieldAndConstructorInitializers(), // must run after DeclareVariables
 				new IntroduceFieldKeyword(), // must run after TransformFieldAndConstructorInitializers
 				new PrettifyAssignments(), // must run after DeclareVariables
+				new IntroduceCollectionExpressions(), // must run after DeclareVariables, before IntroduceUsingDeclarations
 				new IntroduceUsingDeclarations(),
 				new IntroduceExtensionMethods(), // must run after IntroduceUsingDeclarations
 				new IntroduceQueryExpressions(), // must run after IntroduceExtensionMethods

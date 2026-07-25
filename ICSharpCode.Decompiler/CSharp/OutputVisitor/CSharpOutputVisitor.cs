@@ -638,6 +638,23 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			EndNode(arrayInitializerExpression);
 		}
 
+		public virtual void VisitCollectionExpression(CollectionExpression collectionExpression)
+		{
+			StartNode(collectionExpression);
+			WriteToken(Tokens.LBracket);
+			foreach (var (idx, node) in collectionExpression.Elements.WithIndex())
+			{
+				if (idx > 0)
+				{
+					Comma(node, noSpaceAfterComma: true);
+					Space();
+				}
+				node.AcceptVisitor(this);
+			}
+			WriteToken(Tokens.RBracket);
+			EndNode(collectionExpression);
+		}
+
 		protected bool CanBeConfusedWithObjectInitializer(Expression expr)
 		{
 			// "int a; new List<int> { a = 1 };" is an object initalizers and invalid, but

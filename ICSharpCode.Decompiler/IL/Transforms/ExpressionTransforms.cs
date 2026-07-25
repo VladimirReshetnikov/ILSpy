@@ -846,7 +846,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		static bool IsInitializerBlock(ILInstruction value)
 		{
 			return value is Block {
-				Kind: BlockKind.ArrayInitializer or BlockKind.CollectionInitializer
+				Kind: BlockKind.ArrayInitializer or BlockKind.CollectionExpression
+					or BlockKind.CollectionInitializer
 					or BlockKind.ObjectInitializer or BlockKind.StackAllocInitializer
 			};
 		}

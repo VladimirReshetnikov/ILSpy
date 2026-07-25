@@ -138,6 +138,7 @@ namespace ICSharpCode.Decompiler.IL
 					}
 					break;
 				case BlockKind.ArrayInitializer:
+				case BlockKind.CollectionExpression:
 					var final = finalInstruction as LdLoc;
 					Debug.Assert(final != null && final.Variable.IsSingleDefinition && final.Variable.Kind == VariableKind.InitializerTarget);
 					IType? type = null;
@@ -241,6 +242,7 @@ namespace ICSharpCode.Decompiler.IL
 			{
 				case BlockKind.ControlFlow when Parent is BlockContainer:
 				case BlockKind.ArrayInitializer:
+				case BlockKind.CollectionExpression:
 				case BlockKind.CollectionInitializer:
 				case BlockKind.ObjectInitializer:
 				case BlockKind.CallInlineAssign:
@@ -485,6 +487,13 @@ namespace ICSharpCode.Decompiler.IL
 		/// Block is used for array initializers, e.g. `new int[] { expr1, expr2 }`.
 		/// </summary>
 		ArrayInitializer,
+		/// <summary>
+		/// Same shape as <see cref="ArrayInitializer"/>, but the array is the backing store of a
+		/// C# 12 collection expression rather than an array the source asked for. The distinction
+		/// only survives to the C# AST, where IntroduceCollectionExpressions turns the block into
+		/// `[expr1, expr2]` wherever the surrounding context can target-type it.
+		/// </summary>
+		CollectionExpression,
 		CollectionInitializer,
 		ObjectInitializer,
 		StackAllocInitializer,

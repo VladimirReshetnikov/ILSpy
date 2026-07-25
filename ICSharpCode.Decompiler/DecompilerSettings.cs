@@ -167,6 +167,7 @@ namespace ICSharpCode.Decompiler
 				refReadOnlyParameters = false;
 				usePrimaryConstructorSyntaxForNonRecordTypes = false;
 				inlineArrays = false;
+				collectionExpressions = false;
 			}
 			if (languageVersion < CSharp.LanguageVersion.CSharp13_0)
 			{
@@ -186,7 +187,8 @@ namespace ICSharpCode.Decompiler
 				return CSharp.LanguageVersion.CSharp14_0;
 			if (paramsCollections)
 				return CSharp.LanguageVersion.CSharp13_0;
-			if (refReadOnlyParameters || usePrimaryConstructorSyntaxForNonRecordTypes || inlineArrays)
+			if (refReadOnlyParameters || usePrimaryConstructorSyntaxForNonRecordTypes || inlineArrays
+				|| collectionExpressions)
 				return CSharp.LanguageVersion.CSharp12_0;
 			if (scopedRef || requiredMembers || numericIntPtr || utf8StringLiterals || unsignedRightShift || checkedOperators)
 				return CSharp.LanguageVersion.CSharp11_0;
@@ -2180,11 +2182,15 @@ namespace ICSharpCode.Decompiler
 		bool collectionExpressions = true;
 
 		/// <summary>
-		/// Gets/Sets whether the read-only collection wrappers that the C# 12.0 compiler emits for
-		/// interface-targeted collection expressions (&lt;&gt;z__ReadOnlyArray, &lt;&gt;z__ReadOnlyList,
-		/// &lt;&gt;z__ReadOnlySingleElementList) are unwrapped to array initializers and hidden.
-		/// This produces array-initializer syntax that is valid in any language version, so it is not
-		/// gated by the target language version and does not affect GetMinimumRequiredVersion.
+		/// Gets/Sets whether C# 12.0 collection expressions should be reconstructed.
+		///
+		/// Only the shapes that the compiler emits exclusively for a collection expression are
+		/// recognized, so <c>[...]</c> appears exactly where the source had one: the read-only
+		/// collection wrappers used for interface targets, the <c>CollectionsMarshal</c> fill of a
+		/// pre-sized <c>List&lt;T&gt;</c>, the inline-array buffer used for a span, and the
+		/// <c>ImmutableCollectionsMarshal</c> wrap of a freshly built array. A plain array creation
+		/// is left alone: nothing in it says whether the source wrote <c>[...]</c> or <c>new T[]
+		/// { ... }</c>.
 		/// </summary>
 		[Category("C# 12.0 / VS 2022.8")]
 		[Description("DecompilerSettings.CollectionExpressions")]

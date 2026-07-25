@@ -43,7 +43,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			try
 			{
 				if (DoTransform(context.Function, block, pos))
+				{
+					UnwrapReadOnlyArrayOverInitializer(block, pos);
 					return;
+				}
 				if (DoTransformMultiDim(context.Function, block, pos))
 					return;
 				if (context.Settings.StackAllocInitializers && DoTransformStackAllocInitializer(block, pos))
@@ -138,30 +141,89 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			replacement = null;
 			if (!context.Settings.CollectionExpressions)
 				return false;
-			if (inst.Arguments.Count != 1 || !inst.Method.IsConstructor)
-				return false;
-			var declaringType = inst.Method.DeclaringTypeDefinition;
-			if (declaringType == null || declaringType.DeclaringTypeDefinition != null)
-				return false; // the wrappers are top-level types
-			if (declaringType.Kind != TypeKind.Class || !declaringType.IsSealed)
-				return false;
-			if (declaringType.TypeParameterCount != 1)
-				return false;
-			if (!declaringType.HasAttribute(KnownAttribute.CompilerGenerated))
-				return false;
-			switch (declaringType.Name)
+			switch (GetReadOnlyCollectionWrapperName(inst))
 			{
 				case "<>z__ReadOnlyArray":
+					// Statements are transformed back to front, so the array behind the wrapper is
+					// usually still a plain local store here and only becomes an initializer block
+					// later. Leave those to UnwrapReadOnlyArrayOverInitializer, which sees the block
+					// and can mark it as a collection expression.
+					if (inst.Arguments[0].MatchLdLoc(out var arrayVariable)
+						&& arrayVariable.StoreInstructions.Count == 1
+						&& arrayVariable.StoreInstructions[0] is StLoc { Value: NewArr })
+					{
+						return false;
+					}
 					replacement = inst.Arguments[0];
 					return true;
 				case "<>z__ReadOnlySingleElementList":
 					IType elementType = inst.Method.DeclaringType.TypeArguments[0];
 					var tempStore = context.Function.RegisterVariable(VariableKind.InitializerTarget, new ArrayType(context.TypeSystem, elementType));
-					replacement = BlockFromInitializer(tempStore, elementType, new[] { 1 }, new ILInstruction[] { inst.Arguments[0], new LdcI4(0) });
+					replacement = RetagAsCollectionExpression(
+						BlockFromInitializer(tempStore, elementType, new[] { 1 }, new ILInstruction[] { inst.Arguments[0], new LdcI4(0) }));
 					return true;
 				default:
 					return false;
 			}
+		}
+
+		/// <summary>
+		/// Turns <c>newobj &lt;&gt;z__ReadOnlyArray&lt;T&gt;(Block ArrayInitializer)</c> into the
+		/// initializer block, marked as a collection expression. Runs right after an array
+		/// initializer was built and inlined into its single use, which is the first point where the
+		/// wrapper and the initializer are visible together.
+		/// </summary>
+		void UnwrapReadOnlyArrayOverInitializer(Block body, int pos)
+		{
+			if (!context.Settings.CollectionExpressions || pos >= body.Instructions.Count)
+				return;
+			foreach (var newObj in body.Instructions[pos].Descendants.OfType<NewObj>().ToArray())
+			{
+				if (GetReadOnlyCollectionWrapperName(newObj) != "<>z__ReadOnlyArray")
+					continue;
+				if (newObj.Arguments[0] is not Block { Kind: BlockKind.ArrayInitializer } arrayInitializer)
+					continue;
+				context.Step("Unwrap <>z__ReadOnlyArray over array initializer", newObj);
+				var collectionExpression = RetagAsCollectionExpression(arrayInitializer);
+				newObj.ReplaceWith(collectionExpression);
+				context.EndStep(collectionExpression);
+			}
+		}
+
+		/// <summary>
+		/// Returns the name of the read-only collection wrapper being constructed, or null if
+		/// <paramref name="inst"/> is not such a construction.
+		/// </summary>
+		static string GetReadOnlyCollectionWrapperName(NewObj inst)
+		{
+			if (inst.Arguments.Count != 1 || !inst.Method.IsConstructor)
+				return null;
+			var declaringType = inst.Method.DeclaringTypeDefinition;
+			if (declaringType == null || declaringType.DeclaringTypeDefinition != null)
+				return null; // the wrappers are top-level types
+			if (declaringType.Kind != TypeKind.Class || !declaringType.IsSealed)
+				return null;
+			if (declaringType.TypeParameterCount != 1)
+				return null;
+			if (!declaringType.HasAttribute(KnownAttribute.CompilerGenerated))
+				return null;
+			return declaringType.Name;
+		}
+
+		/// <summary>
+		/// Returns a copy of an array-initializer block under <see cref="BlockKind.CollectionExpression"/>.
+		/// The kind is fixed at construction, so the children are moved into a freshly built block.
+		/// </summary>
+		static Block RetagAsCollectionExpression(Block arrayInitializer)
+		{
+			var result = new Block(BlockKind.CollectionExpression);
+			var instructions = arrayInitializer.Instructions.ToArray();
+			var finalInstruction = arrayInitializer.FinalInstruction;
+			arrayInitializer.Instructions.Clear();
+			arrayInitializer.FinalInstruction = new Nop();
+			result.Instructions.AddRange(instructions);
+			result.FinalInstruction = finalInstruction;
+			return result;
 		}
 
 		internal static bool TransformRuntimeHelpersCreateSpanInitialization(Call inst, StatementTransformContext context, out ILInstruction replacement)

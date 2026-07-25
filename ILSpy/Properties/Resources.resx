@@ -361,7 +361,7 @@ Are you sure you want to continue?</value>
     <value>User-defined checked operators</value>
   </data>
   <data name="DecompilerSettings.CollectionExpressions" xml:space="preserve">
-    <value>Unwrap read-only collection-expression wrappers</value>
+    <value>Use collection expressions</value>
   </data>
   <data name="DecompilerSettings.CovariantReturns" xml:space="preserve">
     <value>Covariant return types</value>

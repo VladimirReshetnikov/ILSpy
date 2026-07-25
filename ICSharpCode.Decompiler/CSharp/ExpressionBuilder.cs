@@ -3557,6 +3557,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			switch (block.Kind)
 			{
 				case BlockKind.ArrayInitializer:
+				case BlockKind.CollectionExpression:
 					return TranslateArrayInitializer(block);
 				case BlockKind.StackAllocInitializer:
 					return TranslateStackAllocInitializer(block, context.TypeHint);
