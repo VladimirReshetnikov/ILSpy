@@ -3677,7 +3677,48 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 			var oce = (ObjectCreateExpression)expr.Expression;
 			oce.Initializer = BuildArrayInitializerExpression(block, initObjRR);
+			if (TranslateTupleInitializer(initObjRR.Type, oce) is { } tuple)
+				return tuple.WithILInstruction(block);
 			return expr.WithILInstruction(block);
+		}
+
+		/// <summary>
+		/// Rewrites an initializer that fills a tuple field by field into a tuple expression.
+		/// C# has no other way to write it: "new" cannot name a tuple type, because "new (A, B)"
+		/// reads as a target-typed creation whose arguments are A and B.
+		/// </summary>
+		ExpressionWithResolveResult? TranslateTupleInitializer(IType type, ObjectCreateExpression oce)
+		{
+			if (!settings.TupleTypes || type is not TupleType tupleType || tupleType.Cardinality < 2)
+				return null;
+			var elements = oce.Initializer!.Elements.ToArray();
+			if (elements.Length != tupleType.Cardinality)
+			{
+				oce.Type = ConvertType(tupleType.UnderlyingType);
+				return null;
+			}
+			var tuple = new TupleExpression();
+			var elementRRs = new List<ResolveResult>();
+			foreach (var (index, element) in elements.WithIndex())
+			{
+				if (element is not NamedExpression named || named.Name != "Item" + (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture))
+				{
+					oce.Type = ConvertType(tupleType.UnderlyingType);
+					return null;
+				}
+				var value = named.Expression.Detach();
+				if (tupleType.ElementNames.ElementAtOrDefault(index) is string { Length: > 0 } name)
+				{
+					tuple.Elements.Add(new NamedArgumentExpression(name, value));
+				}
+				else
+				{
+					tuple.Elements.Add(value);
+				}
+				elementRRs.Add(value.GetResolveResult());
+			}
+			return tuple.WithRR(new TupleResolveResult(compilation, elementRRs.ToImmutableArray(),
+				tupleType.ElementNames));
 		}
 
 		private ArrayInitializerExpression BuildArrayInitializerExpression(Block block, InitializedObjectResolveResult initObjRR)
