@@ -350,6 +350,8 @@
     <None Include="TestCases\Ugly\AggressiveScalarReplacementOfAggregates.Expected.cs" />
     <Compile Remove="TestCases\Ugly\QueryWithUntranslatableClause.Expected.cs" />
     <None Include="TestCases\Ugly\QueryWithUntranslatableClause.Expected.cs" />
+    <Compile Remove="TestCases\Ugly\NullableBoolToEnum.Expected.cs" />
+    <None Include="TestCases\Ugly\NullableBoolToEnum.Expected.cs" />
     <Compile Remove="TestCases\Ugly\RecordWithParameterlessPrimaryConstructor.Expected.cs" />
     <None Include="TestCases\Ugly\RecordWithParameterlessPrimaryConstructor.Expected.cs" />
     <Compile Remove="TestCases\Ugly\NoArrayInitializers.Expected.cs" />

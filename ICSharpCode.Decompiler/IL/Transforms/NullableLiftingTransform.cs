@@ -820,6 +820,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				Debug.Assert(lifted is ILiftableInstruction liftable && liftable.IsLifted
 					&& liftable.UnderlyingResultType == exprToLift.ResultType);
 			}
+			// A bool and the integer types share a stack type, so a lifted boolean can end up as the
+			// value of a '??' whose fallback is a number. C# has no conversion between the two, which
+			// leaves that '??' with no spelling at all; keep the conditional it came from instead.
+			if (IsBooleanValue(exprToLift) && IsNonBooleanNumber(falseInst))
+			{
+				return null;
+			}
 			if (isNullCoalescingWithNonNullableFallback)
 			{
 				lifted = new NullCoalescingInstruction(NullCoalescingKind.NullableWithValueFallback, lifted, falseInst) {
@@ -835,6 +842,43 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				};
 			}
 			return lifted;
+		}
+
+		/// <summary>
+		/// Returns whether the instruction is known to yield a boolean. The stack type does not say:
+		/// a bool and the integer types are all I4.
+		/// </summary>
+		bool IsBooleanValue(ILInstruction inst)
+		{
+			if (inst.MatchLogicNot(out _))
+				return true;
+			switch (inst)
+			{
+				case Comp comp:
+					return comp.LiftingKind is ComparisonLiftingKind.None or ComparisonLiftingKind.CSharp;
+				case IfInstruction ifInst:
+					return IsBooleanValue(ifInst.TrueInst) && IsBooleanValue(ifInst.FalseInst);
+				default:
+					return inst.InferType(context.TypeSystem).IsKnownType(KnownTypeCode.Boolean);
+			}
+		}
+
+		/// <summary>
+		/// Returns whether the instruction is known to yield a number rather than a boolean. Anything
+		/// that could still be either -- 0 and 1 most of all -- does not count.
+		/// </summary>
+		bool IsNonBooleanNumber(ILInstruction inst)
+		{
+			switch (inst)
+			{
+				case LdcI4 ldc:
+					return ldc.Value is not (0 or 1);
+				case IfInstruction ifInst:
+					return IsNonBooleanNumber(ifInst.TrueInst) || IsNonBooleanNumber(ifInst.FalseInst);
+				default:
+					var type = inst.InferType(context.TypeSystem);
+					return type.IsCSharpPrimitiveIntegerType() || type.Kind == TypeKind.Enum;
+			}
 		}
 
 		/// <summary>
