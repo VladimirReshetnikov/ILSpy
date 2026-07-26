@@ -1279,6 +1279,15 @@ namespace ICSharpCode.ILSpy.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Comment out metadata that cannot be declared in C#.
+        /// </summary>
+        public static string DecompilerSettings_CommentOutMetadataThatCannotBeDeclaredInCSharp {
+            get {
+                return ResourceManager.GetString("DecompilerSettings.CommentOutMetadataThatCannotBeDeclaredInCSharp", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Include XML documentation comments in the decompiled code.
         /// </summary>
         public static string DecompilerSettings_IncludeXMLDocumentationCommentsInTheDecompiledCode {

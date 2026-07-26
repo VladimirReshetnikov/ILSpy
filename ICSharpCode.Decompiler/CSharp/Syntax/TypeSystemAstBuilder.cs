@@ -158,6 +158,11 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		public bool ShowAttributes { get; set; }
 
+		/// <summary>
+		/// Controls whether metadata that no C# declaration can carry is written into the output as a
+		/// comment. With this off it is dropped without a trace.
+		/// </summary>
+		public bool CommentOutUnrepresentableMetadata { get; set; }
 
 		/// <summary>
 		/// Controls whether to sort attributes, if set to <see langword="false" /> attributes are shown in metadata order.
@@ -888,8 +893,69 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			};
 		}
 
-		internal IEnumerable<AttributeSection> ConvertAttributes(IEnumerable<IAttribute> attributes, string? target = null)
+		/// <summary>
+		/// Names an attribute for a comment: its type without the conventional suffix, with the
+		/// arguments it was applied with.
+		/// </summary>
+		static string DescribeAttribute(IAttribute attribute)
 		{
+			string name = attribute.AttributeType.Name;
+			if (name.Length > "Attribute".Length && name.EndsWith("Attribute", StringComparison.Ordinal))
+				name = name.Remove(name.Length - "Attribute".Length);
+			var arguments = new List<string>();
+			foreach (var fixedArgument in attribute.FixedArguments)
+			{
+				arguments.Add(fixedArgument.Value?.ToString() ?? "null");
+			}
+			foreach (var namedArgument in attribute.NamedArguments)
+			{
+				arguments.Add(namedArgument.Name + " = " + (namedArgument.Value?.ToString() ?? "null"));
+			}
+			return arguments.Count == 0 ? name : name + "(" + string.Join(", ", arguments) + ")";
+		}
+
+		/// <summary>
+		/// Returns the attribute targets its AttributeUsage permits, or null where that cannot be
+		/// determined. C++/CLI puts attributes on declarations their usage does not cover, and naming
+		/// one where it is not allowed does not compile (CS0592).
+		/// </summary>
+		static AttributeTargets? GetPermittedTargets(IType attributeType)
+		{
+			for (IType? type = attributeType; type != null; type = type.DirectBaseTypes.FirstOrDefault(t => t.Kind == TypeKind.Class))
+			{
+				if (type.GetDefinition() is not { } definition)
+					return null;
+				foreach (var usage in definition.GetAttributes())
+				{
+					if (usage.AttributeType.FullName != "System.AttributeUsageAttribute")
+						continue;
+					if (usage.FixedArguments.Length == 0 || usage.FixedArguments[0].Value is not int targets)
+						return null;
+					return (AttributeTargets)targets;
+				}
+			}
+			return null;
+		}
+
+		internal IEnumerable<AttributeSection> ConvertAttributes(IEnumerable<IAttribute> attributes, string? target = null,
+			AttributeTargets? appliedTo = null, List<IAttribute>? notRepresentable = null)
+		{
+			if (appliedTo != null)
+			{
+				var kept = new List<IAttribute>();
+				foreach (var attribute in attributes)
+				{
+					// Only hold an attribute back where its usage is known and positively excludes this
+					// declaration. An unresolvable attribute type says nothing about where it may go, and
+					// dropping one on that basis would lose metadata over a missing reference.
+					var permitted = GetPermittedTargets(attribute.AttributeType);
+					if (permitted == null || (permitted.Value & appliedTo.Value) != 0)
+						kept.Add(attribute);
+					else
+						notRepresentable?.Add(attribute);
+				}
+				attributes = kept;
+			}
 			if (SortAttributes)
 				attributes = attributes.OrderBy(a => a, new DelegateComparer<IAttribute>((a, b) => CompareAttribute(a!, b!)));
 			return attributes.Select(a => {
@@ -2173,7 +2239,26 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			decl.Modifiers = modifiers;
 			if (ShowAttributes)
 			{
-				decl.Attributes.AddRange(ConvertAttributes(typeDefinition.GetAttributes()));
+				var notRepresentable = new List<IAttribute>();
+				decl.Attributes.AddRange(ConvertAttributes(typeDefinition.GetAttributes(),
+					appliedTo: classType switch {
+						ClassType.Struct or ClassType.RecordStruct => AttributeTargets.Struct,
+						ClassType.Enum => AttributeTargets.Enum,
+						ClassType.Interface => AttributeTargets.Interface,
+						_ => AttributeTargets.Class
+					},
+					notRepresentable: notRepresentable));
+				// The attribute is on the type in metadata even though no C# declaration can carry it
+				// there. Say so rather than let the output suggest it was never applied.
+				if (CommentOutUnrepresentableMetadata)
+				{
+					foreach (var attribute in notRepresentable)
+					{
+						decl.AddLeadingTrivia(new Comment(
+							" attribute not valid on this declaration, which C# cannot declare: ["
+							+ DescribeAttribute(attribute) + "]"));
+					}
+				}
 			}
 			if (AddResolveResultAnnotations)
 			{
@@ -2246,10 +2331,33 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 			DelegateDeclaration decl = new DelegateDeclaration();
 			decl.Modifiers = modifiers & ~Modifiers.Sealed;
+			var notRepresentable = new List<IAttribute>();
 			if (ShowAttributes)
 			{
-				decl.Attributes.AddRange(ConvertAttributes(d.GetAttributes()));
+				decl.Attributes.AddRange(ConvertAttributes(d.GetAttributes(), appliedTo: AttributeTargets.Delegate,
+					notRepresentable: notRepresentable));
 				decl.Attributes.AddRange(ConvertAttributes(invokeMethod.GetReturnTypeAttributes(), "return"));
+				// A delegate declaration has room for attributes on the type, the return value and the
+				// parameters. The methods behind it carry their own, and those have nowhere to go.
+				if (CommentOutUnrepresentableMetadata)
+				{
+					foreach (var method in new[] { invokeMethod }.Concat(
+						d.Methods.Where(m => m.SymbolKind == SymbolKind.Constructor || m.Name is "BeginInvoke" or "EndInvoke")))
+					{
+						foreach (var attribute in method.GetAttributes())
+						{
+							decl.AddLeadingTrivia(new Comment(
+								" attribute on " + d.Name + "." + method.Name
+								+ ", which C# cannot declare: [" + DescribeAttribute(attribute) + "]"));
+						}
+					}
+					foreach (var attribute in notRepresentable)
+					{
+						decl.AddLeadingTrivia(new Comment(
+							" attribute not valid on this declaration, which C# cannot declare: ["
+							+ DescribeAttribute(attribute) + "]"));
+					}
+				}
 			}
 			if (AddResolveResultAnnotations)
 			{

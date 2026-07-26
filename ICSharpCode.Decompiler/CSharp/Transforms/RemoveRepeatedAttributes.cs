@@ -45,16 +45,17 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		{
 			foreach (var node in rootNode.DescendantsAndSelf)
 			{
-				RemoveRepeatsOn(node);
+				RemoveRepeatsOn(node, context.Settings.CommentOutUnrepresentableMetadata);
 			}
 		}
 
-		static void RemoveRepeatsOn(AstNode owner)
+		static void RemoveRepeatsOn(AstNode owner, bool commentOutDropped)
 		{
 			var sections = owner.Children.OfType<AttributeSection>().ToArray();
 			if (sections.Length == 0)
 				return;
 			HashSet<(string?, string)>? seen = null;
+			var dropped = new List<string>();
 			foreach (var section in sections)
 			{
 				foreach (var attribute in section.Attributes.ToArray())
@@ -64,11 +65,30 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						continue;
 					seen ??= new HashSet<(string?, string)>();
 					if (!seen.Add((section.AttributeTarget, attributeType.ReflectionName)))
+					{
+						// The repeat is real metadata that no C# declaration can carry. Dropping it
+						// without a word would make the output look like the assembly holds one
+						// application where it holds several.
+						dropped.Add(DescribeAttribute(section.AttributeTarget, attribute));
 						attribute.Remove();
+					}
 				}
 				if (section.Attributes.Count == 0)
 					section.Remove();
 			}
+			if (commentOutDropped)
+			{
+				foreach (var description in dropped)
+				{
+					owner.AddLeadingTrivia(new Comment(" repeated attribute, which C# cannot declare: " + description));
+				}
+			}
+		}
+
+		static string DescribeAttribute(string? target, Syntax.Attribute attribute)
+		{
+			var text = attribute.ToString();
+			return target == null ? "[" + text + "]" : "[" + target + ": " + text + "]";
 		}
 
 		static bool AllowsMultipleApplications(IType attributeType)

@@ -1322,6 +1322,27 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		bool commentOutUnrepresentableMetadata = true;
+
+		/// <summary>
+		/// Gets/Sets whether metadata that no C# declaration can carry -- a repeated attribute whose
+		/// AttributeUsage forbids multiple applications, an attribute on a declaration its usage does
+		/// not cover, an attribute on the methods behind a delegate -- is written into the output as a
+		/// comment. With this off it is dropped without a trace.
+		/// </summary>
+		[Category("DecompilerSettings.Other")]
+		[Description("DecompilerSettings.CommentOutMetadataThatCannotBeDeclaredInCSharp")]
+		public bool CommentOutUnrepresentableMetadata {
+			get { return commentOutUnrepresentableMetadata; }
+			set {
+				if (commentOutUnrepresentableMetadata != value)
+				{
+					commentOutUnrepresentableMetadata = value;
+					OnPropertyChanged();
+				}
+			}
+		}
+
 		bool showXmlDocumentation = true;
 
 		/// <summary>
