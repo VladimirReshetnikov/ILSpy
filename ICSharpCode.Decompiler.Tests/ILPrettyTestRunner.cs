@@ -403,6 +403,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task InitOnlySettersAfterInitializer()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task ParameterizedProperty()
 		{
 			await Run();

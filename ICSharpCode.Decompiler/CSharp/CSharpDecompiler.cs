@@ -258,6 +258,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				// a collection expression collapses the statements a lowered element fill spreads out,
 				// which is what lets a constructor initializer taking one stay the first statement.
 				new IntroduceCollectionExpressions(),
+				new FoldInitOnlyAssignmentsIntoInitializer(),
 				new TransformFieldAndConstructorInitializers(), // must run after DeclareVariables
 				new IntroduceFieldKeyword(), // must run after TransformFieldAndConstructorInitializers
 				new PrettifyAssignments(), // must run after DeclareVariables

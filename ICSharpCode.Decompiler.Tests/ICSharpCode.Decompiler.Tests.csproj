@@ -102,6 +102,8 @@
     <None Include="TestCases\Disassembler\Pretty\SortMembers.expected.il" />
     <None Include="TestCases\Disassembler\Pretty\SortMembers.il" />
     <None Include="TestCases\IsolatedDecompilation\IsolatedStaticCtor.il" />
+    <None Include="TestCases\ILPretty\InitOnlySettersAfterInitializer.il" />
+    <None Include="TestCases\ILPretty\InitOnlySettersAfterInitializer.cs" />
     <None Include="TestCases\ILPretty\AnonymousTypeConditionalPhi.il" />
     <None Include="TestCases\ILPretty\AwaitInCatchUnresolvedExceptionDispatchInfo.il" />
     <None Include="TestCases\ILPretty\ConstrainedCallOnRefStruct.il" />
@@ -202,6 +204,7 @@
     <Compile Remove="TestCases\PdbGen\*.cs" />
     <Compile Remove="TestCases\Correctness\ComInterop.cs" />
     <None Include="TestCases\Correctness\ComInterop.cs" />
+    <Compile Remove="TestCases\ILPretty\InitOnlySettersAfterInitializer.cs" />
     <Compile Remove="TestCases\ILPretty\AnonymousTypeConditionalPhi.cs" />
     <None Include="TestCases\ILPretty\AnonymousTypeConditionalPhi.cs" />
     <Compile Remove="TestCases\ILPretty\AutoPropertyBackingFieldDebuggerBrowsable.cs" />
