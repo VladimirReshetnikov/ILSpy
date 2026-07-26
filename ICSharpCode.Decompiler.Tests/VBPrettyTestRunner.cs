@@ -114,6 +114,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task SelectEmbeddedRuntime([ValueSource(nameof(defaultOptions))] CompilerOptions options)
+		{
+			await Run(options: options | CompilerOptions.Library | CompilerOptions.EmbedVisualBasicRuntime);
+		}
+
+		[Test]
 		public async Task Select([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			await Run(options: options | CompilerOptions.Library);

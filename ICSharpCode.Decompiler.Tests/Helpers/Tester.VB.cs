@@ -95,7 +95,14 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 					// reason); the decompile comparison strips the My namespace anyway.
 					otherOptions += $"-sdkpath:\"{libPath}\" ";
 					otherOptions += "-define:_MYTYPE=\\\"Empty\\\" ";
-					if ((flags & CompilerOptions.UseRoslynMask) != 0 && targetFramework != null)
+					if (flags.HasFlag(CompilerOptions.EmbedVisualBasicRuntime))
+					{
+						// '-vbruntime*' embeds the helpers into the assembly instead of referencing
+						// them, which is how the Visual Basic compiler itself is built. The embedded
+						// copies live under different type names, so the decompiler has to know both.
+						otherOptions += "-vbruntime* ";
+					}
+					else if ((flags & CompilerOptions.UseRoslynMask) != 0 && targetFramework != null)
 					{
 						// In the .NET reference packs Microsoft.VisualBasic.dll is a
 						// type-forwarding facade, and vbc does not follow forwards when binding

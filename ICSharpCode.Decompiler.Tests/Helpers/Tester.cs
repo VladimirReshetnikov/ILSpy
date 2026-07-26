@@ -74,6 +74,7 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 		ProcessXmlDoc = 0x40000,
 		UseRoslyn4_14_0 = 0x80000,
 		EnableRuntimeAsync = 0x100000,
+		EmbedVisualBasicRuntime = 0x200000,
 		UseMcsMask = UseMcs2_6_4 | UseMcs5_23,
 		UseRoslynMask = UseRoslyn1_3_2 | UseRoslyn2_10_0 | UseRoslyn3_11_0 | UseRoslyn4_14_0 | UseRoslynLatest
 	}

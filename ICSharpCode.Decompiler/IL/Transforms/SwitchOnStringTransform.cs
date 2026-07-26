@@ -1771,7 +1771,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					right = c.Arguments[1];
 				}
 				else if (c.Method.IsStatic && c.Method.Name == "CompareString"
-					&& c.Method.DeclaringType.FullName == "Microsoft.VisualBasic.CompilerServices.Operators"
+					// An assembly that embeds the Visual Basic runtime carries its own copy of the
+					// helper, under EmbeddedOperators; the compiler that embedded it calls that one.
+					&& c.Method.DeclaringType.FullName is "Microsoft.VisualBasic.CompilerServices.Operators"
+						or "Microsoft.VisualBasic.CompilerServices.EmbeddedOperators"
 					&& c.Arguments.Count == 3)
 				{
 					left = c.Arguments[0];
