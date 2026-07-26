@@ -403,6 +403,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ManagedPointerAddedToWideOffset()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task TupleBuiltFieldByField()
 		{
 			await Run();

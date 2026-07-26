@@ -1469,10 +1469,35 @@ namespace ICSharpCode.Decompiler.CSharp
 				}
 			}
 
-			if (inst.LeftInputType == StackType.I && inst.RightInputType == StackType.Ref
+			if (inst.Operator == BinaryNumericOperator.Add && inst.LeftInputType == StackType.Ref
+				&& inst.RightInputType == StackType.Ref)
+			{
+				// ref + ref => ref
+				// C++/CLI adds a tracked pointer to what is really a byte offset that the type system
+				// still sees as a reference, so the offset has to be taken back out of it.
+				var leftRef = left.Type as ByReferenceType;
+				if (leftRef == null)
+				{
+					leftRef = GetReferenceType(left.Type);
+					left = left.ConvertTo(leftRef, this);
+				}
+				if (right.Type is not ByReferenceType rightRef)
+				{
+					rightRef = GetReferenceType(right.Type);
+					right = right.ConvertTo(rightRef, this);
+				}
+				var byteOffset = CallUnsafeIntrinsic("AsPointer", new[] { right.Expression },
+					new PointerType(compilation.FindType(KnownTypeCode.Void)))
+					.ConvertTo(compilation.FindType(KnownTypeCode.IntPtr), this);
+				return CallUnsafeIntrinsic("AddByteOffset", new[] { left.Expression, byteOffset.Expression },
+					leftRef, inst);
+			}
+
+			if (inst.LeftInputType.IsIntegerType() && inst.RightInputType == StackType.Ref
 				&& inst.Operator == BinaryNumericOperator.Add)
 			{
 				// int + ref
+				// The offset is not always a native int: C++/CLI widens it to int64 before the add.
 				var brt = right.Type as ByReferenceType;
 				if (brt == null)
 				{
