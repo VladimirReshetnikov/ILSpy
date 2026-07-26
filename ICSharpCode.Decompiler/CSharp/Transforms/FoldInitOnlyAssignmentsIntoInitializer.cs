@@ -19,6 +19,7 @@
 #nullable enable
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
@@ -43,9 +44,20 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 	/// </summary>
 	class FoldInitOnlyAssignmentsIntoInitializer : DepthFirstAstVisitor, IAstTransform
 	{
+		[AllowNull]
+		TransformContext context;
+
 		public void Run(AstNode rootNode, TransformContext context)
 		{
-			rootNode.AcceptVisitor(this);
+			this.context = context;
+			try
+			{
+				rootNode.AcceptVisitor(this);
+			}
+			finally
+			{
+				this.context = null;
+			}
 		}
 
 		public override void VisitBlockStatement(BlockStatement blockStatement)
@@ -60,13 +72,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		bool TryFold(Statement statement)
 		{
-			if (statement is not VariableDeclarationStatement {
-				Variables: [{ Initializer: ObjectCreateExpression create } variable]
-			})
-			{
+			if (statement is not VariableDeclarationStatement { Variables: [{ Initializer: not null } variable] })
 				return false;
-			}
 			if (variable.GetILVariable() is not { } target)
+				return false;
+			// A copy of a struct is the other place an init-only member can still be assigned: what
+			// follows the copy is a with-expression. Copying a class only copies the reference, so
+			// the assignment there is a mutation of the original and means something else entirely.
+			ObjectCreateExpression? create = variable.Initializer as ObjectCreateExpression;
+			if (create == null && target.Type.Kind is not (TypeKind.Struct or TypeKind.Enum))
 				return false;
 
 			// Locals that are nothing but a second name for the target: the compiler assigns through
@@ -100,10 +114,21 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				if (hoisted != null)
 				{
 					// The temporary disappears with the assignment, so the initializer has to carry the
-					// value the temporary held rather than a reference to it.
-					if (!IsSoleUseOfHoistedValue(hoistedVariable!, value))
+					// value the temporary held rather than a reference to it. Reading it more than once
+					// would mean evaluating that value more than once, so only a single read folds.
+					var reads = value.DescendantsAndSelf.OfType<IdentifierExpression>()
+						.Where(identifier => identifier.GetILVariable() == hoistedVariable)
+						.ToArray();
+					if (reads.Length != 1)
 						break;
-					value = hoistedValue!;
+					if (reads[0] == value)
+					{
+						value = hoistedValue!;
+					}
+					else
+					{
+						reads[0].ReplaceWith(hoistedValue!.Detach());
+					}
 				}
 				if (ReadsTarget(value, target, aliases))
 					break;
@@ -115,9 +140,24 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			if (!sawInitOnly)
 				return false;
 
-			var initializer = create.Initializer ?? new ArrayInitializerExpression();
-			if (create.Initializer == null)
-				create.Initializer = initializer;
+			ArrayInitializerExpression initializer;
+			if (create != null)
+			{
+				initializer = create.Initializer ?? new ArrayInitializerExpression();
+				if (create.Initializer == null)
+					create.Initializer = initializer;
+			}
+			else
+			{
+				if (!context.Settings.RecordClasses)
+					return false;
+				initializer = new ArrayInitializerExpression();
+				var copied = variable.Initializer!.Detach();
+				variable.Initializer = new WithInitializerExpression {
+					Expression = copied,
+					Initializer = initializer
+				};
+			}
 			foreach (var (assignment, memberName, value, hoisted) in absorbed)
 			{
 				value.Remove();
@@ -162,11 +202,6 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			variable = declared.GetILVariable();
 			value = declared.Initializer;
 			return variable != null;
-		}
-
-		static bool IsSoleUseOfHoistedValue(ILVariable hoisted, Expression value)
-		{
-			return value is IdentifierExpression identifier && identifier.GetILVariable() == hoisted;
 		}
 
 		static bool IsMemberAssignment(Statement statement, ILVariable target, HashSet<ILVariable> aliases,
