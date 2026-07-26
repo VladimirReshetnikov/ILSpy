@@ -197,6 +197,12 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 					{
 						b.AddNamedArg("MarshalCookie", KnownTypeCode.String, cookie);
 					}
+					// The blob's first two strings predate the attribute: it has no property for either,
+					// so carry them along rather than read them and throw them away.
+					if (!string.IsNullOrEmpty(guidValue))
+						b.AddUnrepresentable("marshaller GUID " + guidValue);
+					if (!string.IsNullOrEmpty(unmanagedType))
+						b.AddUnrepresentable("native type " + unmanagedType);
 					break;
 				case 0x17: // FixedSysString
 					b.AddNamedArg("SizeConst", KnownTypeCode.Int32, marshalInfo.ReadCompressedInteger());
@@ -484,8 +490,23 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			namedArgs.Add(new CustomAttributeNamedArgument<IType>(name, kind, type, value));
 		}
 
+		List<string> unrepresentable;
+
+		/// <summary>
+		/// Records something the metadata held that this attribute has no way to say.
+		/// </summary>
+		public void AddUnrepresentable(string description)
+		{
+			(unrepresentable ??= new List<string>()).Add(description);
+		}
+
 		public IAttribute Build()
 		{
+			if (unrepresentable != null)
+			{
+				return new AttributeWithUnrepresentableFields(attributeType, fixedArgs.ToImmutable(),
+					namedArgs.ToImmutable(), string.Join(", ", unrepresentable));
+			}
 			return new DefaultAttribute(attributeType, fixedArgs.ToImmutable(), namedArgs.ToImmutable());
 		}
 	}

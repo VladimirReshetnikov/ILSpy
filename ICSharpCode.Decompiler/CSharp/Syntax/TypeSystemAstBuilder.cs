@@ -777,6 +777,14 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		public Attribute ConvertAttribute(IAttribute attribute)
 		{
 			Attribute attr = new Attribute();
+			// The metadata held more than the attribute can say. Name what is missing beside it rather
+			// than let the output read as though the metadata never carried it.
+			if (CommentOutUnrepresentableMetadata
+				&& attribute is global::ICSharpCode.Decompiler.TypeSystem.Implementation.AttributeWithUnrepresentableFields { Unrepresentable: { Length: > 0 } unrepresentable })
+			{
+				attr.AddTrailingTrivia(new Comment(" " + unrepresentable + ", which C# cannot declare",
+					CommentType.MultiLine));
+			}
 			attr.Type = ConvertAttributeType(attribute.AttributeType);
 			switch (attr.Type)
 			{
