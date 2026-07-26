@@ -233,8 +233,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 				else if (!IsValidInStatementExpression(stmt.Expression))
 				{
-					// fetch ILFunction
-					var function = stmt.Ancestors.SelectMany(a => a.Annotations.OfType<ILFunction>()).First(f => f.Parent == null);
+					// Fetch the innermost enclosing ILFunction: a lambda or local function has parameters
+					// of its own, and one of them may well be named '_'. Looking only at the outermost
+					// method would miss it and turn the statement into an assignment to that parameter.
+					var function = stmt.Ancestors.SelectMany(a => a.Annotations.OfType<ILFunction>()).First();
 					// if possible use C# 7.0 discard-assignment
 					if (context.Settings.Discards && !ExpressionBuilder.HidesVariableWithName(function, "_"))
 					{
