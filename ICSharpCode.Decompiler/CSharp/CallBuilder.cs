@@ -487,7 +487,12 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 
 			int allowedParamCount = (method.ReturnType.IsKnownType(KnownTypeCode.Void) ? 1 : 0);
-			if (method.IsAccessor && (method.AccessorOwner.SymbolKind == SymbolKind.Indexer || argumentList.ExpectedParameters.Length == allowedParamCount))
+			// A property C# cannot declare is written as its accessor methods, so its calls have to
+			// stay calls; sugaring one into a property access would name a member that is not there.
+			bool ownerIsWritable = method.AccessorOwner is not IProperty owner
+				|| !CSharpDecompiler.HasParametersCSharpCannotDeclare(owner);
+			if (method.IsAccessor && ownerIsWritable
+				&& (method.AccessorOwner.SymbolKind == SymbolKind.Indexer || argumentList.ExpectedParameters.Length == allowedParamCount))
 			{
 				argumentList.CheckNoNamedOrOptionalArguments();
 				return HandleAccessorCall(expectedTargetDetails, method, target, argumentList.Arguments.ToList(),

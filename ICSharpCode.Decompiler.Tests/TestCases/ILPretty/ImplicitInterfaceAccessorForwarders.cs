@@ -19,7 +19,7 @@ public interface IComBase
 {
 	string Value { get; }
 
-	string TemplatePath { get; }
+	public abstract string get_TemplatePath(string projectType);
 }
 [ComImport]
 public interface IComDerived : IComBase

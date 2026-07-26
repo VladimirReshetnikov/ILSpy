@@ -35,13 +35,13 @@ namespace Issue1325
 
 	internal class Test
 	{
-		public string Parameterized {
-			get {
-				throw new NotImplementedException();
-			}
-			set {
-				throw new NotImplementedException();
-			}
+		public string get_Parameterized(int i)
+		{
+			throw new NotImplementedException();
+		}
+		public void set_Parameterized(int i, string value)
+		{
+			throw new NotImplementedException();
 		}
 		public string Unparameterized { get; set; }
 	}
