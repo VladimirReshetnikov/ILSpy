@@ -142,9 +142,15 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					{
 						DetermineCaptureAndDeclarationScope(info, useSite);
 
-						if (context.Function.Method.IsConstructor)
+						var useSiteScope = FindDeclarationScopeAtUseSite(localFunction, useSite);
+						// Outside a constructor, only step in where the declaration does not already cover
+						// the use-site. Moving a function that every caller can see would churn the output
+						// of methods that decompile correctly today.
+						bool useSiteOutOfScope = useSiteScope != null && localFunction.DeclarationScope != null
+							&& !useSiteScope.Ancestors.Contains(localFunction.DeclarationScope);
+						if (context.Function.Method.IsConstructor || useSiteOutOfScope)
 						{
-							var scope = FindDeclarationScopeAtUseSite(localFunction, useSite);
+							var scope = useSiteScope;
 							if (localFunction.DeclarationScope == null)
 							{
 								localFunction.DeclarationScope = scope;
@@ -160,9 +166,9 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 								// whichever lambda or local function happens to call it first. Sibling
 								// use-sites in other lambdas would then see only an undefined member reference
 								// (or an unresolvable name), so the scope must be widened to their common
-								// ancestor in the constructor body. For a function that captures locals via a
+								// ancestor in the enclosing body. For a function that captures locals via a
 								// display class, broadening is limited to while the scope still lives directly
-								// in the constructor body: once closure analysis has placed it inside a nested
+								// in the enclosing body: once closure analysis has placed it inside a nested
 								// local function (e.g. its closure arrives via a forwarded by-ref display-class
 								// struct), pulling the scope up to a common ancestor with a use-site would move
 								// it out of that function and leave the captured display-class fields without a
