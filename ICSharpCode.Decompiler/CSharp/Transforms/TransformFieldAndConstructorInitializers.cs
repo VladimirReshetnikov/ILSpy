@@ -915,6 +915,18 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				if (TypeDeclaration == null)
 					return;
 
+				// Remove static constructor
+				if (StaticConstructor != null)
+				{
+					Debug.Assert(StaticConstructorDecl != null);
+
+					if (IsBeforeFieldInit && StaticConstructorDecl.Body is { Statements.Count: 0 })
+					{
+						context.Step("Remove empty static constructor", StaticConstructorDecl);
+						StaticConstructorDecl.Remove();
+					}
+				}
+
 				// Remove primary constructor body
 				if (PrimaryConstructor != null)
 				{
@@ -923,15 +935,21 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					// A parameterless primary constructor is normally left implicit, but only a type
 					// that declares no other constructor gets one back. Where another constructor
 					// remains, dropping it would take the parameterless one with it and break every
-					// 'new T()' and ': this()' that reaches for it.
+					// 'new T()' and ': this()' that reaches for it. Writing it as an empty parameter
+					// list on the record is no good either: that obliges every other constructor to
+					// chain with ': this()' (CS8862). Leave it as an ordinary constructor.
 					bool declaresAnotherConstructor = this.TypeDeclaration.Members
 						.OfType<ConstructorDeclaration>()
 						.Any(c => c != PrimaryConstructorDecl && !c.HasModifier(Modifiers.Static));
+					if (declaresAnotherConstructor && !PrimaryConstructor.Parameters.Any()
+						&& TypeDefinition.Kind != TypeKind.Struct)
+					{
+						return;
+					}
 
 					this.TypeDeclaration.HasPrimaryConstructor = PrimaryConstructor.Parameters.Any()
 						|| PrimaryConstructorDecl.Initializer is not null
-						|| TypeDefinition.Kind == TypeKind.Struct
-						|| declaresAnotherConstructor;
+						|| TypeDefinition.Kind == TypeKind.Struct;
 
 					// HACK: because our current AST model doesn't allow specifying an explicit ordering across slots,
 					// we have to explicitly insert the primary constructor parameters,
@@ -1022,18 +1040,6 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 					context.Step("Remove primary constructor body", PrimaryConstructorDecl);
 					PrimaryConstructorDecl.Remove();
-				}
-
-				// Remove static constructor
-				if (StaticConstructor != null)
-				{
-					Debug.Assert(StaticConstructorDecl != null);
-
-					if (IsBeforeFieldInit && StaticConstructorDecl.Body is { Statements.Count: 0 })
-					{
-						context.Step("Remove empty static constructor", StaticConstructorDecl);
-						StaticConstructorDecl.Remove();
-					}
 				}
 
 				// More than one constructor - do not remove anything
