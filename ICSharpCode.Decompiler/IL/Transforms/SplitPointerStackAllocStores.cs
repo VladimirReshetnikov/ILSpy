@@ -61,11 +61,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						continue;
 					if (target.Kind != VariableKind.Local && target.Kind != VariableKind.StackSlot)
 						continue;
-					if (target.Type.Kind != TypeKind.Pointer)
+					if (GetStackAllocPointerType(store.Value, target, context) is not { } pointerType)
 						continue;
 
 					context.Step($"Split pointer stackalloc store to '{target.Name}'", store);
-					var tempVariable = function.RegisterVariable(VariableKind.Local, target.Type);
+					var tempVariable = function.RegisterVariable(VariableKind.Local, pointerType);
 					var value = store.Value;
 					var copyToTarget = new StLoc(target, new LdLoc(tempVariable));
 					copyToTarget.AddILRange(store);
@@ -84,6 +84,32 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				&& variable.Kind == target.Kind
 				&& variable.Type.Equals(target.Type)
 				&& variable.StoreCount > 0);
+		}
+
+		/// <summary>
+		/// Returns the pointer type to declare the stackalloc under, or null where the store needs no
+		/// splitting. A target that is a pointer keeps its own type. A target typed as a native
+		/// integer - which happens where the buffer is only ever cast to the element type at each use
+		/// - takes a byte pointer: the allocation size is already in bytes, so the two are the same
+		/// buffer, and the casts at the uses are unaffected.
+		/// </summary>
+		static IType? GetStackAllocPointerType(ILInstruction value, ILVariable target, ILTransformContext context)
+		{
+			if (target.Type.Kind == TypeKind.Pointer)
+				return target.Type;
+			// An initializer block writes its elements through the target's own type, so it cannot be
+			// re-typed; only a bare allocation can.
+			if (value is not LocAlloc allocation || target.Type.GetStackType() != StackType.I)
+				return null;
+			// The allocation size is a count times sizeof(T) where the buffer has an element type;
+			// declaring the pointer as T* is what lets the stackalloc be written without a cast, which
+			// C# does not allow on one. A size that says nothing gives a byte buffer, which the size
+			// is measured in anyway.
+			var elementType = allocation.Argument.MatchBinaryNumericInstruction(BinaryNumericOperator.Mul, out _, out var right)
+				&& right.UnwrapConv(ConversionKind.SignExtend).UnwrapConv(ConversionKind.ZeroExtend).MatchSizeOf(out var sizeOfElementType)
+					? sizeOfElementType
+					: context.TypeSystem.FindType(KnownTypeCode.Byte);
+			return new PointerType(elementType);
 		}
 
 		static bool IsPointerStackAlloc(ILInstruction value)

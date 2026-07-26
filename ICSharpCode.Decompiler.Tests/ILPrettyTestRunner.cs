@@ -397,6 +397,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task StackAllocIntoNativeIntLocal()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task ParameterizedProperty()
 		{
 			await Run();
