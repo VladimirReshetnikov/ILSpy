@@ -43,10 +43,36 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			try
 			{
 				CombineQueries(rootNode, new Dictionary<string, object?>());
+				RevertQueriesWithTransparentIdentifiers(rootNode);
 			}
 			finally
 			{
 				this.context = null;
+			}
+		}
+
+		/// <summary>
+		/// Puts back the call chain of every query whose transparent identifiers survived the
+		/// translation. A transparent identifier is a name the compiler invented for an anonymous
+		/// type it threads through the query; once one is still visible the query cannot be written
+		/// down, whereas the calls it was built from always can.
+		/// </summary>
+		void RevertQueriesWithTransparentIdentifiers(AstNode rootNode)
+		{
+			foreach (var query in rootNode.DescendantsAndSelf.OfType<QueryExpression>().ToArray())
+			{
+				if (!query.Ancestors.Contains(rootNode) && query != rootNode)
+					continue;
+				if (query.Annotation<UntranslatedQueryAnnotation>() is not { } annotation)
+					continue;
+				if (!query.DescendantsAndSelf.OfType<Identifier>()
+					.Any(identifier => CSharpDecompiler.IsTransparentIdentifier(identifier.Name)))
+				{
+					continue;
+				}
+				context.Step("Revert query with unresolved transparent identifier", query);
+				query.ReplaceWith(annotation.CallChain);
+				context.EndStep(annotation.CallChain);
 			}
 		}
 

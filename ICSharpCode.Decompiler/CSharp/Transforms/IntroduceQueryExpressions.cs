@@ -156,10 +156,19 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		void DecompileQueries(AstNode node)
 		{
+			// A query built from a chain that cannot be fully translated leaves its transparent
+			// identifiers visible, and those are not names C# can write. Keep an untouched copy of
+			// the call chain so such a query can go back to being method calls.
+			Expression? callChain = node is InvocationExpression { Target: MemberReferenceExpression target }
+				&& IsQueryOperatorName(target.MemberName)
+				? (Expression)node.Clone()
+				: null;
 			Expression? query = DecompileQuery(node as InvocationExpression);
 			if (query is QueryExpression queryExpression)
 			{
 				RemoveInModifierFromRangeVariableArguments(queryExpression);
+				if (callChain != null)
+					queryExpression.AddAnnotation(new UntranslatedQueryAnnotation(callChain));
 			}
 			if (query != null)
 			{
@@ -175,6 +184,27 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				// store reference to next child before transformation
 				next = child.NextSibling;
 				DecompileQueries(child);
+			}
+		}
+
+		static bool IsQueryOperatorName(string name)
+		{
+			switch (name)
+			{
+				case "Select":
+				case "SelectMany":
+				case "Where":
+				case "OrderBy":
+				case "OrderByDescending":
+				case "ThenBy":
+				case "ThenByDescending":
+				case "GroupBy":
+				case "Join":
+				case "GroupJoin":
+				case "Cast":
+					return true;
+				default:
+					return false;
 			}
 		}
 

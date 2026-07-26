@@ -339,6 +339,8 @@
     <None Include="TestCases\Pretty\NullableRefTypes.cs" />
     <Compile Remove="TestCases\Ugly\AggressiveScalarReplacementOfAggregates.Expected.cs" />
     <None Include="TestCases\Ugly\AggressiveScalarReplacementOfAggregates.Expected.cs" />
+    <Compile Remove="TestCases\Ugly\QueryWithUntranslatableClause.Expected.cs" />
+    <None Include="TestCases\Ugly\QueryWithUntranslatableClause.Expected.cs" />
     <Compile Remove="TestCases\Ugly\NoArrayInitializers.Expected.cs" />
     <None Include="TestCases\Ugly\NoArrayInitializers.Expected.cs" />
     <Compile Remove="TestCases\Ugly\NoDecimalConstants.Expected.cs" />

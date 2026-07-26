@@ -250,6 +250,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #endif
 		}
 
+		public static IEnumerable<object> MembersMatching(IEnumerable<IEnumerable<object>> source, object other)
+		{
+			return from t in source
+				   from m in t
+				   where m is string || m is int
+				   where !m.Equals(other)
+				   select m;
+		}
+
 		public static Maybe<TB> Cast<TA, TB>(Maybe<TA> a) where TB : class
 		{
 			return from m in a
