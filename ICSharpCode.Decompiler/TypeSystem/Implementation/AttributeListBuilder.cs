@@ -141,6 +141,22 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 							var varEnumType = new TopLevelTypeName(InteropServices, nameof(VarEnum));
 							b.AddNamedArg("SafeArraySubType", varEnumType, (int)varType);
 						}
+						// A safe array of a user-defined record names that record after the element
+						// type. MarshalAsAttribute has a field for it, so it need not be lost.
+						if (marshalInfo.RemainingBytes > 0)
+						{
+							string userDefinedSubType = marshalInfo.ReadSerializedString();
+							if (!string.IsNullOrEmpty(userDefinedSubType))
+							{
+								var subType = module.Compilation.FindType(
+									new FullTypeName(userDefinedSubType));
+								if (subType.Kind != TypeKind.Unknown)
+								{
+									b.AddNamedArg("SafeArrayUserDefinedSubType",
+										module.Compilation.FindType(KnownTypeCode.Type), subType);
+								}
+							}
+						}
 					}
 					break;
 				case 0x2a: // NATIVE_TYPE_ARRAY
