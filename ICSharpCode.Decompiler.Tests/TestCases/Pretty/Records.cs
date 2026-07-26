@@ -36,6 +36,17 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public static readonly Empty X = new Empty();
 		}
 
+		public record ExplicitParameterlessConstructor()
+		{
+			public int Value { get; init; }
+
+			public ExplicitParameterlessConstructor(int value)
+				: this()
+			{
+				Value = value;
+			}
+		}
+
 		public record Fields
 		{
 			public int A;

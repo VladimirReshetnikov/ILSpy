@@ -920,9 +920,18 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				{
 					Debug.Assert(PrimaryConstructorDecl != null);
 
+					// A parameterless primary constructor is normally left implicit, but only a type
+					// that declares no other constructor gets one back. Where another constructor
+					// remains, dropping it would take the parameterless one with it and break every
+					// 'new T()' and ': this()' that reaches for it.
+					bool declaresAnotherConstructor = this.TypeDeclaration.Members
+						.OfType<ConstructorDeclaration>()
+						.Any(c => c != PrimaryConstructorDecl && !c.HasModifier(Modifiers.Static));
+
 					this.TypeDeclaration.HasPrimaryConstructor = PrimaryConstructor.Parameters.Any()
 						|| PrimaryConstructorDecl.Initializer is not null
-						|| TypeDefinition.Kind == TypeKind.Struct;
+						|| TypeDefinition.Kind == TypeKind.Struct
+						|| declaresAnotherConstructor;
 
 					// HACK: because our current AST model doesn't allow specifying an explicit ordering across slots,
 					// we have to explicitly insert the primary constructor parameters,
