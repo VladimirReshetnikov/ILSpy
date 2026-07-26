@@ -333,6 +333,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return p?.ToBoolNullable().GetValueOrDefault() ?? false;
 		}
 
+		private static int ChainedThroughArrayElement(string[][] rows, int i)
+		{
+			return (rows?[i]?.Length).GetValueOrDefault();
+		}
+
 		private static string Issue3181()
 		{
 #if EXPECTED_OUTPUT

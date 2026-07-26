@@ -307,6 +307,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				{
 					inst = ldLen.Array;
 				}
+				else if (inst is LdObj { Target: LdElema } ldObjOverElement)
+				{
+					// Reading an array element is 'ldobj' over 'ldelema'. The element load is what '?[i]'
+					// spells, so step through to the address and let the case below walk the array.
+					inst = ldObjOverElement.Target;
+				}
 				else if (inst is LdElema ldElema)
 				{
 					inst = ldElema.Array;
