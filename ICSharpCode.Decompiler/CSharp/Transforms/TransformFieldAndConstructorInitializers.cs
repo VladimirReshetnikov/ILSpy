@@ -638,15 +638,6 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (initializer is null)
 						return false;
 
-					// The initializer becomes part of the constructor initializer, which runs before
-					// the body. It may therefore only reference parameters and fields, never another
-					// body local that would be declared later.
-					if (initializer.DescendantsAndSelf.OfType<IdentifierExpression>()
-						.Any(id => id.GetILVariable() is { Kind: not VariableKind.Parameter }))
-					{
-						return false;
-					}
-
 					// The temporary may only be read by the call arguments; any other read would be
 					// left referencing an undeclared local after the declaration is removed.
 					int totalUses = body.DescendantsAndSelf
@@ -656,6 +647,23 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					{
 						if (TryFoldInitializedObjectTemporary(body, callStatement, invocation, variable, declaration, initializer))
 							continue;
+						// Element stores fold into the array creation they follow, which leaves the
+						// temporary read only by the call and the ordinary fold below applicable.
+						if (!TryFoldArrayElementStores(callStatement, variable, declaration, initializer))
+							return false;
+						totalUses = body.DescendantsAndSelf
+							.OfType<IdentifierExpression>()
+							.Count(id => id.GetILVariable() == variable);
+						if (totalUses != uses.Count)
+							return false;
+					}
+
+					// The initializer becomes part of the constructor initializer, which runs before
+					// the body. It may therefore only reference parameters and fields, never another
+					// body local that would be declared later.
+					if (initializer.DescendantsAndSelf.OfType<IdentifierExpression>()
+						.Any(id => id.GetILVariable() is { Kind: not VariableKind.Parameter }))
+					{
 						return false;
 					}
 
@@ -673,6 +681,88 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 
 				return true;
+			}
+
+			/// <summary>
+			/// Folds element stores that follow an array creation back into the creation itself, so the
+			/// array can travel into a constructor initializer. The compiler leaves an element behind
+			/// whenever its value needs a temporary of its own; that temporary comes along, since it is
+			/// declared immediately before the store that reads it.
+			/// </summary>
+			private static bool TryFoldArrayElementStores(Statement callStatement, ILVariable variable,
+				VariableDeclarationStatement declaration, Expression initializer)
+			{
+				if (initializer is not ArrayCreateExpression { Initializer: { } arrayInitializer } arrayCreation || arrayInitializer.Elements.Count == 0)
+					return false;
+				var elements = arrayInitializer.Elements.ToArray();
+				var absorbed = new List<(Statement Statement, int Index, Expression Value, Statement? HoistedValue)>();
+				for (Statement? statement = declaration.GetNextStatement(); statement != null && statement != callStatement;
+					statement = statement.GetNextStatement())
+				{
+					Statement? hoisted = null;
+					Expression? hoistedValue = null;
+					var candidate = statement;
+					if (candidate is VariableDeclarationStatement { Variables: [{ Initializer: not null } declared] } hoistedDeclaration
+						&& !hoistedDeclaration.Type.IsVar() && declared.GetILVariable() is { } hoistedVariable)
+					{
+						hoisted = candidate;
+						hoistedValue = declared.Initializer;
+						if (candidate.GetNextStatement() is not { } afterHoist || afterHoist == callStatement)
+							return false;
+						candidate = afterHoist;
+						statement = candidate;
+						if (!IsSoleUseOfHoistedValue(hoistedVariable, candidate))
+							return false;
+					}
+					if (candidate is not ExpressionStatement {
+						Expression: AssignmentExpression {
+							Operator: AssignmentOperatorType.Assign,
+							Left: IndexerExpression {
+								Target: IdentifierExpression target,
+								Arguments: [PrimitiveExpression { Value: int index }]
+							},
+							Right: var value
+						}
+					})
+					{
+						return false;
+					}
+					if (target.GetILVariable() != variable || index < 0 || index >= elements.Length)
+						return false;
+					// Only an element the compiler left at its default is up for grabs; anything else
+					// would be a store the array creation already accounts for.
+					if (elements[index] is not (DefaultValueExpression or NullReferenceExpression))
+						return false;
+					if (value.DescendantsAndSelf.OfType<IdentifierExpression>()
+						.Any(identifier => identifier.GetILVariable() == variable))
+					{
+						return false;
+					}
+					absorbed.Add((candidate, index, value, hoisted));
+					if (hoistedValue != null)
+					{
+						var hoistedUse = value.DescendantsAndSelf.OfType<IdentifierExpression>().Single();
+						hoistedUse.ReplaceWith(hoistedValue.Detach());
+					}
+				}
+
+				if (absorbed.Count == 0)
+					return false;
+				foreach (var (assignment, index, value, hoisted) in absorbed)
+				{
+					value.Detach();
+					elements[index].ReplaceWith(value);
+					assignment.Remove();
+					hoisted?.Remove();
+				}
+				return true;
+			}
+
+			static bool IsSoleUseOfHoistedValue(ILVariable hoisted, Statement store)
+			{
+				return store is ExpressionStatement { Expression: AssignmentExpression { Right: var value } }
+					&& value.DescendantsAndSelf.OfType<IdentifierExpression>()
+						.Count(identifier => identifier.GetILVariable() == hoisted) == 1;
 			}
 
 			private static bool TryFoldInitializedObjectTemporary(BlockStatement body, Statement callStatement,
