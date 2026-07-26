@@ -104,6 +104,8 @@
     <None Include="TestCases\IsolatedDecompilation\IsolatedStaticCtor.il" />
     <None Include="TestCases\ILPretty\ManagedPointerAddedToWideOffset.il" />
     <None Include="TestCases\ILPretty\ManagedPointerAddedToWideOffset.cs" />
+    <None Include="TestCases\ILPretty\ProtectedSetterOnGrandparent.il" />
+    <None Include="TestCases\ILPretty\ProtectedSetterOnGrandparent.cs" />
     <None Include="TestCases\ILPretty\RefLocalAssignedInBranches.il" />
     <None Include="TestCases\ILPretty\RefLocalAssignedInBranches.cs" />
     <None Include="TestCases\ILPretty\TupleBuiltFieldByField.il" />
@@ -211,6 +213,7 @@
     <Compile Remove="TestCases\Correctness\ComInterop.cs" />
     <None Include="TestCases\Correctness\ComInterop.cs" />
     <Compile Remove="TestCases\ILPretty\ManagedPointerAddedToWideOffset.cs" />
+    <Compile Remove="TestCases\ILPretty\ProtectedSetterOnGrandparent.cs" />
     <Compile Remove="TestCases\ILPretty\RefLocalAssignedInBranches.cs" />
     <Compile Remove="TestCases\ILPretty\TupleBuiltFieldByField.cs" />
     <Compile Remove="TestCases\ILPretty\InitOnlySettersAfterInitializer.cs" />

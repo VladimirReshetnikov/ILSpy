@@ -2165,7 +2165,7 @@ namespace ICSharpCode.Decompiler.CSharp
 					requireTarget = true;
 					targetResolveResult = target.ResolveResult;
 				}
-				else if (!targetCasted)
+				else if (!targetCasted && !(target.Expression is BaseReferenceExpression && IsProtectedLike(method.Accessibility)))
 				{
 					targetCasted = true;
 					target = target.ConvertTo(method.AccessorOwner!.DeclaringType, expressionBuilder);
@@ -2173,9 +2173,20 @@ namespace ICSharpCode.Decompiler.CSharp
 				}
 				else
 				{
+					// Casting the target is the usual way to reach a member an intermediate type hides,
+					// but it is no remedy for a protected one: that reaches it through a qualifier of
+					// the wrong type (CS1540), where 'base.X' names it directly. The accessor the base
+					// reference resolves to is the one being called, so take it as found.
 					foundMember = method.AccessorOwner!;
 					break;
 				}
+			}
+
+			static bool IsProtectedLike(Accessibility accessibility)
+			{
+				return accessibility is Accessibility.Protected
+					or Accessibility.ProtectedOrInternal
+					or Accessibility.ProtectedAndInternal;
 			}
 
 			var rr = new MemberResolveResult(target.ResolveResult, foundMember);

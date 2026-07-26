@@ -409,6 +409,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ProtectedSetterOnGrandparent()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task RefLocalAssignedInBranches()
 		{
 			await Run();
