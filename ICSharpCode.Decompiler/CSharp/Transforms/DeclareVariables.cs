@@ -216,12 +216,20 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		#region EnsureExpressionStatementsAreValid
 		void EnsureExpressionStatementsAreValid(AstNode rootNode)
 		{
-			foreach (var stmt in rootNode.DescendantsAndSelf.OfType<ExpressionStatement>())
+			foreach (var stmt in rootNode.DescendantsAndSelf.OfType<ExpressionStatement>().ToArray())
 			{
 				if (stmt.Expression is DirectionExpression dir && IsValidInStatementExpression(dir.Expression))
 				{
 					context.Step("Unwrap direction expression statement", stmt);
 					stmt.Expression = dir.Expression.Detach();
+				}
+				else if (stmt.Expression is NullReferenceExpression or PrimitiveExpression
+					&& stmt.Parent is BlockStatement)
+				{
+					// A literal on its own does nothing and is not a statement C# accepts. Assigning it
+					// to a discard is no better: a discard has no type to infer from 'null' (CS8183).
+					context.Step("Remove literal expression statement", stmt);
+					stmt.Remove();
 				}
 				else if (!IsValidInStatementExpression(stmt.Expression))
 				{
@@ -816,8 +824,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					// Insert a separate declaration statement.
 					Expression? initializer = null;
 					AstType type = context.TypeSystemAstBuilder.ConvertType(v.Type);
-					if (v.DefaultInitialization == VariableInitKind.NeedsDefaultValue
-						|| (v.DefaultInitialization == VariableInitKind.NeedsSkipInit && v.Type.Kind == TypeKind.Pointer))
+					if (v.Type.Kind != TypeKind.ByReference
+						&& (v.DefaultInitialization == VariableInitKind.NeedsDefaultValue
+							|| (v.DefaultInitialization == VariableInitKind.NeedsSkipInit && v.Type.Kind == TypeKind.Pointer)))
 					{
 						// A pointer cannot be a generic type argument, so Unsafe.SkipInit<T> has no
 						// spelling for one (CS0306). A null pointer is the closest stand-in: the local
@@ -849,19 +858,21 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					AstNode insertionNode = v.InsertionPoint.nextNode;
 					AstNode insertionParent = insertionNode.Parent
 						?? throw new InvalidOperationException("Variable insertion point has no parent.");
-					if (v.DefaultInitialization == VariableInitKind.NeedsSkipInit && v.Type.Kind != TypeKind.Pointer)
+					if (v.Type.Kind == TypeKind.ByReference
+						|| (v.DefaultInitialization == VariableInitKind.NeedsSkipInit && v.Type.Kind != TypeKind.Pointer))
 					{
 						AstType unsafeType = context.TypeSystemAstBuilder.ConvertType(
 							context.TypeSystem.FindType(KnownTypeCode.Unsafe));
 						AstNode insertedNode;
 						if (v.Type.Kind == TypeKind.ByReference)
 						{
-							// A ref local cannot be left uninitialized in C#, and it cannot be passed
-							// as an 'out' argument: 'ref T x;' (CS8174) and 'Unsafe.SkipInit(out ref T x)'
-							// (CS8388) are both illegal. The IL leaves the managed pointer unassigned and
-							// reassigns it (via 'x = ref ...') before any read, so bind the ref local to a
-							// null reference at its declaration. 'ref T x = ref Unsafe.NullRef<T>();' is the
-							// closest legal equivalent and keeps the later ref reassignments valid.
+							// A ref local cannot be left uninitialized in C#, whatever the definite
+							// assignment analysis says, and it cannot be passed as an 'out' argument:
+							// 'ref T x;' (CS8174) and 'Unsafe.SkipInit(out ref T x)' (CS8388) are both
+							// illegal. The IL leaves the managed pointer unassigned and reassigns it (via
+							// 'x = ref ...') before any read, so bind the ref local to a null reference at
+							// its declaration. 'ref T x = ref Unsafe.NullRef<T>();' is the closest legal
+							// equivalent and keeps the later ref reassignments valid.
 							//
 							// 'Unsafe.NullRef<T>()' returns a reference whose ref-safe-context is the
 							// calling method, so a plain 'ref T x' would reject a later reassignment from a
