@@ -158,6 +158,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		public bool ShowAttributes { get; set; }
 
+
 		/// <summary>
 		/// Controls whether to sort attributes, if set to <see langword="false" /> attributes are shown in metadata order.
 		/// The default value is <see langword="false" />.
@@ -2121,7 +2122,9 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				case TypeKind.Struct:
 				case TypeKind.Void:
 					classType = ClassType.Struct;
-					modifiers &= ~Modifiers.Sealed;
+					// A struct is sealed and cannot be inherited from either way, so neither modifier
+					// says anything here; 'static' is not even a modifier C# allows on one (CS0106).
+					modifiers &= ~(Modifiers.Sealed | Modifiers.Static | Modifiers.Abstract);
 					if (ShowModifiers)
 					{
 						if (typeDefinition.IsReadOnly)
@@ -2140,7 +2143,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					break;
 				case TypeKind.Enum:
 					classType = ClassType.Enum;
-					modifiers &= ~Modifiers.Sealed;
+					modifiers &= ~(Modifiers.Sealed | Modifiers.Static | Modifiers.Abstract);
 					break;
 				case TypeKind.Interface:
 					classType = ClassType.Interface;
@@ -2847,14 +2850,29 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					}
 					else
 					{
+						// A sealed type cannot introduce a member of its own to derive from, so neither
+						// 'abstract' nor 'virtual' can be written there (CS0549, CS0533). C++/CLI marks
+						// a method 'virtual' to implement an interface, which is what puts one on a
+						// sealed type; the member is reachable through the interface either way.
+						bool canIntroduceVirtualMember = declaringType.GetDefinition()?.IsSealed != true;
 						if (member.IsAbstract)
-							m |= Modifiers.Abstract;
-						else if (member.IsVirtual && !member.IsOverride)
+						{
+							if (canIntroduceVirtualMember)
+								m |= Modifiers.Abstract;
+						}
+						else if (member.IsVirtual && !member.IsOverride && canIntroduceVirtualMember)
+						{
 							m |= Modifiers.Virtual;
+						}
 						if (member.IsOverride && !member.IsExplicitInterfaceImplementation)
 							m |= Modifiers.Override;
-						if (member.IsSealed && !member.IsExplicitInterfaceImplementation)
+						// 'sealed' says an inherited member stops here, so it only means anything
+						// alongside 'override' (CS0238).
+						if (member.IsSealed && !member.IsExplicitInterfaceImplementation
+							&& (m & Modifiers.Override) != 0)
+						{
 							m |= Modifiers.Sealed;
+						}
 					}
 				}
 			}

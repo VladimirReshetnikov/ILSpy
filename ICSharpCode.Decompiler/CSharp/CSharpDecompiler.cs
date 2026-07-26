@@ -2826,7 +2826,9 @@ namespace ICSharpCode.Decompiler.CSharp
 					&& !method.IsVirtual && method.IsOverride
 					&& InheritanceHelper.GetBaseMember(method) == null && IsTypeHierarchyKnown(method.DeclaringType))
 				{
-					methodDecl.Modifiers &= ~Modifiers.Override;
+					// 'sealed' only says that an inherited member stops here, so it goes with the
+					// 'override' it qualified; on its own C# rejects it (CS0238).
+					methodDecl.Modifiers &= ~(Modifiers.Override | Modifiers.Sealed);
 					if (!method.DeclaringTypeDefinition!.IsSealed)
 					{
 						methodDecl.Modifiers |= Modifiers.Virtual;
