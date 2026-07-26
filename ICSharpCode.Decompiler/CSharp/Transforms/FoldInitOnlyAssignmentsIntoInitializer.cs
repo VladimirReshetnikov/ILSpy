@@ -87,7 +87,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// them once the initializer has been split.
 			var aliases = new HashSet<ILVariable>();
 			var aliasDeclarations = new List<(Statement Statement, ILVariable Variable)>();
-			var absorbed = new List<(Statement Statement, string MemberName, Expression Value, Statement? HoistedValue)>();
+			var absorbed = new List<(Statement Statement, string MemberName, Expression Value, Statement? Hoisted,
+				Expression? HoistedValue, IdentifierExpression? HoistedRead)>();
 			bool sawInitOnly = false;
 			Statement current = statement;
 			while (current.GetNextSibling(n => n is Statement) is Statement next)
@@ -111,28 +112,30 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 				if (!IsMemberAssignment(candidate, target, aliases, out var member, out var value, out bool isInitOnly))
 					break;
+				IdentifierExpression? hoistedRead = null;
 				if (hoisted != null)
 				{
 					// The temporary disappears with the assignment, so the initializer has to carry the
 					// value the temporary held rather than a reference to it. Reading it more than once
-					// would mean evaluating that value more than once, so only a single read folds.
+					// would mean evaluating that value more than once, so only a single read folds, and
+					// a read left anywhere else would be looking at a local that no longer exists.
 					var reads = value.DescendantsAndSelf.OfType<IdentifierExpression>()
 						.Where(identifier => identifier.GetILVariable() == hoistedVariable)
 						.ToArray();
 					if (reads.Length != 1)
 						break;
-					if (reads[0] == value)
+					if (IsReadAnywhere(hoistedVariable!, statement.Ancestors.OfType<BlockStatement>().Last(),
+						except: reads[0]))
 					{
-						value = hoistedValue!;
+						break;
 					}
-					else
-					{
-						reads[0].ReplaceWith(hoistedValue!.Detach());
-					}
+					hoistedRead = reads[0];
+					if (ReadsTarget(hoistedValue!, target, aliases))
+						break;
 				}
 				if (ReadsTarget(value, target, aliases))
 					break;
-				absorbed.Add((candidate, member, value, hoisted));
+				absorbed.Add((candidate, member, value, hoisted, hoistedValue, hoistedRead));
 				sawInitOnly |= isInitOnly;
 				current = candidate;
 			}
@@ -158,10 +161,22 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					Initializer = initializer
 				};
 			}
-			foreach (var (assignment, memberName, value, hoisted) in absorbed)
+			foreach (var (assignment, memberName, value, hoisted, hoistedValue, hoistedRead) in absorbed)
 			{
-				value.Remove();
-				initializer.Elements.Add(new NamedExpression(memberName, value));
+				Expression element = value;
+				if (hoistedValue != null)
+				{
+					if (hoistedRead == element)
+					{
+						element = hoistedValue;
+					}
+					else
+					{
+						hoistedRead!.ReplaceWith(hoistedValue.Detach());
+					}
+				}
+				element.Remove();
+				initializer.Elements.Add(new NamedExpression(memberName, element));
 				assignment.Remove();
 				hoisted?.Remove();
 			}
@@ -232,10 +247,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return true;
 		}
 
-		static bool IsReadAnywhere(ILVariable variable, AstNode scope)
+		static bool IsReadAnywhere(ILVariable variable, AstNode scope, IdentifierExpression? except = null)
 		{
 			return scope.DescendantsAndSelf.OfType<IdentifierExpression>()
-				.Any(identifier => identifier.GetILVariable() == variable);
+				.Any(identifier => identifier != except && identifier.GetILVariable() == variable);
 		}
 
 		static bool ReadsTarget(Expression value, ILVariable target, HashSet<ILVariable> aliases)
