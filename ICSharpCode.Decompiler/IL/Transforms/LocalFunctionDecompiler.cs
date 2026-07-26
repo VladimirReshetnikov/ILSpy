@@ -150,7 +150,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 								localFunction.DeclarationScope = scope;
 							}
 							else if (scope != null
-								&& (GetDeclaringFunction(localFunction) == context.Function || CapturesAtMostThis(localFunction)))
+								&& (GetDeclaringFunction(localFunction) == context.Function || CapturesAtMostThis(localFunction)
+									|| ClosureLivesIn(localFunction, context.Function)))
 							{
 								// Broaden the declaration scope to cover this use-site. A function that
 								// captures at most the enclosing 'this' has no display-class struct parameter,
@@ -458,6 +459,29 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		// reach a forwarded display class. A static function captures nothing; an instance function
 		// captures 'this', which -- unless 'this' is itself a display class -- is available throughout
 		// the constructor body, so both can be declared at the common ancestor.
+		/// <summary>
+		/// Returns whether every display class the function captures is built by <paramref name="owner"/>
+		/// itself. Widening the declaration scope is safe then: the widened scope still lies inside the
+		/// function that declares those display classes, so their fields stay in scope. It is only
+		/// climbing out of the owning function that would strand them.
+		/// </summary>
+		private bool ClosureLivesIn(ILFunction localFunction, ILFunction owner)
+		{
+			bool sawClosure = false;
+			foreach (var variable in owner.Variables)
+			{
+				if (variable.Kind is not (VariableKind.DisplayClassLocal or VariableKind.Local))
+					continue;
+				if (variable.CaptureScope == null)
+					continue;
+				if (variable.CaptureScope.Ancestors.OfType<ILFunction>().FirstOrDefault() != owner)
+					return false;
+				sawClosure = true;
+			}
+			return sawClosure && localFunction.DeclarationScope?.Ancestors.OfType<ILFunction>()
+				.Any(f => f == owner) == true;
+		}
+
 		private bool CapturesAtMostThis(ILFunction localFunction)
 		{
 			foreach (var parameter in localFunction.Method.Parameters)
