@@ -37,18 +37,31 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 	{
 		public void Run(AstNode rootNode, TransformContext context)
 		{
-			foreach (var section in rootNode.Children.OfType<AttributeSection>())
+			var dropped = new List<string>();
+			foreach (var section in rootNode.Children.OfType<AttributeSection>().ToArray())
 			{
 				if (section.AttributeTarget == "assembly")
 					continue;
-				foreach (var attribute in section.Attributes)
+				foreach (var attribute in section.Attributes.ToArray())
 				{
 					var trr = attribute.Type.Annotation<TypeResolveResult>();
 					if (trr != null && trr.Type.FullName == "System.CLSCompliantAttribute")
+					{
+						dropped.Add((section.AttributeTarget ?? "") + ": " + attribute.ToString());
 						attribute.Remove();
+					}
 				}
 				if (section.Attributes.Count == 0)
 					section.Remove();
+			}
+			// The attribute is in the assembly. It is left out so the regenerated project does not
+			// warn (CS3012), not because C# cannot say it, so record what was there.
+			if (context.Settings.CommentOutUnrepresentableMetadata)
+			{
+				foreach (var description in dropped)
+				{
+					rootNode.AddLeadingTrivia(new Comment(" attribute left out to keep the rebuild quiet: [" + description + "]"));
+				}
 			}
 		}
 	}
