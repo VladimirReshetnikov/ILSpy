@@ -23,6 +23,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
+		[StructLayout(LayoutKind.Sequential, Size = 1)]
+		internal struct PatternAsyncDisposableStruct
+		{
+			public ValueTask DisposeAsync()
+			{
+				throw new NotImplementedException();
+			}
+		}
+
 		public static async void TestAsyncUsing(IAsyncDisposable disposable)
 		{
 			await using (disposable)
@@ -52,6 +61,22 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			await using (AsyncDisposableStruct? asyncDisposableStruct = new AsyncDisposableStruct?(default(AsyncDisposableStruct)))
 			{
 				Use(asyncDisposableStruct);
+			}
+		}
+
+		public static async void TestAsyncUsingPatternStruct()
+		{
+			await using (default(PatternAsyncDisposableStruct))
+			{
+				Console.WriteLine("Hello");
+			}
+		}
+
+		public static async void TestAsyncUsingConfigured(IAsyncDisposable disposable)
+		{
+			await using (disposable.ConfigureAwait(continueOnCapturedContext: false))
+			{
+				Console.WriteLine("Hello");
 			}
 		}
 

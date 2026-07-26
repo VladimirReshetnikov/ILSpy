@@ -615,7 +615,7 @@ namespace ICSharpCode.Decompiler.CSharp
 					return true;
 				if (inst.IsRefStruct)
 					return true;
-				if (!NullableType.GetUnderlyingType(var.Type).GetAllBaseTypes().Any(b => b.IsKnownType(code)))
+				if (!ImplementsDisposePattern(var.Type, code))
 					return false;
 				// The resource expression itself is what appears in 'using (...)', so its static
 				// type must implement the dispose interface as well. When the original code stored
@@ -629,13 +629,25 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (inst.ResourceExpression is LdLoc ldloc)
 				{
 					IType resourceType = NullableType.GetUnderlyingType(ldloc.Variable.Type);
-					if (resourceType.Kind != TypeKind.Unknown
-						&& !resourceType.GetAllBaseTypes().Any(b => b.IsKnownType(code)))
+					if (resourceType.Kind != TypeKind.Unknown && !ImplementsDisposePattern(ldloc.Variable.Type, code))
 					{
 						return false;
 					}
 				}
 				return true;
+			}
+
+			// 'await using' does not require IAsyncDisposable: a type carrying a parameterless
+			// DisposeAsync() is disposed through that method instead, which is the only way the
+			// configured wrappers (ConfiguredAsyncDisposable and friends) can be used at all.
+			bool ImplementsDisposePattern(IType type, KnownTypeCode code)
+			{
+				IType underlying = NullableType.GetUnderlyingType(type);
+				if (underlying.GetAllBaseTypes().Any(b => b.IsKnownType(code)))
+					return true;
+				return inst.IsAsync && underlying
+					.GetMethods(m => m.Name == "DisposeAsync" && m.Parameters.Count == 0 && m.TypeParameters.Count == 0)
+					.Any(m => m.Accessibility == Accessibility.Public && !m.IsStatic);
 			}
 		}
 
