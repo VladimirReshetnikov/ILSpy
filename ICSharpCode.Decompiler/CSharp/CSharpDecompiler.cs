@@ -473,76 +473,11 @@ namespace ICSharpCode.Decompiler.CSharp
 
 			return false;
 		}
+
 		static bool IsPrimaryConstructorParameterBackingField(SRM.FieldDefinition field, MetadataReader metadata)
 		{
 			var name = metadata.GetString(field.Name);
 			return name.StartsWith("<", StringComparison.Ordinal) && name.EndsWith(">P", StringComparison.Ordinal);
-		}
-
-		/// <summary>
-		/// Rewrites a decompiled accessor as an ordinary method declaration. An accessor is only
-		/// syntax inside a property; where the property itself cannot be written, its body has to go
-		/// into a method named get_X/set_X, which is how every call site already reads.
-		/// </summary>
-		MethodDeclaration RewriteAccessorAsMethod(IMethod accessor, EntityDeclaration accessorDecl, TypeSystemAstBuilder astBuilder)
-		{
-			var fakeMethod = new FakeMethod(typeSystem, SymbolKind.Method) {
-				Name = accessor.Name,
-				DeclaringType = accessor.DeclaringType,
-				ReturnType = accessor.ReturnType,
-				Accessibility = accessor.Accessibility,
-				IsStatic = accessor.IsStatic,
-				Parameters = accessor.Parameters,
-				TypeParameters = accessor.TypeParameters,
-			};
-			var declaration = (MethodDeclaration)astBuilder.ConvertEntity(fakeMethod);
-			declaration.RemoveAnnotations<ResolveResult>();
-			foreach (var annotation in accessorDecl.Annotations)
-			{
-				declaration.AddAnnotation(annotation);
-			}
-			declaration.Modifiers = GetAccessorMethodModifiers(accessor);
-			foreach (var attribute in accessorDecl.Attributes.ToArray())
-			{
-				attribute.Remove();
-				declaration.Attributes.Add(attribute);
-			}
-			if (accessorDecl.Children.OfType<BlockStatement>().FirstOrDefault() is { } body)
-			{
-				body.Remove();
-				declaration.Body = body;
-			}
-			return declaration;
-		}
-
-		static Modifiers GetAccessorMethodModifiers(IMethod accessor)
-		{
-			Modifiers modifiers = TypeSystemAstBuilder.ModifierFromAccessibility(accessor.Accessibility, usePrivateProtected: true);
-			if (accessor.IsStatic)
-				modifiers |= Modifiers.Static;
-			if (accessor.IsAbstract)
-				modifiers |= Modifiers.Abstract;
-			else if (accessor.IsOverride)
-				modifiers |= Modifiers.Override;
-			else if (accessor.IsVirtual)
-				modifiers |= Modifiers.Virtual;
-			if (accessor.IsSealed && accessor.IsOverride)
-				modifiers |= Modifiers.Sealed;
-			return modifiers;
-		}
-
-		/// <summary>
-		/// Returns whether the property takes arguments that C# cannot put on a property declaration.
-		/// Visual Basic lets any property take them; C# has only the indexer, so such a property has
-		/// no declaration form at all - rendering it as a parameterless one both loses the arguments
-		/// and makes the accessor calls that carry them illegal (CS0571).
-		/// </summary>
-		internal static bool HasParametersCSharpCannotDeclare(IProperty property)
-		{
-			if (property.IsIndexer)
-				return false;
-			return property.Getter is { Parameters.Count: > 0 }
-				|| property.Setter is { Parameters.Count: > 1 };
 		}
 
 		static bool IsAccessorInterfaceImplementationRuntimeHelper(PEFile module, MethodDefinitionHandle handle)
@@ -1530,7 +1465,14 @@ namespace ICSharpCode.Decompiler.CSharp
 					case HandleKind.PropertyDefinition:
 						IProperty property = module.GetDefinition((PropertyDefinitionHandle)entity);
 						parentExtensionInfo = property.ResolveExtensionInfo();
-						syntaxTree.Members.Add(DoDecompile(property, decompileRun, new SimpleTypeResolveContext(property), parentExtensionInfo));
+						if (property.IsParameterizedProperty())
+						{
+							syntaxTree.Members.AddRange(DecompileParameterizedProperty(property, decompileRun, new SimpleTypeResolveContext(property), parentExtensionInfo));
+						}
+						else
+						{
+							syntaxTree.Members.Add(DoDecompile(property, decompileRun, new SimpleTypeResolveContext(property), parentExtensionInfo));
+						}
 						if (first)
 						{
 							parentTypeDef = property.DeclaringTypeDefinition;
@@ -1682,11 +1624,15 @@ namespace ICSharpCode.Decompiler.CSharp
 			var handledAccessorOwners = new HashSet<IMember>();
 			foreach (IMethod m in GetInterfaceAccessorImplementations(method))
 			{
-				if (m.IsAccessor && m.AccessorOwner is IMember accessorOwner && accessorOwner is IProperty or IEvent)
+				if (m.IsAccessor && m.AccessorOwner is IMember accessorOwner
+					&& (accessorOwner is IEvent
+						|| accessorOwner is IProperty ownerProperty && !ownerProperty.IsParameterizedProperty()))
 				{
 					// A CLR MethodImpl can map an ordinary method name to an interface accessor. Emitting
 					// IInterface.get_Property() as a C# method is illegal (CS0683); retain the ordinary
-					// method and add one grouped explicit property/event forwarder instead.
+					// method and add one grouped explicit property/event forwarder instead. A parameterized
+					// property is exempt: it has no C# declaration, so its accessors are already ordinary
+					// methods and an explicit forwarder named after one of them is legal.
 					if (handledAccessorOwners.Add(accessorOwner))
 					{
 						var helper = CreateInterfaceAccessorImplHelper(method, accessorOwner, astBuilder);
@@ -1835,6 +1781,13 @@ namespace ICSharpCode.Decompiler.CSharp
 					{
 						if (!HaveSameRuntimeSignature(method, candidate))
 						{
+							continue;
+						}
+						if (candidate.AccessorOwner is IProperty { } owner && owner.IsParameterizedProperty())
+						{
+							// The interface declares the property's accessors as ordinary methods, because
+							// C# cannot declare the property itself. This method already implements the one
+							// it shares a signature with, so no bridge is needed.
 							continue;
 						}
 						if (seen.Add(candidate))
@@ -2589,22 +2542,12 @@ namespace ICSharpCode.Decompiler.CSharp
 						{
 							return;
 						}
-						if (HasParametersCSharpCannotDeclare(property))
+						if (property.IsParameterizedProperty())
 						{
-							// Write the accessors as ordinary methods instead of the property. The call
-							// sites already read as get_X(...)/set_X(...), which only compiles while no
-							// property of that name hides them. They are keyed on the property, which is
-							// what the member ordering knows about.
-							foreach (var parameterizedAccessor in new[] { property.Getter, property.Setter })
+							foreach (var accessorDecl in DecompileParameterizedProperty(property, decompileRun, decompilationContext, null))
 							{
-								if (parameterizedAccessor == null)
-									continue;
-								var accessorDecl = DoDecompile(parameterizedAccessor, decompileRun,
-									decompilationContext.WithCurrentMember(parameterizedAccessor), null);
-								var methodDecl = RewriteAccessorAsMethod(parameterizedAccessor, accessorDecl, typeSystemAstBuilder);
-								RemoveAttribute(methodDecl, KnownAttribute.SpecialName);
-								entityMap.Add(property, methodDecl);
-								EnqueueReferencedMembers(methodDecl);
+								entityMap.Add(property, accessorDecl);
+								EnqueueReferencedMembers(accessorDecl);
 							}
 							return;
 						}
@@ -2691,23 +2634,23 @@ namespace ICSharpCode.Decompiler.CSharp
 				}
 
 				EnqueueReferencedMembers(entityDecl);
-			}
 
-			void EnqueueReferencedMembers(EntityDeclaration entityDecl)
-			{
-				foreach (var node in entityDecl.Descendants)
+				void EnqueueReferencedMembers(EntityDeclaration decl)
 				{
-					var rr = node.GetResolveResult();
-					if (rr is MemberResolveResult mrr
-						&& mrr.Member.DeclaringTypeDefinition == typeDef
-						&& !(mrr.Member is IMethod { IsLocalFunction: true }))
+					foreach (var node in decl.Descendants)
 					{
-						workList.Enqueue(mrr.Member);
-					}
-					else if (rr is TypeResolveResult trr
-						&& trr.Type.GetDefinition()?.DeclaringTypeDefinition == typeDef)
-					{
-						workList.Enqueue(trr.Type.GetDefinition()!);
+						var rr = node.GetResolveResult();
+						if (rr is MemberResolveResult mrr
+							&& mrr.Member.DeclaringTypeDefinition == typeDef
+							&& !(mrr.Member is IMethod { IsLocalFunction: true }))
+						{
+							workList.Enqueue(mrr.Member);
+						}
+						else if (rr is TypeResolveResult trr
+							&& trr.Type.GetDefinition()?.DeclaringTypeDefinition == typeDef)
+						{
+							workList.Enqueue(trr.Type.GetDefinition()!);
+						}
 					}
 				}
 			}
@@ -2845,7 +2788,10 @@ namespace ICSharpCode.Decompiler.CSharp
 				{
 					methodDecl.Modifiers |= Modifiers.Extern;
 				}
-				if (method.SymbolKind == SymbolKind.Method && !method.IsExplicitInterfaceImplementation
+				// Accessors qualify only when they are emitted as ordinary methods (parameterized
+				// properties); an Accessor node cannot carry the 'new' modifier.
+				if ((method.SymbolKind == SymbolKind.Method || (method.SymbolKind == SymbolKind.Accessor && methodDecl is MethodDeclaration))
+					&& !method.IsExplicitInterfaceImplementation
 					&& methodDefinition.HasFlag(System.Reflection.MethodAttributes.Virtual) == methodDefinition.HasFlag(System.Reflection.MethodAttributes.NewSlot))
 				{
 					SetNewModifier(methodDecl);
@@ -3293,6 +3239,41 @@ namespace ICSharpCode.Decompiler.CSharp
 				}
 			}
 			return false;
+		}
+
+		/// <summary>
+		/// Decompiles a parameterized property (a named property with parameters, e.g. from
+		/// VB.NET) into declarations of its accessor methods, because C# has no syntax for
+		/// such properties. The property-level attributes are placed on the first accessor
+		/// under the 'property:' attribute target, which is not valid for methods and is
+		/// therefore ignored by the C# compiler (CS0657): recompilation neither loses the
+		/// attributes from the source nor misapplies them to the accessor method.
+		/// </summary>
+		List<EntityDeclaration> DecompileParameterizedProperty(IProperty property, DecompileRun decompileRun, ITypeResolveContext decompilationContext, ExtensionInfo? extensionInfo)
+		{
+			var result = new List<EntityDeclaration>(2);
+			var typeSystemAstBuilder = CreateAstBuilder(decompileRun.Settings);
+			foreach (var accessor in new[] { property.Getter, property.Setter })
+			{
+				if (accessor == null)
+					continue;
+				var accessorDecl = DoDecompile(accessor, decompileRun, decompilationContext.WithCurrentMember(accessor), extensionInfo);
+				if (result.Count == 0)
+				{
+					accessorDecl.AddLeadingTrivia(new Comment($" C# has no syntax for parameterized property '{property.Name}'."));
+					var attributes = property.GetAttributes().Select(typeSystemAstBuilder.ConvertAttribute).ToList();
+					if (attributes.Count > 0)
+					{
+						var attrSection = new AttributeSection { AttributeTarget = "property" };
+						attrSection.Attributes.AddRange(attributes);
+						accessorDecl.Attributes.InsertAfter(null, attrSection);
+						accessorDecl.AddLeadingTrivia(new Comment(" Its 'property:' attributes below are ignored by the compiler (CS0657)."));
+					}
+				}
+				result.Add(accessorDecl);
+				result.AddRange(AddInterfaceImplHelpers(accessorDecl, accessor, typeSystemAstBuilder));
+			}
+			return result;
 		}
 
 		EntityDeclaration DoDecompile(IProperty property, DecompileRun decompileRun, ITypeResolveContext decompilationContext, ExtensionInfo? extensionInfo)

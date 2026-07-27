@@ -490,7 +490,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			// A property C# cannot declare is written as its accessor methods, so its calls have to
 			// stay calls; sugaring one into a property access would name a member that is not there.
 			bool ownerIsWritable = method.AccessorOwner is not IProperty owner
-				|| !CSharpDecompiler.HasParametersCSharpCannotDeclare(owner);
+				|| !owner.IsParameterizedProperty();
 			if (method.IsAccessor && ownerIsWritable
 				&& (method.AccessorOwner.SymbolKind == SymbolKind.Indexer || argumentList.ExpectedParameters.Length == allowedParamCount))
 			{

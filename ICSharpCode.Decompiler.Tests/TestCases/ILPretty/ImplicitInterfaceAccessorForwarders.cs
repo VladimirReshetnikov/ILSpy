@@ -19,7 +19,8 @@ public interface IComBase
 {
 	string Value { get; }
 
-	public abstract string get_TemplatePath(string projectType);
+	// C# has no syntax for parameterized property 'TemplatePath'.
+	string get_TemplatePath(string projectType);
 }
 [ComImport]
 public interface IComDerived : IComBase

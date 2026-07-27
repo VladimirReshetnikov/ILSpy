@@ -320,7 +320,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					return false;
 				// A property C# cannot declare is written as its accessor methods, so it has no name
 				// of its own in the output to rename - and nothing collides with it either.
-				if (symbol is IProperty parameterized && CSharpDecompiler.HasParametersCSharpCannotDeclare(parameterized))
+				if (symbol is IProperty parameterized && parameterized.IsParameterizedProperty())
 					return false;
 				return symbol is not IProperty { IsIndexer: true };
 			}

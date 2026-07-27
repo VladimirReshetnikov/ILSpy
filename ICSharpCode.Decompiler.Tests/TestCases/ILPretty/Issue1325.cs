@@ -35,10 +35,12 @@ namespace Issue1325
 
 	internal class Test
 	{
+		// C# has no syntax for parameterized property 'Parameterized'.
 		public string get_Parameterized(int i)
 		{
 			throw new NotImplementedException();
 		}
+
 		public void set_Parameterized(int i, string value)
 		{
 			throw new NotImplementedException();
