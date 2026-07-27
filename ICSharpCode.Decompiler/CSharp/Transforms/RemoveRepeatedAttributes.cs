@@ -80,7 +80,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			{
 				foreach (var description in dropped)
 				{
-					owner.AddLeadingTrivia(new Comment(" repeated attribute, which C# cannot declare: " + description));
+					owner.AddLeadingTrivia(new Comment(" repeated attribute: " + description));
 				}
 			}
 		}
