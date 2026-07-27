@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+
 using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax

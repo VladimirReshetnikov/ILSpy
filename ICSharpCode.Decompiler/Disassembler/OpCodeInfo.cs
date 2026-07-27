@@ -119,10 +119,10 @@ namespace ICSharpCode.Decompiler.Disassembler
 					case "no.":
 						encodedName = "No";
 						return encodedName;
-				case "readonly.":
-					// [Codex] Possible typo: this maps to "Reaonly" instead of "Readonly", which likely breaks the generated docs URL for readonly.
-					encodedName = "Reaonly";
-					return encodedName;
+					case "readonly.":
+						// [Codex] Possible typo: this maps to "Reaonly" instead of "Readonly", which likely breaks the generated docs URL for readonly.
+						encodedName = "Reaonly";
+						return encodedName;
 					case "tail.":
 						encodedName = "Tailcall";
 						return encodedName;

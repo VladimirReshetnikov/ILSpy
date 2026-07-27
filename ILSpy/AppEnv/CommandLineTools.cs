@@ -21,20 +21,20 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-	namespace ICSharpCode.ILSpy.AppEnv
+namespace ICSharpCode.ILSpy.AppEnv
+{
+	/// <summary>
+	/// Converts between raw command-line strings and argument arrays using Windows-compatible
+	/// quoting and escaping semantics.
+	/// </summary>
+	public class CommandLineTools
 	{
 		/// <summary>
-		/// Converts between raw command-line strings and argument arrays using Windows-compatible
-		/// quoting and escaping semantics.
+		/// Decodes a command line into an array of arguments according to the CommandLineToArgvW rules.
 		/// </summary>
-		public class CommandLineTools
-		{
-			/// <summary>
-			/// Decodes a command line into an array of arguments according to the CommandLineToArgvW rules.
-			/// </summary>
-			/// <param name="commandLine">The raw command line to parse.</param>
-			/// <returns>The parsed arguments, or an empty array when <paramref name="commandLine"/> is empty.</returns>
-			/// <remarks>
+		/// <param name="commandLine">The raw command line to parse.</param>
+		/// <returns>The parsed arguments, or an empty array when <paramref name="commandLine"/> is empty.</returns>
+		/// <remarks>
 		/// Command line parsing rules:
 		/// - 2n backslashes followed by a quotation mark produce n backslashes, and the quotation mark is considered to be the end of the argument.
 		/// - (2n) + 1 backslashes followed by a quotation mark again produce n backslashes followed by a quotation mark.
@@ -53,12 +53,12 @@ using System.Text;
 
 		static readonly char[] charsNeedingQuoting = { ' ', '\t', '\n', '\v', '"' };
 
-			/// <summary>
-			/// Escapes a set of arguments according to the CommandLineToArgvW rules.
-			/// </summary>
-			/// <param name="arguments">Arguments to format into a single command-line string.</param>
-			/// <returns>A command-line string that round-trips through <see cref="CommandLineToArgumentArray"/>.</returns>
-			/// <remarks>
+		/// <summary>
+		/// Escapes a set of arguments according to the CommandLineToArgvW rules.
+		/// </summary>
+		/// <param name="arguments">Arguments to format into a single command-line string.</param>
+		/// <returns>A command-line string that round-trips through <see cref="CommandLineToArgumentArray"/>.</returns>
+		/// <remarks>
 		/// Command line parsing rules:
 		/// - 2n backslashes followed by a quotation mark produce n backslashes, and the quotation mark is considered to be the end of the argument.
 		/// - (2n) + 1 backslashes followed by a quotation mark again produce n backslashes followed by a quotation mark.
@@ -120,16 +120,16 @@ using System.Text;
 			}
 		}
 
-			/// <summary>
-			/// Makes a command-line argument path absolute relative to the current directory.
-			/// Response-file markers (<c>@</c>) are preserved and the nested path is qualified recursively.
-			/// </summary>
-			/// <param name="argument">The argument to normalize.</param>
-			/// <returns>
-			/// An absolute version of <paramref name="argument"/> when it looks like a file path;
-			/// otherwise the original value.
-			/// </returns>
-			public static string FullyQualifyPath(string argument)
+		/// <summary>
+		/// Makes a command-line argument path absolute relative to the current directory.
+		/// Response-file markers (<c>@</c>) are preserved and the nested path is qualified recursively.
+		/// </summary>
+		/// <param name="argument">The argument to normalize.</param>
+		/// <returns>
+		/// An absolute version of <paramref name="argument"/> when it looks like a file path;
+		/// otherwise the original value.
+		/// </returns>
+		public static string FullyQualifyPath(string argument)
 		{
 			// Fully qualify the paths before passing them to another process,
 			// because that process might use a different current directory.

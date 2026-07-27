@@ -27,133 +27,133 @@ using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.IL
+{
+	/// <summary>
+	/// Describes per-argument metadata captured from C# dynamic call-site factories.
+	/// </summary>
+	/// <remarks>
+	/// These flags mirror runtime binder argument descriptors and are preserved so later transforms and C# emission can
+	/// reconstruct dynamic operations without losing named/ref/out or compile-time-type intent.
+	/// </remarks>
+	[Flags]
+	public enum CSharpArgumentInfoFlags
 	{
 		/// <summary>
-		/// Describes per-argument metadata captured from C# dynamic call-site factories.
+		/// No special metadata is attached to the argument.
 		/// </summary>
-		/// <remarks>
-		/// These flags mirror runtime binder argument descriptors and are preserved so later transforms and C# emission can
-		/// reconstruct dynamic operations without losing named/ref/out or compile-time-type intent.
-		/// </remarks>
-		[Flags]
-		public enum CSharpArgumentInfoFlags
-		{
-			/// <summary>
-			/// No special metadata is attached to the argument.
-			/// </summary>
-			None = 0,
-			/// <summary>
-			/// The binder should prefer the argument's compile-time static type instead of runtime dynamic type information.
-			/// </summary>
-			UseCompileTimeType = 1,
-			/// <summary>
-			/// The argument is emitted as a constant value at the call site.
-			/// </summary>
-			Constant = 2,
-			/// <summary>
-			/// The argument originated from a named argument in source.
-			/// </summary>
-			NamedArgument = 4,
-			/// <summary>
-			/// The argument is passed by reference using <c>ref</c> semantics.
-			/// </summary>
-			IsRef = 8,
-			/// <summary>
-			/// The argument is passed by reference using <c>out</c> semantics.
-			/// </summary>
-			IsOut = 0x10,
-			/// <summary>
-			/// The argument represents a static type operand rather than an instance value.
-			/// </summary>
-			IsStaticType = 0x20
-		}
+		None = 0,
+		/// <summary>
+		/// The binder should prefer the argument's compile-time static type instead of runtime dynamic type information.
+		/// </summary>
+		UseCompileTimeType = 1,
+		/// <summary>
+		/// The argument is emitted as a constant value at the call site.
+		/// </summary>
+		Constant = 2,
+		/// <summary>
+		/// The argument originated from a named argument in source.
+		/// </summary>
+		NamedArgument = 4,
+		/// <summary>
+		/// The argument is passed by reference using <c>ref</c> semantics.
+		/// </summary>
+		IsRef = 8,
+		/// <summary>
+		/// The argument is passed by reference using <c>out</c> semantics.
+		/// </summary>
+		IsOut = 0x10,
+		/// <summary>
+		/// The argument represents a static type operand rather than an instance value.
+		/// </summary>
+		IsStaticType = 0x20
+	}
+
+	/// <summary>
+	/// Describes binder-level options attached to dynamic operations.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The values correspond to the C# runtime binder flags used when constructing <c>CallSite</c> delegates.
+	/// </para>
+	/// <para>
+	/// <see cref="DynamicInstruction.WriteBinderFlags(CSharpBinderFlags, ITextOutput, ILAstWritingOptions)"/> converts these
+	/// flags into IL AST suffixes, and <see cref="ICSharpCode.Decompiler.CSharp.ExpressionBuilder"/> uses the same data to add checked/unchecked
+	/// annotations and recover dynamic expression forms.
+	/// </para>
+	/// </remarks>
+	[Flags]
+	public enum CSharpBinderFlags
+	{
+		/// <summary>
+		/// No binder options are set.
+		/// </summary>
+		None = 0,
+		/// <summary>
+		/// The operation executes in a checked arithmetic context.
+		/// </summary>
+		CheckedContext = 1,
+		/// <summary>
+		/// Member invocation uses a simple-name lookup (identifier-style call).
+		/// </summary>
+		InvokeSimpleName = 2,
+		/// <summary>
+		/// Member invocation should include special-name members.
+		/// </summary>
+		InvokeSpecialName = 4,
+		/// <summary>
+		/// A binary operation should follow logical operator binding semantics.
+		/// </summary>
+		BinaryOperationLogical = 8,
+		/// <summary>
+		/// Conversion is explicit rather than implicit.
+		/// </summary>
+		ConvertExplicit = 0x10,
+		/// <summary>
+		/// Conversion is requested for an array-indexing context.
+		/// </summary>
+		ConvertArrayIndex = 0x20,
+		/// <summary>
+		/// The result is immediately indexed by a following dynamic operation.
+		/// </summary>
+		ResultIndexed = 0x40,
+		/// <summary>
+		/// The value originates from a compound-assignment update path.
+		/// </summary>
+		ValueFromCompoundAssignment = 0x80,
+		/// <summary>
+		/// The call-site result is discarded.
+		/// </summary>
+		ResultDiscarded = 0x100
+	}
+
+	/// <summary>
+	/// Captures argument metadata associated with a dynamic binder operand.
+	/// </summary>
+	public struct CSharpArgumentInfo
+	{
+		/// <summary>
+		/// Gets or sets the source argument name when <see cref="CSharpArgumentInfoFlags.NamedArgument"/> is set.
+		/// </summary>
+		public string? Name { get; set; }
+		/// <summary>
+		/// Gets or sets the binder flags describing this argument.
+		/// </summary>
+		public CSharpArgumentInfoFlags Flags { get; set; }
+		/// <summary>
+		/// Gets or sets the compile-time type associated with the argument.
+		/// </summary>
+		public IType CompileTimeType { get; set; }
 
 		/// <summary>
-		/// Describes binder-level options attached to dynamic operations.
+		/// Determines whether the specified argument-flag value is present.
 		/// </summary>
-		/// <remarks>
-		/// <para>
-		/// The values correspond to the C# runtime binder flags used when constructing <c>CallSite</c> delegates.
-		/// </para>
-		/// <para>
-		/// <see cref="DynamicInstruction.WriteBinderFlags(CSharpBinderFlags, ITextOutput, ILAstWritingOptions)"/> converts these
-		/// flags into IL AST suffixes, and <see cref="ICSharpCode.Decompiler.CSharp.ExpressionBuilder"/> uses the same data to add checked/unchecked
-		/// annotations and recover dynamic expression forms.
-		/// </para>
-		/// </remarks>
-		[Flags]
-		public enum CSharpBinderFlags
-		{
-			/// <summary>
-			/// No binder options are set.
-			/// </summary>
-			None = 0,
-			/// <summary>
-			/// The operation executes in a checked arithmetic context.
-			/// </summary>
-			CheckedContext = 1,
-			/// <summary>
-			/// Member invocation uses a simple-name lookup (identifier-style call).
-			/// </summary>
-			InvokeSimpleName = 2,
-			/// <summary>
-			/// Member invocation should include special-name members.
-			/// </summary>
-			InvokeSpecialName = 4,
-			/// <summary>
-			/// A binary operation should follow logical operator binding semantics.
-			/// </summary>
-			BinaryOperationLogical = 8,
-			/// <summary>
-			/// Conversion is explicit rather than implicit.
-			/// </summary>
-			ConvertExplicit = 0x10,
-			/// <summary>
-			/// Conversion is requested for an array-indexing context.
-			/// </summary>
-			ConvertArrayIndex = 0x20,
-			/// <summary>
-			/// The result is immediately indexed by a following dynamic operation.
-			/// </summary>
-			ResultIndexed = 0x40,
-			/// <summary>
-			/// The value originates from a compound-assignment update path.
-			/// </summary>
-			ValueFromCompoundAssignment = 0x80,
-			/// <summary>
-			/// The call-site result is discarded.
-			/// </summary>
-			ResultDiscarded = 0x100
-		}
-
-		/// <summary>
-		/// Captures argument metadata associated with a dynamic binder operand.
-		/// </summary>
-		public struct CSharpArgumentInfo
-		{
-			/// <summary>
-			/// Gets or sets the source argument name when <see cref="CSharpArgumentInfoFlags.NamedArgument"/> is set.
-			/// </summary>
-			public string? Name { get; set; }
-			/// <summary>
-			/// Gets or sets the binder flags describing this argument.
-			/// </summary>
-			public CSharpArgumentInfoFlags Flags { get; set; }
-			/// <summary>
-			/// Gets or sets the compile-time type associated with the argument.
-			/// </summary>
-			public IType CompileTimeType { get; set; }
-
-			/// <summary>
-			/// Determines whether the specified argument-flag value is present.
-			/// </summary>
-			/// <param name="flag">The flag to test.</param>
-			/// <returns>
-			/// <see langword="true"/> if <paramref name="flag"/> is set in <see cref="Flags"/>;
-			/// otherwise <see langword="false"/>.
-			/// </returns>
-			public bool HasFlag(CSharpArgumentInfoFlags flag) => (Flags & flag) != 0;
-		}
+		/// <param name="flag">The flag to test.</param>
+		/// <returns>
+		/// <see langword="true"/> if <paramref name="flag"/> is set in <see cref="Flags"/>;
+		/// otherwise <see langword="false"/>.
+		/// </returns>
+		public bool HasFlag(CSharpArgumentInfoFlags flag) => (Flags & flag) != 0;
+	}
 
 	partial class DynamicInstruction
 	{

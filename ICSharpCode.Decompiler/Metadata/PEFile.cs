@@ -151,7 +151,7 @@ namespace ICSharpCode.Decompiler.Metadata
 		/// <summary>
 		/// Gets PE section headers projected into the decompiler's <see cref="SectionHeader"/> representation.
 		/// </summary>
-	/// <remarks>
+		/// <remarks>
 		/// The value is materialized lazily from <see cref="PEHeaders.SectionHeaders"/> and cached for subsequent calls.
 		/// </remarks>
 		public override ImmutableArray<SectionHeader> SectionHeaders {
