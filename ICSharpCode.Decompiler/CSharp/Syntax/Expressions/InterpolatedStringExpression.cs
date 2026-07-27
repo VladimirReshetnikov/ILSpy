@@ -78,8 +78,9 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	/// </summary>
 	/// <remarks>
 	/// <see cref="Alignment"/> and <see cref="Suffix"/> are values carried over from the IL string-format
-	/// pattern rather than child nodes. Only <see cref="Expression"/> occupies a slot, so pattern matching
-	/// compares the embedded expression subtree and ignores the alignment and format suffix.
+	/// pattern rather than child nodes, but pattern matching still compares them alongside
+	/// <see cref="Expression"/>: generated matching covers every property that is not marked
+	/// <c>[ExcludeFromMatch]</c>, whether or not it occupies a slot.
 	/// </remarks>
 	[DecompilerAstNode]
 	public sealed partial class Interpolation : InterpolatedStringContent

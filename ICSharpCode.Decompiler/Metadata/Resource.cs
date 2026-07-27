@@ -101,9 +101,12 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 		/// <summary>
-		/// Opens the in-memory payload for reading. Always succeeds.
+		/// Opens the in-memory payload. Always succeeds.
 		/// </summary>
-		/// <returns>A readable stream over the backing array.</returns>
+		/// <returns>
+		/// A fixed-length stream over the array this resource was constructed with. The stream is writable and
+		/// is not a copy, so writing through it modifies the caller's array.
+		/// </returns>
 		public override Stream TryOpenStream()
 		{
 			return new MemoryStream(data);
