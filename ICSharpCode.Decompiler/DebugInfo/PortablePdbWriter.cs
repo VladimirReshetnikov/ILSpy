@@ -41,6 +41,24 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.DebugInfo
 {
+	/// <summary>
+	/// Generates Portable PDB files from decompiled source and recovered IL-to-source mappings.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This writer is used by both the ILSpy UI and <c>ilspycmd</c> to produce symbols for binaries that
+	/// either have missing symbols or only legacy Windows PDB data.
+	/// </para>
+	/// <para>
+	/// The implementation decompiles each top-level type into a synthetic source file, builds sequence points
+	/// over the generated syntax tree, and emits a complete Portable PDB stream including embedded source text,
+	/// local scopes, import scopes, and selected custom debug-information records.
+	/// </para>
+	/// <para>
+	/// The generated symbols are best-effort reconstructions intended for debugging decompiled output; they are
+	/// not guaranteed to be byte-for-byte equivalent to symbols produced by the original compiler toolchain.
+	/// </para>
+	/// </remarks>
 	public class PortablePdbWriter
 	{
 		const string decompilerVersion = DecompilerVersionInfo.Version;
@@ -68,6 +86,18 @@ namespace ICSharpCode.Decompiler.DebugInfo
 		/// </summary>
 		public bool EmbedSourceFiles { get; set; } = true;
 
+		/// <summary>
+		/// Determines whether the input PE image contains a CodeView debug-directory record.
+		/// </summary>
+		/// <param name="file">Module to inspect.</param>
+		/// <returns>
+		/// <see langword="true"/> when the PE debug directory includes at least one
+		/// <see cref="DebugDirectoryEntryType.CodeView"/> entry; otherwise <see langword="false"/>.
+		/// </returns>
+		/// <remarks>
+		/// ILSpy uses this as a guard before PDB generation so callers can fail fast for files
+		/// that do not expose the debug-directory identity required by downstream tooling.
+		/// </remarks>
 		public static bool HasCodeViewDebugDirectoryEntry(PEFile file)
 		{
 			return file != null && file.Reader.ReadDebugDirectory().Any(entry => entry.Type == DebugDirectoryEntryType.CodeView);
@@ -89,6 +119,18 @@ namespace ICSharpCode.Decompiler.DebugInfo
 			return true;
 		}
 
+		/// <summary>
+		/// Writes a Portable PDB for <paramref name="file"/> to <paramref name="targetStream"/>.
+		/// </summary>
+		/// <param name="file">PE module that provides metadata, IL, and debug-directory identity.</param>
+		/// <param name="decompiler">Decompiler instance used to generate source text and sequence points.</param>
+		/// <param name="settings">Decompiler settings that control emitted source shape and file layout.</param>
+		/// <param name="targetStream">Destination stream that receives the Portable PDB payload.</param>
+		/// <remarks>
+		/// The banner comment, the stamped PDB id, progress reporting, and whether source text is embedded
+		/// are configured through <see cref="NoLogo"/>, <see cref="PdbId"/>, <see cref="Progress"/>,
+		/// <see cref="CurrentProgressTitle"/>, and <see cref="EmbedSourceFiles"/>.
+		/// </remarks>
 		public void WritePdb(
 			PEFile file,
 			CSharpDecompiler decompiler,

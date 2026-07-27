@@ -20,6 +20,12 @@ namespace ICSharpCode.Decompiler
 		/// <summary>
 		/// Check if the memory-mapped data is a single-file bundle
 		/// </summary>
+		/// <param name="view">View accessor over the candidate host file.</param>
+		/// <param name="bundleHeaderOffset">
+		/// Receives the offset of the bundle manifest header when the signature is found;
+		/// otherwise <c>0</c>.
+		/// </param>
+		/// <returns><c>true</c> if the view contains a valid .NET single-file bundle signature; otherwise <c>false</c>.</returns>
 		public static unsafe bool IsBundle(MemoryMappedViewAccessor view, out long bundleHeaderOffset)
 		{
 			var buffer = view.SafeMemoryMappedViewHandle;
@@ -35,6 +41,16 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <summary>
+		/// Checks whether an unmanaged byte range contains a .NET single-file bundle signature.
+		/// </summary>
+		/// <param name="data">Pointer to the beginning of the candidate data region.</param>
+		/// <param name="size">Length, in bytes, of the candidate data region.</param>
+		/// <param name="bundleHeaderOffset">
+		/// Receives the offset of the bundle manifest header when the signature is found;
+		/// otherwise <c>0</c>.
+		/// </param>
+		/// <returns><c>true</c> if a valid bundle signature and header offset are found; otherwise <c>false</c>.</returns>
 		public static unsafe bool IsBundle(byte* data, long size, out long bundleHeaderOffset)
 		{
 			ReadOnlySpan<byte> bundleSignature = new byte[] {
@@ -70,20 +86,33 @@ namespace ICSharpCode.Decompiler
 			return false;
 		}
 
+		/// <summary>
+		/// Parsed metadata header for a .NET single-file bundle.
+		/// </summary>
 		public struct Header
 		{
+			/// <summary>Bundle manifest major version.</summary>
 			public uint MajorVersion;
+			/// <summary>Bundle manifest minor version.</summary>
 			public uint MinorVersion;
+			/// <summary>Number of entries stored in <see cref="Entries"/>.</summary>
 			public int FileCount;
+			/// <summary>Bundle identifier emitted by the bundler.</summary>
 			public string BundleID;
 
 			// Fields introduced with v2:
+			/// <summary>Offset of the embedded <c>.deps.json</c> file.</summary>
 			public long DepsJsonOffset;
+			/// <summary>Size of the embedded <c>.deps.json</c> file.</summary>
 			public long DepsJsonSize;
+			/// <summary>Offset of the embedded <c>.runtimeconfig.json</c> file.</summary>
 			public long RuntimeConfigJsonOffset;
+			/// <summary>Size of the embedded <c>.runtimeconfig.json</c> file.</summary>
 			public long RuntimeConfigJsonSize;
+			/// <summary>Bundle flags introduced by newer manifest versions.</summary>
 			public ulong Flags;
 
+			/// <summary>Entries described by the bundle manifest.</summary>
 			public ImmutableArray<Entry> Entries;
 		}
 
@@ -95,26 +124,43 @@ namespace ICSharpCode.Decompiler
 		/// </summary>
 		public enum FileType : byte
 		{
+			/// <summary>Type not determined.</summary>
 			Unknown,           // Type not determined.
+			/// <summary>Managed assembly (IL and ReadyToRun).</summary>
 			Assembly,          // IL and R2R Assemblies
+			/// <summary>Native binary payload.</summary>
 			NativeBinary,      // NativeBinaries
+			/// <summary><c>.deps.json</c> configuration payload.</summary>
 			DepsJson,          // .deps.json configuration file
+			/// <summary><c>.runtimeconfig.json</c> configuration payload.</summary>
 			RuntimeConfigJson, // .runtimeconfig.json configuration file
+			/// <summary>Debug symbols payload (for example PDB files).</summary>
 			Symbols            // PDB Files
 		};
 
+		/// <summary>
+		/// One file entry described in a bundle manifest.
+		/// </summary>
 		public struct Entry
 		{
+			/// <summary>Offset of the payload within the bundle file.</summary>
 			public long Offset;
+			/// <summary>Uncompressed payload size, in bytes.</summary>
 			public long Size;
+			/// <summary>Compressed payload size in the bundle, or <c>0</c> when the payload is stored uncompressed.</summary>
 			public long CompressedSize; // 0 if not compressed, otherwise the compressed size in the bundle
+			/// <summary>Type classification used by the host runtime.</summary>
 			public FileType Type;
+			/// <summary>Path of the embedded file, relative to the bundle source directory.</summary>
 			public string RelativePath; // Path of an embedded file, relative to the Bundle source-directory.
 		}
 
 		/// <summary>
 		/// Reads the manifest header from the memory mapping.
 		/// </summary>
+		/// <param name="view">View accessor over the bundle file.</param>
+		/// <param name="bundleHeaderOffset">Absolute byte offset where the bundle header starts.</param>
+		/// <returns>The parsed bundle manifest header.</returns>
 		public static Header ReadManifest(MemoryMappedViewAccessor view, long bundleHeaderOffset)
 		{
 			using var stream = view.AsStream();
@@ -125,6 +171,9 @@ namespace ICSharpCode.Decompiler
 		/// <summary>
 		/// Reads the manifest header from the stream.
 		/// </summary>
+		/// <param name="stream">Stream positioned at the beginning of a bundle manifest header.</param>
+		/// <returns>The parsed bundle manifest header.</returns>
+		/// <exception cref="InvalidDataException">Thrown when the manifest version is outside the supported range.</exception>
 		public static Header ReadManifest(Stream stream)
 		{
 			var header = new Header();

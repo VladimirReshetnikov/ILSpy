@@ -21,12 +21,31 @@ using System.Xml.Linq;
 
 namespace ICSharpCode.ILSpyX.Settings
 {
+	/// <summary>
+	/// Abstraction over ILSpy's XML settings document.
+	/// Implementations expose individual top-level sections and provide a synchronized update pipeline.
+	/// </summary>
 	public interface ISettingsProvider
 	{
+		/// <summary>
+		/// Gets a top-level section by name.
+		/// </summary>
+		/// <param name="section">Qualified section name under the root <c>ILSpy</c> element.</param>
+		/// <returns>
+		/// The stored section element when present; otherwise an empty element with the requested name.
+		/// </returns>
 		XElement this[XName section] { get; }
 
+		/// <summary>
+		/// Applies a mutation to the settings root and persists the result.
+		/// </summary>
+		/// <param name="action">Callback that updates the root element before it is saved.</param>
 		void Update(Action<XElement> action);
 
+		/// <summary>
+		/// Saves or replaces an entire top-level section.
+		/// </summary>
+		/// <param name="section">Section element to write under the root <c>ILSpy</c> node.</param>
 		void SaveSettings(XElement section);
 	}
 }

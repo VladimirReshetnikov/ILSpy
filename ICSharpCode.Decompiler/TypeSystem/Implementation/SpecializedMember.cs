@@ -28,8 +28,20 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
 	/// <summary>
-	/// Represents a SpecializedMember (a member on which type substitution has been performed).
+	/// Represents an <see cref="IMember"/> whose declaring type, signature, or both are viewed through a
+	/// <see cref="TypeParameterSubstitution"/>.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Specialized members are wrappers around definition members; metadata identity and declaration ownership still come
+	/// from the wrapped member, while type-facing surfaces such as <see cref="DeclaringType"/> and <see cref="ReturnType"/>
+	/// are projected through the stored substitution.
+	/// </para>
+	/// <para>
+	/// This type is used heavily by member enumeration helpers for parameterized types, ensuring callers observe correctly
+	/// substituted signatures without mutating definition objects.
+	/// </para>
+	/// </remarks>
 	public abstract class SpecializedMember : IMember
 	{
 		protected readonly IMember baseMember;
@@ -50,8 +62,12 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		}
 
 		/// <summary>
-		/// Performs a substitution. This method may only be called by constructors in derived classes.
+		/// Composes an additional substitution into this wrapper.
 		/// </summary>
+		/// <param name="newSubstitution">The substitution to compose in front of the current substitution chain.</param>
+		/// <remarks>
+		/// This method must be used only during construction, before any lazily cached member state has been observed.
+		/// </remarks>
 		protected void AddSubstitution(TypeParameterSubstitution newSubstitution)
 		{
 			Debug.Assert(declaringType == null);
@@ -77,7 +93,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		}
 
 		/// <summary>
-		/// Gets the substitution belonging to this specialized member.
+		/// Gets the substitution currently applied by this specialized member.
 		/// </summary>
 		public TypeParameterSubstitution Substitution {
 			get { return substitution; }
@@ -262,10 +278,28 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		}
 	}
 
+	/// <summary>
+	/// Base class for specialized members that expose a parameter list.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This type extends <see cref="SpecializedMember"/> by lazily rebuilding parameter metadata after applying
+	/// type-argument substitution. The rebuilt parameters keep all non-type metadata (name, attributes, default
+	/// values, reference kind) from the original definition while projecting substituted parameter types.
+	/// </para>
+	/// <para>
+	/// Parameter materialization is cached because specialized members can participate in hot overload-resolution
+	/// and signature-comparison paths.
+	/// </para>
+	/// </remarks>
 	public abstract class SpecializedParameterizedMember : SpecializedMember, IParameterizedMember
 	{
 		IReadOnlyList<IParameter> parameters;
 
+		/// <summary>
+		/// Initializes the specialized wrapper for a parameterized member definition.
+		/// </summary>
+		/// <param name="memberDefinition">The original member definition being specialized.</param>
 		protected SpecializedParameterizedMember(IParameterizedMember memberDefinition)
 			: base(memberDefinition)
 		{
@@ -289,6 +323,11 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
+		/// <summary>
+		/// Creates substituted parameter objects based on <paramref name="substitution"/>.
+		/// </summary>
+		/// <param name="substitution">Mapping applied to each source parameter type.</param>
+		/// <returns>An array containing specialized parameter instances in declaration order.</returns>
 		protected IParameter[] CreateParameters(Func<IType, IType> substitution)
 		{
 			var paramDefs = ((IParameterizedMember)this.baseMember).Parameters;

@@ -21,8 +21,18 @@ using System;
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Default ITypeResolveContext implementation.
+	/// Provides an immutable <see cref="ITypeResolveContext"/> implementation for compilation, module, type, and member scope.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Semantics.</b> Each instance captures one snapshot of resolution scope. Methods that adjust scope return new
+	/// instances and keep the original instance unchanged.
+	/// </para>
+	/// <para>
+	/// <b>Usage.</b> This type is commonly used when resolving <see cref="ITypeReference"/> values outside a full
+	/// resolver pipeline, for example in metadata loaders or helper utilities that need a lightweight context object.
+	/// </para>
+	/// </remarks>
 	public class SimpleTypeResolveContext : ITypeResolveContext
 	{
 		readonly ICompilation compilation;
@@ -30,6 +40,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		readonly ITypeDefinition currentTypeDefinition;
 		readonly IMember currentMember;
 
+		/// <summary>
+		/// Creates a context that is anchored only to a compilation.
+		/// </summary>
+		/// <param name="compilation">The compilation used for symbol identity and known-type lookup.</param>
+		/// <exception cref="ArgumentNullException">Thrown when <paramref name="compilation"/> is <see langword="null"/>.</exception>
 		public SimpleTypeResolveContext(ICompilation compilation)
 		{
 			if (compilation == null)
@@ -37,6 +52,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.compilation = compilation;
 		}
 
+		/// <summary>
+		/// Creates a context anchored to a specific module.
+		/// </summary>
+		/// <param name="module">The current module scope.</param>
+		/// <exception cref="ArgumentNullException">Thrown when <paramref name="module"/> is <see langword="null"/>.</exception>
 		public SimpleTypeResolveContext(IModule module)
 		{
 			if (module == null)
@@ -45,6 +65,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.currentModule = module;
 		}
 
+		/// <summary>
+		/// Creates a context anchored to an entity and infers module/type/member scope from that entity.
+		/// </summary>
+		/// <param name="entity">The entity that supplies the current compilation and lexical scope.</param>
+		/// <exception cref="ArgumentNullException">Thrown when <paramref name="entity"/> is <see langword="null"/>.</exception>
 		public SimpleTypeResolveContext(IEntity entity)
 		{
 			if (entity == null)
@@ -63,27 +88,33 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.currentMember = currentMember;
 		}
 
+		/// <inheritdoc/>
 		public ICompilation Compilation {
 			get { return compilation; }
 		}
 
+		/// <inheritdoc/>
 		public IModule CurrentModule {
 			get { return currentModule; }
 		}
 
+		/// <inheritdoc/>
 		public ITypeDefinition CurrentTypeDefinition {
 			get { return currentTypeDefinition; }
 		}
 
+		/// <inheritdoc/>
 		public IMember CurrentMember {
 			get { return currentMember; }
 		}
 
+		/// <inheritdoc/>
 		public ITypeResolveContext WithCurrentTypeDefinition(ITypeDefinition typeDefinition)
 		{
 			return new SimpleTypeResolveContext(compilation, currentModule, typeDefinition, currentMember);
 		}
 
+		/// <inheritdoc/>
 		public ITypeResolveContext WithCurrentMember(IMember member)
 		{
 			return new SimpleTypeResolveContext(compilation, currentModule, currentTypeDefinition, member);

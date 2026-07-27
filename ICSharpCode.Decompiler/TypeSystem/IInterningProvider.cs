@@ -43,6 +43,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	/// </remarks>
 	public abstract class InterningProvider
 	{
+		/// <summary>
+		/// No-op interning provider that returns every input instance unchanged.
+		/// </summary>
 		public static readonly InterningProvider Dummy = new DummyInterningProvider();
 
 		/// <summary>
@@ -50,6 +53,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// 
 		/// If the object is freezable, it will be frozen.
 		/// </summary>
+		/// <param name="obj">The interning-capable object instance to canonicalize.</param>
+		/// <returns>
+		/// The canonical instance for <paramref name="obj"/>, or <c>null</c> if <paramref name="obj"/> is <c>null</c>.
+		/// </returns>
 		[return: NotNullIfNotNull("obj")]
 		public abstract ISupportsInterning? Intern(ISupportsInterning? obj);
 
@@ -58,6 +65,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// 
 		/// If the object is freezable, it will be frozen.
 		/// </summary>
+		/// <typeparam name="T">Concrete runtime type of the object to intern.</typeparam>
+		/// <param name="obj">The typed object instance to canonicalize.</param>
+		/// <returns>
+		/// The canonical instance for <paramref name="obj"/>, preserving its static type, or <c>null</c>.
+		/// </returns>
 		[return: NotNullIfNotNull("obj")]
 		public T? Intern<T>(T? obj) where T : class, ISupportsInterning
 		{
@@ -68,18 +80,31 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Interns the specified string.
 		/// </summary>
+		/// <param name="text">The string to canonicalize.</param>
+		/// <returns>
+		/// The canonical string instance for <paramref name="text"/>, or <c>null</c>.
+		/// </returns>
 		[return: NotNullIfNotNull("text")]
 		public abstract string? Intern(string? text);
 
 		/// <summary>
-		/// Inters a boxed value type.
+		/// Interns a boxed value instance.
 		/// </summary>
+		/// <param name="obj">The boxed value to canonicalize.</param>
+		/// <returns>
+		/// The canonical boxed value for <paramref name="obj"/>, or <c>null</c>.
+		/// </returns>
 		[return: NotNullIfNotNull("obj")]
 		public abstract object? InternValue(object? obj);
 
 		/// <summary>
 		/// Interns the given list. Uses reference equality to compare the list elements.
 		/// </summary>
+		/// <typeparam name="T">Reference type stored in the list.</typeparam>
+		/// <param name="list">The list to canonicalize.</param>
+		/// <returns>
+		/// The canonical list instance for <paramref name="list"/>, or <c>null</c>.
+		/// </returns>
 		[return: NotNullIfNotNull("list")]
 		public abstract IList<T>? InternList<T>(IList<T>? list) where T : class;
 

@@ -21,10 +21,22 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
 	/// <summary>
-	/// Represents a specialized IField (field after type substitution).
+	/// Represents an <see cref="IField"/> wrapper whose field type is projected through a substitution.
 	/// </summary>
+	/// <remarks>
+	/// Constant values and field modifiers are forwarded from the definition member; only type-facing projections are
+	/// specialized.
+	/// </remarks>
 	public class SpecializedField : SpecializedMember, IField
 	{
+		/// <summary>
+		/// Creates a specialized field wrapper when substitution affects the field context.
+		/// </summary>
+		/// <param name="fieldDefinition">The unspecialized field definition.</param>
+		/// <param name="substitution">Substitution to apply.</param>
+		/// <returns>
+		/// <paramref name="fieldDefinition"/> when no specialization is required; otherwise a specialized wrapper.
+		/// </returns>
 		internal static IField Create(IField fieldDefinition, TypeParameterSubstitution substitution)
 		{
 			if (TypeParameterSubstitution.Identity.Equals(substitution) || fieldDefinition.DeclaringType.TypeParameterCount == 0)
@@ -38,6 +50,11 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		readonly IField fieldDefinition;
 
+		/// <summary>
+		/// Initializes a specialized field wrapper.
+		/// </summary>
+		/// <param name="fieldDefinition">The wrapped field definition.</param>
+		/// <param name="substitution">Substitution to apply when projecting field type.</param>
 		public SpecializedField(IField fieldDefinition, TypeParameterSubstitution substitution)
 			: base(fieldDefinition)
 		{

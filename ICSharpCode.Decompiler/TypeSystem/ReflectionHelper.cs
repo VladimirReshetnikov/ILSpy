@@ -28,6 +28,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	/// <summary>
 	/// Static helper methods for reflection names.
 	/// </summary>
+	/// <remarks>
+	/// These helpers bridge between runtime reflection encodings (assembly-qualified names, arity suffixes,
+	/// and open generic placeholders such as <c>`0</c> / <c>``0</c>) and ILSpy's semantic type model.
+	/// </remarks>
 	public static class ReflectionHelper
 	{
 		#region ICompilation.FindType
@@ -35,6 +39,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Retrieves the specified type in this compilation.
 		/// Returns <see cref="SpecialType.UnknownType"/> if the type cannot be found in this compilation.
 		/// </summary>
+		/// <param name="compilation">The compilation used for resolving framework and referenced types.</param>
+		/// <param name="type">The runtime <see cref="Type"/> to resolve.</param>
+		/// <returns>
+		/// The resolved decompiler type, or <see cref="SpecialType.UnknownType"/> when the type cannot be mapped.
+		/// </returns>
 		/// <remarks>
 		/// This method cannot be used with open types; all type parameters will be substituted
 		/// with <see cref="SpecialType.UnknownType"/>.
@@ -44,6 +53,15 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			return ParseReflectionName(type.AssemblyQualifiedName, new SimpleTypeResolveContext(compilation));
 		}
 
+		/// <summary>
+		/// Retrieves a decompiler type from an IL evaluation-stack category.
+		/// </summary>
+		/// <param name="compilation">The compilation that supplies known primitive and framework types.</param>
+		/// <param name="stackType">The stack category that should be translated to an <see cref="IType"/>.</param>
+		/// <param name="sign">The signedness to apply when mapping native integer stack types.</param>
+		/// <returns>
+		/// A concrete <see cref="IType"/> for the stack category, including synthetic unknown/reference types where necessary.
+		/// </returns>
 		public static IType FindType(this ICompilation compilation, StackType stackType, Sign sign = Sign.None)
 		{
 			switch (stackType)
@@ -62,6 +80,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Removes the ` with type parameter count from the reflection name.
 		/// </summary>
+		/// <param name="reflectionName">The reflection type name segment to normalize.</param>
+		/// <returns>The type name without a trailing generic arity suffix.</returns>
 		/// <remarks>Do not use this method with the full name of inner classes.</remarks>
 		public static string SplitTypeParameterCountFromReflectionName(string reflectionName)
 		{
@@ -79,6 +99,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Removes the ` with type parameter count from the reflection name.
 		/// </summary>
+		/// <param name="reflectionName">The reflection type name segment to normalize.</param>
+		/// <param name="typeParameterCount">Receives the parsed generic arity, or <c>0</c> when no suffix is present.</param>
+		/// <returns>The type name without a trailing generic arity suffix.</returns>
 		/// <remarks>Do not use this method with the full name of inner classes.</remarks>
 		public static string SplitTypeParameterCountFromReflectionName(string reflectionName, out int typeParameterCount)
 		{
@@ -103,6 +126,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Retrieves a built-in type using the specified type code.
 		/// </summary>
+		/// <param name="compilation">The compilation that provides built-in type definitions.</param>
+		/// <param name="typeCode">The runtime type code to convert.</param>
+		/// <returns>The matching built-in type, or <see cref="SpecialType.UnknownType"/> if unavailable.</returns>
 		public static IType FindType(this ICompilation compilation, TypeCode typeCode)
 		{
 			return compilation.FindType((KnownTypeCode)typeCode);
@@ -111,6 +137,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Gets the type code for the specified type, or TypeCode.Empty if none of the other type codes match.
 		/// </summary>
+		/// <param name="type">The type to classify.</param>
+		/// <returns>The corresponding <see cref="TypeCode"/>, or <see cref="TypeCode.Empty"/> when no mapping exists.</returns>
 		public static TypeCode GetTypeCode(this IType type)
 		{
 			ITypeDefinition def = type as ITypeDefinition;
@@ -131,6 +159,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Parses a reflection name into a type reference.
 		/// </summary>
 		/// <param name="reflectionTypeName">The reflection name of the type.</param>
+		/// <param name="resolveContext">
+		/// The resolution scope used for generic parameters, current module preference, and assembly lookup.
+		/// </param>
 		/// <returns>A type reference that represents the reflection name.</returns>
 		/// <exception cref="ReflectionNameParseException">The syntax of the reflection type name is invalid</exception>
 		/// <remarks>
@@ -144,6 +175,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// it will look in all other assemblies of the compilation.
 		/// </remarks>
 		/// <seealso cref="FullTypeName(string)"/>
+		/// <example>
+		/// <code>
+		/// // Resolves a closed, assembly-qualified runtime type name.
+		/// IType t = ReflectionHelper.ParseReflectionName(
+		///     "System.Collections.Generic.List`1[[System.String, System.Private.CoreLib]], System.Private.CoreLib",
+		///     new SimpleTypeResolveContext(compilation));
+		/// </code>
+		/// </example>
 		public static IType ParseReflectionName(string reflectionTypeName, ITypeResolveContext resolveContext)
 		{
 			if (reflectionTypeName == null)

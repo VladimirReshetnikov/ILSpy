@@ -34,6 +34,9 @@ using ICSharpCode.ILSpy;
 
 namespace ICSharpCode.ILSpy.ReadyToRun
 {
+	/// <summary>
+	/// Decodes and formats native instructions for a single ReadyToRun runtime function, including optional GC/debug/unwind annotations.
+	/// </summary>
 	internal class ReadyToRunDisassembler
 	{
 		private readonly ITextOutput output;
@@ -41,6 +44,13 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 		private readonly RuntimeFunction runtimeFunction;
 		private readonly SettingsService settingsService;
 
+		/// <summary>
+		/// Creates a disassembler bound to one runtime function and the surrounding ReadyToRun image context.
+		/// </summary>
+		/// <param name="output">Text output sink receiving formatted instructions and comments.</param>
+		/// <param name="reader">ReadyToRun reader used to resolve code bytes and metadata.</param>
+		/// <param name="runtimeFunction">Runtime function whose native body should be decoded.</param>
+		/// <param name="settingsService">Settings provider used to read display options for optional annotations.</param>
 		public ReadyToRunDisassembler(ITextOutput output, ReadyToRunReader reader, RuntimeFunction runtimeFunction, SettingsService settingsService)
 		{
 			this.output = output;
@@ -49,6 +59,14 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 			this.settingsService = settingsService;
 		}
 
+		/// <summary>
+		/// Disassembles the configured runtime function and writes formatted instructions with optional metadata, unwind, debug, and GC details.
+		/// </summary>
+		/// <param name="currentFile">PE file used when formatting metadata references in call-site annotations.</param>
+		/// <param name="bitness">Instruction mode passed to the decoder (32 or 64 bit).</param>
+		/// <param name="address">Native start address used as the decoder instruction pointer base.</param>
+		/// <param name="showMetadataTokens">Whether metadata tokens should be appended in annotation output.</param>
+		/// <param name="showMetadataTokensInBase10">Whether emitted metadata tokens should use decimal instead of hexadecimal format.</param>
 		public void Disassemble(PEFile currentFile, int bitness, ulong address, bool showMetadataTokens, bool showMetadataTokensInBase10)
 		{
 			ReadyToRunMethod readyToRunMethod = runtimeFunction.Method;
@@ -213,12 +231,19 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 			public Dictionary<string, Dictionary<int, HashSet<Variable>>> registerRelativeVariables;
 			public Dictionary<string, HashSet<Variable>> registerVariables;
 
+			/// <summary>
+			/// Initializes mutable tracking maps used while replaying debug variable location transitions.
+			/// </summary>
 			public DebugInfoHelper()
 			{
 				this.registerRelativeVariables = new Dictionary<string, Dictionary<int, HashSet<Variable>>>();
 				this.registerVariables = new Dictionary<string, HashSet<Variable>>();
 			}
 
+			/// <summary>
+			/// Applies all variable-location transitions that begin or end at the specified code offset.
+			/// </summary>
+			/// <param name="codeOffset">Native instruction offset for which pending debug records should be processed.</param>
 			public void Update(ulong codeOffset)
 			{
 				HashSet<Variable> variables;

@@ -22,8 +22,18 @@ using System.Collections.Generic;
 namespace ICSharpCode.Decompiler.Util
 {
 	/// <summary>
-	/// Union-Find data structure.
+	/// Maintains disjoint sets and supports near-constant-time union/find operations.
 	/// </summary>
+	/// <typeparam name="T">Element type used as the logical identity of each set member.</typeparam>
+	/// <remarks>
+	/// <para>
+	/// This implementation combines path compression and union-by-rank. It is used by IL transforms to group related instructions/variables without
+	/// repeatedly traversing entire equivalence classes.
+	/// </para>
+	/// <para>
+	/// Elements are added lazily: calling <see cref="Find"/> or <see cref="Merge"/> on an unseen value implicitly creates a singleton set for it.
+	/// </para>
+	/// </remarks>
 	public class UnionFind<T> where T : notnull
 	{
 		Dictionary<T, Node> mapping;
@@ -41,6 +51,9 @@ namespace ICSharpCode.Decompiler.Util
 			}
 		}
 
+		/// <summary>
+		/// Initializes an empty disjoint-set structure.
+		/// </summary>
 		public UnionFind()
 		{
 			mapping = new Dictionary<T, Node>();
@@ -57,6 +70,14 @@ namespace ICSharpCode.Decompiler.Util
 			return node;
 		}
 
+		/// <summary>
+		/// Finds the representative element of the set containing <paramref name="element"/>.
+		/// </summary>
+		/// <param name="element">Element whose set representative should be returned.</param>
+		/// <returns>The canonical representative value for <paramref name="element"/>'s set.</returns>
+		/// <remarks>
+		/// This operation applies path compression, flattening traversed parent links to speed up subsequent lookups.
+		/// </remarks>
 		public T Find(T element)
 		{
 			return FindRoot(GetNode(element)).value;
@@ -69,6 +90,15 @@ namespace ICSharpCode.Decompiler.Util
 			return node.parent;
 		}
 
+		/// <summary>
+		/// Unions the sets containing <paramref name="a"/> and <paramref name="b"/>.
+		/// </summary>
+		/// <param name="a">First element.</param>
+		/// <param name="b">Second element.</param>
+		/// <remarks>
+		/// If both elements are already in the same set, this method does nothing. Otherwise it attaches the lower-rank root under the higher-rank root,
+		/// incrementing rank when both roots have equal rank.
+		/// </remarks>
 		public void Merge(T a, T b)
 		{
 			var rootA = FindRoot(GetNode(a));

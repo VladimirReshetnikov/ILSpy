@@ -20,10 +20,13 @@
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
+	/// <summary>
+	/// Exposes canonical names for entities that can appear in metadata/type-system identity comparisons.
+	/// </summary>
 	public interface INamedElement
 	{
 		/// <summary>
-		/// Gets the fully qualified name of the class the return type is pointing to.
+		/// Gets the namespace-qualified metadata name.
 		/// </summary>
 		/// <returns>
 		/// "System.Int32[]" for int[]<br/>
@@ -33,7 +36,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		string FullName { get; }
 
 		/// <summary>
-		/// Gets the short name of the class the return type is pointing to.
+		/// Gets the simple metadata name without namespace qualification.
 		/// </summary>
 		/// <returns>
 		/// "Int32[]" for int[]<br/>
@@ -58,7 +61,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		string ReflectionName { get; }
 
 		/// <summary>
-		/// Gets the full name of the namespace containing this entity.
+		/// Gets the namespace that directly contains this entity.
 		/// </summary>
 		string Namespace { get; }
 	}

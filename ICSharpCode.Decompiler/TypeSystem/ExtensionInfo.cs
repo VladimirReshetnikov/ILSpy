@@ -29,12 +29,31 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
+	/// <summary>
+	/// Discovers and exposes compiler-generated metadata that represents C# extension blocks.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The C# compiler emits extension declarations as synthetic nested types and methods.
+	/// <see cref="ExtensionInfo"/> reverse-engineers those encodings and builds a bidirectional map between
+	/// metadata-only extension signatures and the static implementation methods that contain executable bodies.
+	/// </para>
+	/// <para>
+	/// Consumers such as <see cref="CSharp.CSharpDecompiler"/> use this map to hide implementation artifacts and
+	/// reconstruct source-shaped extension declarations.
+	/// </para>
+	/// </remarks>
 	public class ExtensionInfo
 	{
 		readonly Dictionary<IMember, ExtensionMemberInfo> extensionMemberMap;
 		readonly Dictionary<IMember, ExtensionMemberInfo> implementationMemberMap;
 		readonly List<(IMethod Marker, IReadOnlyList<ITypeParameter> TypeParameters)> extensionGroups;
 
+		/// <summary>
+		/// Creates extension metadata mappings for a single extension container type.
+		/// </summary>
+		/// <param name="module">Owning metadata module used to query raw type/method definitions.</param>
+		/// <param name="extensionContainer">Static class that contains compiler-emitted extension artifacts.</param>
 		public ExtensionInfo(MetadataModule module, ITypeDefinition extensionContainer)
 		{
 			this.extensionMemberMap = new();
@@ -222,23 +241,58 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Gets the static class that contains the compiler-emitted extension artifacts described by this map.
+		/// </summary>
 		public ITypeDefinition Container { get; }
 
+		/// <summary>
+		/// Gets decompiler metadata for a method that is declared inside an extension grouping type.
+		/// </summary>
+		/// <param name="method">Method that may represent an extension member declaration artifact.</param>
+		/// <returns>
+		/// Extension mapping information when <paramref name="method"/> is known as an extension member;
+		/// otherwise <see langword="null"/>.
+		/// </returns>
 		public ExtensionMemberInfo? InfoOfExtensionMember(IMethod method)
 		{
 			return this.extensionMemberMap.TryGetValue(method, out var value) ? value : null;
 		}
 
+		/// <summary>
+		/// Gets decompiler metadata for a static implementation method emitted in the extension container.
+		/// </summary>
+		/// <param name="method">Method that may be an implementation target for an extension declaration.</param>
+		/// <returns>
+		/// Extension mapping information when <paramref name="method"/> is recognized as an implementation method;
+		/// otherwise <see langword="null"/>.
+		/// </returns>
 		public ExtensionMemberInfo? InfoOfImplementationMember(IMethod method)
 		{
 			return this.implementationMemberMap.TryGetValue(method, out var value) ? value : null;
 		}
 
+		/// <summary>
+		/// Determines whether <paramref name="td"/> is a static class holding extension groups.
+		/// </summary>
+		/// <param name="td">Type definition to test.</param>
+		/// <returns>
+		/// <see langword="true"/> when at least one extension group in this map is nested inside
+		/// <paramref name="td"/>; otherwise <see langword="false"/>.
+		/// </returns>
 		public bool IsExtensionGroupType(ITypeDefinition td)
 		{
 			return this.extensionGroups.Any(m => m.Marker.DeclaringTypeDefinition?.DeclaringTypeDefinition?.Equals(td) == true);
 		}
 
+		/// <summary>
+		/// Determines whether <paramref name="td"/> is one of the compiler-generated extension marker types.
+		/// </summary>
+		/// <param name="td">Type definition to test.</param>
+		/// <param name="extensionGroup">
+		/// On success, the marker method and extension-block type parameters declared by <paramref name="td"/>.
+		/// </param>
+		/// <returns><see langword="true"/> when the type participates in this extension map; otherwise <see langword="false"/>.</returns>
 		public bool IsExtensionMarkerType(ITypeDefinition td, out (IMethod Marker, IReadOnlyList<ITypeParameter> TypeParameters) extensionGroup)
 		{
 			extensionGroup = default;
@@ -278,6 +332,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		public IReadOnlyList<(IMethod Marker, IReadOnlyList<ITypeParameter> TypeParameters)> ExtensionGroups => this.extensionGroups;
 	}
 
+	/// <summary>
+	/// Describes the relationship between an extension declaration artifact and its executable implementation method.
+	/// </summary>
 	public readonly struct ExtensionMemberInfo(IMethod marker, IReadOnlyList<ITypeParameter> typeParameters, IMethod extension, IMethod implementation)
 	{
 		/// <summary>
@@ -298,23 +355,23 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		public readonly IMethod ImplementationMethod = implementation;
 
 		/// <summary>
-		/// This is the array of type parameters for the extension declaration.
+		/// The type parameters declared by the extension block.
 		/// </summary>
 		public readonly IReadOnlyList<ITypeParameter> ExtensionGroupingTypeParameters = typeParameters;
 
 		/// <summary>
-		/// This is the enclosing static class.
+		/// Gets the enclosing static class that contains <see cref="ImplementationMethod"/>.
 		/// </summary>
 		public ITypeDefinition ExtensionContainer => ImplementationMethod.DeclaringTypeDefinition!;
 
 		/// <summary>
-		/// This is the compiler-generated class containing the extension members. Has type parameters
-		/// from the extension declaration with minimal constraints.
+		/// Gets the compiler-generated nested type that contains metadata-only extension member signatures.
 		/// </summary>
 		public ITypeDefinition ExtensionGroupingType => ExtensionMember.DeclaringTypeDefinition!;
 
 		/// <summary>
-		/// This class holds the type parameters for the extension declaration with full fidelity of C# constraints.
+		/// Gets the marker type that holds the extension declaration's type parameters with full fidelity
+		/// of their C# constraints.
 		/// </summary>
 		public ITypeDefinition ExtensionMarkerType => ExtensionMarkerMethod.DeclaringTypeDefinition!;
 	}

@@ -23,8 +23,17 @@ using ICSharpCode.Decompiler.TypeSystem.Implementation;
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Contains static implementations of special types.
+	/// Represents non-metadata pseudo-types used by ILSpy during semantic analysis and decompilation.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Semantics.</b> <see cref="SpecialType"/> instances model language-level or analysis-only categories such as
+	/// <c>dynamic</c>, the null literal type, unknown/error types, and unbound generic placeholders.
+	/// </para>
+	/// <para>
+	/// <b>Identity.</b> Equality for these values is intentionally based on <see cref="Kind"/> rather than reference identity.
+	/// </para>
+	/// </remarks>
 	[Serializable]
 	public sealed class SpecialType : AbstractType, ITypeReference
 	{
@@ -80,14 +89,23 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.isReferenceType = isReferenceType;
 		}
 
+		/// <summary>
+		/// Gets the display-oriented type name token used by this special type.
+		/// </summary>
 		public override string Name {
 			get { return name; }
 		}
 
+		/// <summary>
+		/// Gets the semantic category represented by this special type instance.
+		/// </summary>
 		public override TypeKind Kind {
 			get { return kind; }
 		}
 
+		/// <summary>
+		/// Gets whether this special type should be treated as a reference type.
+		/// </summary>
 		public override bool? IsReferenceType {
 			get { return isReferenceType; }
 		}

@@ -30,6 +30,7 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 	{
 		/// <summary>Generates a dictionary of unique and short, but human readable identifiers for
 		/// <paramref name="types"/> to be able to safely reference them in any combination.</summary>
+		/// <param name="types">Types selected for inclusion in the diagram.</param>
 		private static Dictionary<IType, string> GenerateUniqueIds(IEnumerable<ITypeDefinition> types)
 		{
 			Dictionary<IType, string> uniqueIds = [];
@@ -57,6 +58,10 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 		/// For a closed generic <paramref name="type"/>, returns the open generic type and the unique identifier of it.
 		/// That helps connecting closed generic references (e.g. Store&lt;int>) to their corresponding
 		/// open generic <see cref="CD.Type"/> (e.g. Store&lt;T>) like in <see cref="BuildRelationship(IType, string?)"/>.</summary>
+		/// <param name="type">Type that should be mapped to a stable diagram identifier.</param>
+		/// <returns>
+		/// A tuple containing the computed identifier and, for closed generics, the matching open generic type.
+		/// </returns>
 		private (string id, IType? openGeneric) GetIdAndOpenGeneric(IType type)
 		{
 			// get open generic type if type is a closed generic (i.e. has type args none of which are parameters)

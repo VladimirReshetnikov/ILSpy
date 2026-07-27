@@ -8,8 +8,12 @@ namespace LightJson
 	using System.Diagnostics.CodeAnalysis;
 
 	/// <summary>
-	/// Represents a key-value pair collection of JsonValue objects.
+	/// Represents a JSON object as an ordered-by-insertion key/value map.
 	/// </summary>
+	/// <remarks>
+	/// Missing keys are intentionally read as <see cref="JsonValue.Null"/> instead of raising exceptions,
+	/// which simplifies tolerant traversal of optional metadata fields.
+	/// </remarks>
 	[DebuggerDisplay("Count = {Count}")]
 	[DebuggerTypeProxy(typeof(JsonObjectDebugView))]
 	internal sealed class JsonObject : IEnumerable<KeyValuePair<string, JsonValue>>, IEnumerable<JsonValue>
@@ -35,12 +39,12 @@ namespace LightJson
 		}
 
 		/// <summary>
-		/// Gets or sets the property with the given key.
+		/// Gets or sets the value associated with <paramref name="key"/>.
 		/// </summary>
-		/// <param name="key">The key of the property to get or set.</param>
-		/// <remarks>
-		/// The getter will return JsonValue.Null if the given key is not associated with any value.
-		/// </remarks>
+		/// <param name="key">The property name.</param>
+		/// <value>
+		/// The stored value for <paramref name="key"/>. The getter returns <see cref="JsonValue.Null"/> when the key is absent.
+		/// </value>
 		public JsonValue this[string key] {
 			get {
 				JsonValue value;
@@ -72,11 +76,12 @@ namespace LightJson
 		}
 
 		/// <summary>
-		/// Adds a value associated with a key to this collection.
+		/// Adds a new property.
 		/// </summary>
-		/// <param name="key">The key of the property to be added.</param>
-		/// <param name="value">The value of the property to be added.</param>
-		/// <returns>Returns this JsonObject.</returns>
+		/// <param name="key">The property name to add.</param>
+		/// <param name="value">The value to assign to <paramref name="key"/>.</param>
+		/// <returns>The current object, allowing fluent construction.</returns>
+		/// <exception cref="System.ArgumentException">Thrown when <paramref name="key"/> already exists.</exception>
 		public JsonObject Add(string key, JsonValue value)
 		{
 			this.properties.Add(key, value);

@@ -27,8 +27,30 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
+	/// <summary>
+	/// Represents a function pointer type (<c>delegate*</c>) decoded from metadata signatures.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This type captures the full callable signature required by IL and modern C# function pointers:
+	/// return type, per-parameter types, by-ref modifiers, unmanaged calling convention information,
+	/// and custom calling-convention markers.
+	/// </para>
+	/// <para>
+	/// When <see cref="TypeSystemOptions.FunctionPointers"/> is disabled for the owning
+	/// <see cref="MetadataModule"/>, instances are still produced so metadata can be analyzed uniformly;
+	/// however they report <see cref="IType.Kind"/> as <see cref="TypeKind.Struct"/> and expose
+	/// <see cref="System.UIntPtr"/> as their definition for compatibility with older language modes.
+	/// </para>
+	/// </remarks>
 	public class FunctionPointerType : AbstractType
 	{
+		/// <summary>
+		/// Decodes a metadata method signature into a <see cref="FunctionPointerType"/> instance.
+		/// </summary>
+		/// <param name="signature">The metadata signature to decode.</param>
+		/// <param name="module">The module that provides type-system options and known-type lookup.</param>
+		/// <returns>A function-pointer type that preserves calling-convention and ref-kind metadata.</returns>
 		public static FunctionPointerType FromSignature(MethodSignature<IType> signature, MetadataModule module)
 		{
 			IType returnType = signature.ReturnType;
@@ -120,13 +142,46 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 
 		private readonly MetadataModule module;
+
+		/// <summary>
+		/// Gets the effective calling convention for the function pointer.
+		/// </summary>
 		public readonly SignatureCallingConvention CallingConvention;
+		/// <summary>
+		/// Gets custom calling-convention marker types that could not be mapped to a built-in
+		/// <see cref="SignatureCallingConvention"/> value.
+		/// </summary>
 		public readonly ImmutableArray<IType> CustomCallingConventions;
+		/// <summary>
+		/// Gets the function pointer return type.
+		/// </summary>
 		public readonly IType ReturnType;
+		/// <summary>
+		/// Gets whether the return by-reference is marked read-only (<c>ref readonly</c> semantics).
+		/// </summary>
 		public readonly bool ReturnIsRefReadOnly;
+		/// <summary>
+		/// Gets the parameter types in declaration order.
+		/// </summary>
 		public readonly ImmutableArray<IType> ParameterTypes;
+		/// <summary>
+		/// Gets by-reference passing modes corresponding to <see cref="ParameterTypes"/>.
+		/// </summary>
+		/// <remarks>
+		/// This array has the same length and ordering as <see cref="ParameterTypes"/>.
+		/// </remarks>
 		public readonly ImmutableArray<ReferenceKind> ParameterReferenceKinds;
 
+		/// <summary>
+		/// Initializes a function-pointer type from already-decoded signature parts.
+		/// </summary>
+		/// <param name="module">The metadata module that owns this type instance.</param>
+		/// <param name="callingConvention">The calling convention used by the function pointer.</param>
+		/// <param name="customCallingConventions">Additional custom calling-convention marker types.</param>
+		/// <param name="returnType">The function return type.</param>
+		/// <param name="returnIsRefReadOnly"><see langword="true"/> if the return reference carries read-only semantics; otherwise <see langword="false"/>.</param>
+		/// <param name="parameterTypes">Parameter types in declaration order.</param>
+		/// <param name="parameterReferenceKinds">Reference passing modes aligned with <paramref name="parameterTypes"/>.</param>
 		public FunctionPointerType(MetadataModule module,
 			SignatureCallingConvention callingConvention, ImmutableArray<IType> customCallingConventions,
 			IType returnType, bool returnIsRefReadOnly,
@@ -142,12 +197,29 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			Debug.Assert(parameterTypes.Length == parameterReferenceKinds.Length);
 		}
 
+		/// <summary>
+		/// Gets the language-level keyword used when formatting function pointer types.
+		/// </summary>
 		public override string Name => "delegate*";
 
 		public override bool? IsReferenceType => false;
 
+		/// <summary>
+		/// Gets the effective kind for this type in the current type-system option set.
+		/// </summary>
+		/// <value>
+		/// <see cref="TypeKind.FunctionPointer"/> when function pointers are enabled; otherwise <see cref="TypeKind.Struct"/>
+		/// to preserve compatibility with language modes that do not understand first-class function pointers.
+		/// </value>
 		public override TypeKind Kind => ((module.TypeSystemOptions & TypeSystemOptions.FunctionPointers) != 0) ? TypeKind.FunctionPointer : TypeKind.Struct;
 
+		/// <summary>
+		/// Gets a backing type definition when the current option set requires one.
+		/// </summary>
+		/// <returns>
+		/// <see langword="null"/> for native function-pointer mode; otherwise the <see cref="KnownTypeCode.UIntPtr"/>
+		/// definition used as a compatibility surrogate.
+		/// </returns>
 		public override ITypeDefinition GetDefinition()
 		{
 			if ((module.TypeSystemOptions & TypeSystemOptions.FunctionPointers) != 0)
@@ -162,6 +234,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Gets the definition-like view used by callers that accept unknown or synthetic results.
+		/// </summary>
 		public override ITypeDefinitionOrUnknown GetDefinitionOrUnknown()
 		{
 			return GetDefinition();

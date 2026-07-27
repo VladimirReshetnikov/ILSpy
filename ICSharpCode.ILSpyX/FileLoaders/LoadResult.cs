@@ -24,19 +24,57 @@ using ICSharpCode.Decompiler.Metadata;
 
 namespace ICSharpCode.ILSpyX.FileLoaders
 {
+	/// <summary>
+	/// Represents the outcome produced by an <see cref="IFileLoader"/>.
+	/// </summary>
 	public sealed class LoadResult
 	{
+		/// <summary>
+		/// Gets the loaded metadata image when the file was recognized as a metadata-bearing artifact.
+		/// </summary>
 		public MetadataFile? MetadataFile { get; init; }
+
+		/// <summary>
+		/// Gets the exception captured while attempting to load the file.
+		/// </summary>
 		public Exception? FileLoadException { get; init; }
+
+		/// <summary>
+		/// Gets the loaded package when the input file represents a bundle or archive.
+		/// </summary>
 		public LoadedPackage? Package { get; init; }
 
+		/// <summary>
+		/// Gets whether the loader produced a successful result.
+		/// </summary>
 		public bool IsSuccess => FileLoadException == null;
 	}
 
+	/// <summary>
+	/// Carries contextual options used while probing and loading a file.
+	/// </summary>
+	/// <param name="ApplyWinRTProjections">
+	/// <see langword="true"/> to apply Windows Runtime projections while reading metadata.
+	/// </param>
+	/// <param name="ParentBundle">
+	/// The containing bundle assembly when loading entries from a bundle; otherwise <see langword="null"/>.
+	/// </param>
 	public record FileLoadContext(bool ApplyWinRTProjections, LoadedAssembly? ParentBundle);
 
+	/// <summary>
+	/// Provides format-specific loading logic used by <see cref="LoadedAssembly"/>.
+	/// </summary>
 	public interface IFileLoader
 	{
+		/// <summary>
+		/// Attempts to load a file from the provided stream.
+		/// </summary>
+		/// <param name="fileName">Display name or source path used for diagnostics and metadata identity.</param>
+		/// <param name="stream">Stream positioned at the beginning of the candidate file data.</param>
+		/// <param name="context">Additional options and state for the current load operation.</param>
+		/// <returns>
+		/// A <see cref="LoadResult"/> when the loader recognized the format; otherwise <see langword="null"/>.
+		/// </returns>
 		Task<LoadResult?> Load(string fileName, Stream stream, FileLoadContext context);
 	}
 }

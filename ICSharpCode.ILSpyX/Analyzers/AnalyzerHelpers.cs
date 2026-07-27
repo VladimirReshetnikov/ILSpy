@@ -23,8 +23,25 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.ILSpyX.Analyzers
 {
+	/// <summary>
+	/// Shared low-level helper methods used by multiple analyzer implementations.
+	/// </summary>
 	internal static class AnalyzerHelpers
 	{
+		/// <summary>
+		/// Performs a cheap metadata-level check to determine whether a handle might reference a target method.
+		/// </summary>
+		/// <param name="member">Candidate metadata handle read from IL operand data.</param>
+		/// <param name="module">Module that owns <paramref name="member"/>.</param>
+		/// <param name="analyzedMethod">Method currently being searched for.</param>
+		/// <returns>
+		/// <see langword="true"/> when <paramref name="member"/> could resolve to <paramref name="analyzedMethod"/>;
+		/// otherwise <see langword="false"/>.
+		/// </returns>
+		/// <remarks>
+		/// This method intentionally favors speed over precision so analyzers can skip expensive resolution for
+		/// clearly unrelated operands.
+		/// </remarks>
 		public static bool IsPossibleReferenceTo(EntityHandle member, MetadataFile module, IMethod analyzedMethod)
 		{
 			if (member.IsNil)
@@ -48,6 +65,14 @@ namespace ICSharpCode.ILSpyX.Analyzers
 			}
 		}
 
+		/// <summary>
+		/// Resolves the symbol that owns a custom attribute row.
+		/// </summary>
+		/// <param name="ts">Type system used to resolve metadata handles to symbols.</param>
+		/// <param name="customAttribute">Custom attribute row whose owner should be returned.</param>
+		/// <returns>
+		/// The owning symbol for the attribute, or <see langword="null"/> when the owner kind cannot be mapped.
+		/// </returns>
 		public static ISymbol? GetParentEntity(DecompilerTypeSystem ts, CustomAttribute customAttribute)
 		{
 			var metadata = ts.MainModule.MetadataFile.Metadata;

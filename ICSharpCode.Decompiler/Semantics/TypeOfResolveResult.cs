@@ -23,12 +23,23 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents the 'typeof'.
+	/// Represents semantic classification for a C# <c>typeof</c> expression.
 	/// </summary>
+	/// <remarks>
+	/// <see cref="ResolveResult.Type"/> is the compile-time type of the <c>typeof</c> expression itself
+	/// (normally <c>System.Type</c>), while <see cref="ReferencedType"/> stores the operand type inside the
+	/// parentheses.
+	/// </remarks>
 	public class TypeOfResolveResult : ResolveResult
 	{
 		readonly IType referencedType;
 
+		/// <summary>
+		/// Initializes a <c>typeof</c> resolve result.
+		/// </summary>
+		/// <param name="systemType">The resulting expression type (typically <c>System.Type</c>).</param>
+		/// <param name="referencedType">The operand type referenced by <c>typeof</c>.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="referencedType"/> is <see langword="null"/>.</exception>
 		public TypeOfResolveResult(IType systemType, IType referencedType)
 			: base(systemType)
 		{
@@ -38,7 +49,7 @@ namespace ICSharpCode.Decompiler.Semantics
 		}
 
 		/// <summary>
-		/// The type referenced by the 'typeof'.
+		/// Gets the operand type referenced by <c>typeof</c>.
 		/// </summary>
 		public IType ReferencedType {
 			get { return referencedType; }

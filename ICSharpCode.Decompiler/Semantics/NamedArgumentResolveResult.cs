@@ -24,19 +24,23 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents a named argument.
+	/// Represents an argument supplied with an explicit parameter name.
 	/// </summary>
+	/// <remarks>
+	/// This wrapper preserves source-level named-argument intent so overload-resolution consumers and emitters can distinguish positional
+	/// arguments from explicit name binding.
+	/// </remarks>
 	public class NamedArgumentResolveResult : ResolveResult
 	{
 		/// <summary>
 		/// Gets the member to which the parameter belongs.
-		/// This field can be null.
+		/// This field is <see langword="null"/> when the target member is not yet known.
 		/// </summary>
 		public readonly IParameterizedMember Member;
 
 		/// <summary>
 		/// Gets the parameter.
-		/// This field can be null.
+		/// This field is <see langword="null"/> when the target member is not yet known.
 		/// </summary>
 		public readonly IParameter Parameter;
 
@@ -50,6 +54,13 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// </summary>
 		public readonly ResolveResult Argument;
 
+		/// <summary>
+		/// Initializes a named argument bound to a specific parameter.
+		/// </summary>
+		/// <param name="parameter">The bound parameter.</param>
+		/// <param name="argument">The resolved argument expression.</param>
+		/// <param name="member">The resolved callable member that owns <paramref name="parameter"/>.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="parameter"/> or <paramref name="argument"/> is <see langword="null"/>.</exception>
 		public NamedArgumentResolveResult(IParameter parameter, ResolveResult argument, IParameterizedMember member = null)
 			: base(argument.Type)
 		{
@@ -63,6 +74,12 @@ namespace ICSharpCode.Decompiler.Semantics
 			this.Argument = argument;
 		}
 
+		/// <summary>
+		/// Initializes a named argument when only the source parameter name is known.
+		/// </summary>
+		/// <param name="parameterName">The argument name written in source.</param>
+		/// <param name="argument">The resolved argument expression.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="parameterName"/> or <paramref name="argument"/> is <see langword="null"/>.</exception>
 		public NamedArgumentResolveResult(string parameterName, ResolveResult argument)
 			: base(argument.Type)
 		{

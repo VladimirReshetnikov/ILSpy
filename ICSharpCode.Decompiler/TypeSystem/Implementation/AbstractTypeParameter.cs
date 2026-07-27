@@ -25,6 +25,19 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
+	/// <summary>
+	/// Provides shared behavior for <see cref="ITypeParameter"/> implementations that participate in member lookup and constraint evaluation.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This base type centralizes the expensive derived views of generic constraints (effective base class and effective interface set)
+	/// and protects those computations against cycles introduced by malformed metadata or self-referential constraints.
+	/// </para>
+	/// <para>
+	/// Concrete implementations only supply raw metadata/project data (constraint flags, attributes, and explicit constraint list);
+	/// <see cref="AbstractTypeParameter"/> then exposes the normalized type-system contract consumed by lookup and decompilation stages.
+	/// </para>
+	/// </remarks>
 	public abstract class AbstractTypeParameter : ITypeParameter, ICompilationProvider
 	{
 		readonly ICompilation compilation;
@@ -34,6 +47,14 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		readonly string name;
 		readonly VarianceModifier variance;
 
+		/// <summary>
+		/// Initializes a type parameter that is owned by an existing entity symbol.
+		/// </summary>
+		/// <param name="owner">Owning method or type.</param>
+		/// <param name="index">Zero-based generic parameter index on <paramref name="owner"/>.</param>
+		/// <param name="name">Declared name, or <see langword="null"/> to synthesize a metadata-style fallback (<c>!0</c>/<c>!!0</c>).</param>
+		/// <param name="variance">Declared variance annotation for this parameter.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="owner"/> is <see langword="null"/>.</exception>
 		protected AbstractTypeParameter(IEntity owner, int index, string name, VarianceModifier variance)
 		{
 			if (owner == null)
@@ -46,6 +67,15 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			this.variance = variance;
 		}
 
+		/// <summary>
+		/// Initializes a type parameter from compilation context when a concrete owner symbol is not available.
+		/// </summary>
+		/// <param name="compilation">Compilation used for known-type lookups and symbol identity.</param>
+		/// <param name="ownerType">Kind of symbol that conceptually owns this type parameter.</param>
+		/// <param name="index">Zero-based generic parameter index in the owner scope.</param>
+		/// <param name="name">Declared name, or <see langword="null"/> to synthesize a metadata-style fallback (<c>!0</c>/<c>!!0</c>).</param>
+		/// <param name="variance">Declared variance annotation for this parameter.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="compilation"/> is <see langword="null"/>.</exception>
 		protected AbstractTypeParameter(ICompilation compilation, SymbolKind ownerType, int index, string name, VarianceModifier variance)
 		{
 			if (compilation == null)
@@ -61,30 +91,53 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			get { return SymbolKind.TypeParameter; }
 		}
 
+		/// <summary>
+		/// Gets the symbol kind of the owner that declares this type parameter.
+		/// </summary>
 		public SymbolKind OwnerType {
 			get { return ownerType; }
 		}
 
+		/// <summary>
+		/// Gets the owning entity when this type parameter was created from a concrete declaration; otherwise <see langword="null"/>.
+		/// </summary>
 		public IEntity Owner {
 			get { return owner; }
 		}
 
+		/// <summary>
+		/// Gets the zero-based position of the type parameter in its declaring generic parameter list.
+		/// </summary>
 		public int Index {
 			get { return index; }
 		}
 
 		public abstract IEnumerable<IAttribute> GetAttributes();
 
+		/// <summary>
+		/// Gets the variance modifier decoded from the declaration.
+		/// </summary>
 		public VarianceModifier Variance {
 			get { return variance; }
 		}
 
+		/// <summary>
+		/// Gets the compilation that provides known-type resolution for this symbol.
+		/// </summary>
 		public ICompilation Compilation {
 			get { return compilation; }
 		}
 
 		volatile IType effectiveBaseClass;
 
+		/// <summary>
+		/// Gets the effective base class implied by the declared constraint set.
+		/// </summary>
+		/// <remarks>
+		/// This value normalizes missing base constraints to <c>System.Object</c>, maps <c>struct</c>/<c>valuetype</c>
+		/// constraints to <c>System.ValueType</c>, and follows transitive type-parameter constraints. During cycle detection
+		/// failures, the property returns <see cref="SpecialType.UnknownType"/> and avoids caching that temporary error result.
+		/// </remarks>
 		public IType EffectiveBaseClass {
 			get {
 				if (effectiveBaseClass == null)
@@ -134,6 +187,13 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		IReadOnlyCollection<IType> effectiveInterfaceSet;
 
+		/// <summary>
+		/// Gets the transitive set of effective interface constraints.
+		/// </summary>
+		/// <remarks>
+		/// The set includes directly constrained interfaces and interfaces inherited through constrained type parameters.
+		/// If a cyclic dependency is encountered while evaluating constraints, an empty set is returned for that read and not cached.
+		/// </remarks>
 		public IReadOnlyCollection<IType> EffectiveInterfaceSet {
 			get {
 				var result = LazyInit.VolatileRead(ref effectiveInterfaceSet);
@@ -171,17 +231,50 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return result.ToArray();
 		}
 
+		/// <summary>
+		/// Gets whether the parameter includes a default-constructor (<c>new()</c>) constraint.
+		/// </summary>
 		public abstract bool HasDefaultConstructorConstraint { get; }
+
+		/// <summary>
+		/// Gets whether the parameter includes a reference-type (<c>class</c>) constraint.
+		/// </summary>
 		public abstract bool HasReferenceTypeConstraint { get; }
+
+		/// <summary>
+		/// Gets whether the parameter includes a non-nullable value-type (<c>struct</c>) constraint.
+		/// </summary>
 		public abstract bool HasValueTypeConstraint { get; }
+
+		/// <summary>
+		/// Gets whether the parameter includes an unmanaged constraint.
+		/// </summary>
 		public abstract bool HasUnmanagedConstraint { get; }
+
+		/// <summary>
+		/// Gets whether the parameter permits byref-like arguments via the runtime-specific allow-byref-like metadata marker.
+		/// </summary>
 		public abstract bool AllowsRefLikeType { get; }
+
+		/// <summary>
+		/// Gets the nullable-reference-type constraint flavor associated with this parameter.
+		/// </summary>
 		public abstract Nullability NullabilityConstraint { get; }
 
+		/// <summary>
+		/// Gets the static type kind represented by every type-parameter symbol.
+		/// </summary>
 		public TypeKind Kind {
 			get { return TypeKind.TypeParameter; }
 		}
 
+		/// <summary>
+		/// Gets whether this type parameter is known to be a reference type.
+		/// </summary>
+		/// <returns>
+		/// <see langword="true"/> when constraints guarantee reference-type semantics, <see langword="false"/> when constraints
+		/// guarantee value-type semantics, or <see langword="null"/> when neither can be proven.
+		/// </returns>
 		public bool? IsReferenceType {
 			get {
 				if (this.HasValueTypeConstraint)
@@ -218,6 +311,14 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		bool IType.IsByRefLike => false;
 		Nullability IType.Nullability => Nullability.Oblivious;
 
+		/// <summary>
+		/// Applies a nullable annotation wrapper to this type parameter.
+		/// </summary>
+		/// <param name="nullability">Target nullability annotation.</param>
+		/// <returns>
+		/// This instance when <paramref name="nullability"/> is <see cref="Nullability.Oblivious"/>;
+		/// otherwise a <see cref="NullabilityAnnotatedTypeParameter"/> wrapping this symbol.
+		/// </returns>
 		public IType ChangeNullability(Nullability nullability)
 		{
 			if (nullability == Nullability.Oblivious)
@@ -242,12 +343,18 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			get { return EmptyList<IType>.Instance; }
 		}
 
+		/// <summary>
+		/// Gets direct base constraints projected as types.
+		/// </summary>
 		public IEnumerable<IType> DirectBaseTypes {
 			get { return TypeConstraints.Select(t => t.Type); }
 		}
 
 		public abstract IReadOnlyList<TypeConstraint> TypeConstraints { get; }
 
+		/// <summary>
+		/// Gets the raw declared name of the type parameter.
+		/// </summary>
 		public string Name {
 			get { return name; }
 		}
@@ -260,6 +367,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			get { return name; }
 		}
 
+		/// <summary>
+		/// Gets the reflection-style placeholder name (<c>`0</c> or <c>``0</c>) used in signature rendering.
+		/// </summary>
 		public string ReflectionName {
 			get {
 				return (this.OwnerType == SymbolKind.Method ? "``" : "`") + index.ToString(CultureInfo.InvariantCulture);
@@ -276,11 +386,21 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return null;
 		}
 
+		/// <summary>
+		/// Dispatches to <see cref="TypeVisitor.VisitTypeParameter"/>.
+		/// </summary>
+		/// <param name="visitor">Visitor receiving this symbol.</param>
+		/// <returns>The value returned by <paramref name="visitor"/>.</returns>
 		public IType AcceptVisitor(TypeVisitor visitor)
 		{
 			return visitor.VisitTypeParameter(this);
 		}
 
+		/// <summary>
+		/// Returns this instance because type parameters do not contain nested child types.
+		/// </summary>
+		/// <param name="visitor">Unused visitor argument for interface compatibility.</param>
+		/// <returns>The current instance.</returns>
 		public IType VisitChildren(TypeVisitor visitor)
 		{
 			return this;
@@ -296,6 +416,16 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return EmptyList<IType>.Instance;
 		}
 
+		/// <summary>
+		/// Gets constructors visible on the effective base type and from constructor constraints.
+		/// </summary>
+		/// <param name="filter">Optional predicate used to filter resulting methods.</param>
+		/// <param name="options">Lookup options controlling inherited-member traversal.</param>
+		/// <returns>
+		/// A single synthesized default constructor when <see cref="HasDefaultConstructorConstraint"/> or
+		/// <see cref="HasValueTypeConstraint"/> is present and inherited members are ignored; otherwise constructors resolved
+		/// from the effective base type hierarchy.
+		/// </returns>
 		public IEnumerable<IMethod> GetConstructors(Predicate<IMethod> filter = null, GetMemberOptions options = GetMemberOptions.IgnoreInheritedMembers)
 		{
 			if ((options & GetMemberOptions.IgnoreInheritedMembers) == GetMemberOptions.IgnoreInheritedMembers)
@@ -316,6 +446,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
+		/// <summary>
+		/// Gets instance methods available through this type parameter's effective constraints.
+		/// </summary>
 		public IEnumerable<IMethod> GetMethods(Predicate<IMethod> filter = null, GetMemberOptions options = GetMemberOptions.None)
 		{
 			if ((options & GetMemberOptions.IgnoreInheritedMembers) == GetMemberOptions.IgnoreInheritedMembers)
@@ -324,6 +457,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				return GetMembersHelper.GetMethods(this, FilterNonStatic(filter), options);
 		}
 
+		/// <summary>
+		/// Gets instance methods available through this type parameter's effective constraints using explicit type arguments.
+		/// </summary>
 		public IEnumerable<IMethod> GetMethods(IReadOnlyList<IType> typeArguments, Predicate<IMethod> filter = null, GetMemberOptions options = GetMemberOptions.None)
 		{
 			if ((options & GetMemberOptions.IgnoreInheritedMembers) == GetMemberOptions.IgnoreInheritedMembers)
@@ -332,6 +468,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				return GetMembersHelper.GetMethods(this, typeArguments, FilterNonStatic(filter), options);
 		}
 
+		/// <summary>
+		/// Gets instance properties available through this type parameter's effective constraints.
+		/// </summary>
 		public IEnumerable<IProperty> GetProperties(Predicate<IProperty> filter = null, GetMemberOptions options = GetMemberOptions.None)
 		{
 			if ((options & GetMemberOptions.IgnoreInheritedMembers) == GetMemberOptions.IgnoreInheritedMembers)
@@ -340,6 +479,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				return GetMembersHelper.GetProperties(this, FilterNonStatic(filter), options);
 		}
 
+		/// <summary>
+		/// Gets instance fields available through this type parameter's effective constraints.
+		/// </summary>
 		public IEnumerable<IField> GetFields(Predicate<IField> filter = null, GetMemberOptions options = GetMemberOptions.None)
 		{
 			if ((options & GetMemberOptions.IgnoreInheritedMembers) == GetMemberOptions.IgnoreInheritedMembers)
@@ -348,6 +490,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				return GetMembersHelper.GetFields(this, FilterNonStatic(filter), options);
 		}
 
+		/// <summary>
+		/// Gets instance events available through this type parameter's effective constraints.
+		/// </summary>
 		public IEnumerable<IEvent> GetEvents(Predicate<IEvent> filter = null, GetMemberOptions options = GetMemberOptions.None)
 		{
 			if ((options & GetMemberOptions.IgnoreInheritedMembers) == GetMemberOptions.IgnoreInheritedMembers)
@@ -356,6 +501,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				return GetMembersHelper.GetEvents(this, FilterNonStatic(filter), options);
 		}
 
+		/// <summary>
+		/// Gets instance members available through this type parameter's effective constraints.
+		/// </summary>
 		public IEnumerable<IMember> GetMembers(Predicate<IMember> filter = null, GetMemberOptions options = GetMemberOptions.None)
 		{
 			if ((options & GetMemberOptions.IgnoreInheritedMembers) == GetMemberOptions.IgnoreInheritedMembers)
@@ -364,6 +512,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				return GetMembersHelper.GetMembers(this, FilterNonStatic(filter), options);
 		}
 
+		/// <summary>
+		/// Gets property/event accessor methods available through this type parameter's effective constraints.
+		/// </summary>
 		public IEnumerable<IMethod> GetAccessors(Predicate<IMethod> filter = null, GetMemberOptions options = GetMemberOptions.None)
 		{
 			if ((options & GetMemberOptions.IgnoreInheritedMembers) == GetMemberOptions.IgnoreInheritedMembers)
@@ -393,6 +544,11 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return base.GetHashCode();
 		}
 
+		/// <summary>
+		/// Compares type parameters by reference identity unless overridden by concrete implementations.
+		/// </summary>
+		/// <param name="other">Type to compare with this instance.</param>
+		/// <returns><see langword="true"/> when both references identify the same type-parameter object.</returns>
 		public virtual bool Equals(IType other)
 		{
 			return this == other; // use reference equality for type parameters

@@ -30,6 +30,15 @@ namespace ICSharpCode.ILSpyX.Analyzers
 {
 	using ICSharpCode.Decompiler.TypeSystem;
 
+	/// <summary>
+	/// Describes the set of modules and types that must be scanned for an analyzer query
+	/// rooted at a specific symbol.
+	/// </summary>
+	/// <remarks>
+	/// The scope is computed from the symbol's effective accessibility:
+	/// private symbols stay inside the declaring type, internal symbols include friend assemblies,
+	/// and public/protected symbols are searched through referencing assemblies.
+	/// </remarks>
 	public class AnalyzerScope
 	{
 		readonly ITypeDefinition typeScope;
@@ -41,12 +50,27 @@ namespace ICSharpCode.ILSpyX.Analyzers
 		/// </summary>
 		public bool IsLocal { get; }
 
+		/// <summary>
+		/// Gets the symbol for which this scope was created.
+		/// </summary>
 		public ISymbol AnalyzedSymbol { get; }
 
+		/// <summary>
+		/// Gets the type that bounds the scope calculation.
+		/// </summary>
+		/// <remarks>
+		/// For members, this is typically the declaring type (or an outer declaring type when accessibility collapses outward).
+		/// For top-level type analysis, this is the analyzed type itself.
+		/// </remarks>
 		public ITypeDefinition TypeScope => typeScope;
 
 		readonly Accessibility effectiveAccessibility;
 
+		/// <summary>
+		/// Creates a new scope for analyzer execution.
+		/// </summary>
+		/// <param name="assemblyList">Assembly list used to resolve candidate modules.</param>
+		/// <param name="entity">Symbol currently being analyzed.</param>
 		public AnalyzerScope(AssemblyList assemblyList, IEntity entity)
 		{
 			assemblyListSnapshot = assemblyList.GetSnapshot();
@@ -55,6 +79,13 @@ namespace ICSharpCode.ILSpyX.Analyzers
 			IsLocal = effectiveAccessibility.LessThanOrEqual(Accessibility.Private);
 		}
 
+		/// <summary>
+		/// Enumerates metadata modules that can legally contain references to <see cref="AnalyzedSymbol"/>.
+		/// </summary>
+		/// <param name="ct">Cancellation token checked while walking loaded assemblies.</param>
+		/// <returns>
+		/// Modules to scan, narrowed by accessibility and friend-assembly rules.
+		/// </returns>
 		public IEnumerable<MetadataFile> GetModulesInScope(CancellationToken ct)
 		{
 			var modules = GetModulesInScopeCore(ct);
@@ -98,6 +129,12 @@ namespace ICSharpCode.ILSpyX.Analyzers
 			}
 		}
 
+		/// <summary>
+		/// Enumerates all non-metadata-only modules currently loaded in the assembly list.
+		/// </summary>
+		/// <returns>
+		/// Every concrete module available to analyzers, regardless of the current scope restrictions.
+		/// </returns>
 		public IEnumerable<MetadataFile> GetAllModules()
 		{
 			return assemblyListSnapshot.GetAllAssembliesAsync().GetAwaiter().GetResult()
@@ -105,11 +142,24 @@ namespace ICSharpCode.ILSpyX.Analyzers
 				.Where(x => x != null && !x.IsMetadataOnly)!;
 		}
 
+		/// <summary>
+		/// Creates a type system for a module using the same assembly-list snapshot as this scope.
+		/// </summary>
+		/// <param name="module">Module whose metadata should be projected as a decompiler type system.</param>
+		/// <returns>A <see cref="DecompilerTypeSystem"/> bound to <paramref name="module"/>.</returns>
 		public DecompilerTypeSystem ConstructTypeSystem(MetadataFile module)
 		{
 			return new DecompilerTypeSystem(module, module.GetAssemblyResolver(assemblyListSnapshot, loadOnDemand: false));
 		}
 
+		/// <summary>
+		/// Enumerates candidate type definitions visible to the current analyzer scope.
+		/// </summary>
+		/// <param name="ct">Cancellation token checked while traversing modules.</param>
+		/// <returns>
+		/// Nested types within <see cref="TypeScope"/> for local scopes;
+		/// otherwise all top-level type definitions from each module returned by <see cref="GetModulesInScope"/>.
+		/// </returns>
 		public IEnumerable<ITypeDefinition> GetTypesInScope(CancellationToken ct)
 		{
 			if (IsLocal)

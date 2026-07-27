@@ -23,13 +23,19 @@ using ICSharpCode.Decompiler.Semantics;
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Helper methods for COM.
+	/// Provides COM-specific metadata helpers used by the C# projection layer.
 	/// </summary>
+	/// <remarks>
+	/// These helpers decode attribute-based COM patterns (<c>ComImportAttribute</c> and <c>CoClassAttribute</c>) that influence
+	/// how interface types are interpreted during decompilation.
+	/// </remarks>
 	public static class ComHelper
 	{
 		/// <summary>
 		/// Gets whether the specified type is imported from COM.
 		/// </summary>
+		/// <param name="typeDefinition">Type definition to inspect.</param>
+		/// <returns><see langword="true"/> when the type is an interface marked with <c>ComImportAttribute</c>.</returns>
 		public static bool IsComImport(ITypeDefinition typeDefinition)
 		{
 			return typeDefinition != null
@@ -38,8 +44,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 
 		/// <summary>
-		/// Gets the CoClass of the specified COM interface.
+		/// Resolves the coclass type referenced by <c>CoClassAttribute</c> on a COM interface.
 		/// </summary>
+		/// <param name="typeDefinition">COM interface definition that may carry a <c>CoClassAttribute</c>.</param>
+		/// <returns>The attributed CoClass type, or <see cref="SpecialType.UnknownType"/> when no suitable attribute value exists.</returns>
 		[System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Naming", "CA1709:IdentifiersShouldBeCasedCorrectly", MessageId = "Co",
 														 Justification = "Consistent with CoClassAttribute")]
 		public static IType GetCoClass(ITypeDefinition typeDefinition)

@@ -29,28 +29,59 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.IL
 {
+	/// <summary>
+	/// Provides formatting helpers for writing IL AST instructions, metadata handles, and type-system entities.
+	/// </summary>
 	public static partial class InstructionOutputExtensions
 	{
+		/// <summary>
+		/// Writes the canonical textual name for an IL AST <see cref="OpCode"/>.
+		/// </summary>
+		/// <param name="output">Destination text output.</param>
+		/// <param name="opCode">Operation code to render.</param>
 		public static void Write(this ITextOutput output, OpCode opCode)
 		{
 			output.Write(originalOpCodeNames[(int)opCode]);
 		}
 
+		/// <summary>
+		/// Writes a lowercase textual representation of a stack type.
+		/// </summary>
+		/// <param name="output">Destination text output.</param>
+		/// <param name="stackType">Stack type to render.</param>
 		public static void Write(this ITextOutput output, StackType stackType)
 		{
 			output.Write(stackType.ToString().ToLowerInvariant());
 		}
 
+		/// <summary>
+		/// Writes a lowercase textual representation of a primitive type tag.
+		/// </summary>
+		/// <param name="output">Destination text output.</param>
+		/// <param name="primitiveType">Primitive type to render.</param>
 		public static void Write(this ITextOutput output, PrimitiveType primitiveType)
 		{
 			output.Write(primitiveType.ToString().ToLowerInvariant());
 		}
 
+		/// <summary>
+		/// Writes a type reference using reflection-name syntax.
+		/// </summary>
+		/// <param name="type">The type to write.</param>
+		/// <param name="output">Destination text output.</param>
 		public static void WriteTo(this IType type, ITextOutput output)
 		{
 			output.WriteReference(type, type.ReflectionName);
 		}
 
+		/// <summary>
+		/// Writes a member reference label suitable for IL AST dumps.
+		/// </summary>
+		/// <param name="member">The member to write.</param>
+		/// <param name="output">Destination text output.</param>
+		/// <remarks>
+		/// Constructors are written as <c>DeclaringType.Name + "." + Name</c> to avoid ambiguous display names in instruction output.
+		/// </remarks>
 		public static void WriteTo(this IMember member, ITextOutput output)
 		{
 			if (member is IMethod method && method.IsConstructor)
@@ -59,6 +90,12 @@ namespace ICSharpCode.Decompiler.IL
 				output.WriteReference(member, member.Name);
 		}
 
+		/// <summary>
+		/// Writes an IL range prefix when IL range display is enabled.
+		/// </summary>
+		/// <param name="interval">IL offset interval to render.</param>
+		/// <param name="output">Destination text output.</param>
+		/// <param name="options">Formatting options that control range visibility.</param>
 		public static void WriteTo(this Interval interval, ITextOutput output, ILAstWritingOptions options)
 		{
 			if (!options.ShowILRanges)
@@ -69,6 +106,15 @@ namespace ICSharpCode.Decompiler.IL
 				output.Write($"[{interval.Start:x4}..{interval.InclusiveEnd:x4}] ");
 		}
 
+		/// <summary>
+		/// Writes a metadata entity handle in IL-style textual form.
+		/// </summary>
+		/// <param name="entity">The metadata handle to render.</param>
+		/// <param name="module">The metadata module that owns <paramref name="entity"/>.</param>
+		/// <param name="output">Destination text output.</param>
+		/// <param name="genericContext">Generic context used for signature decoding.</param>
+		/// <param name="syntax">Naming syntax to use for decoded type signatures.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="module"/> is <see langword="null"/> while <paramref name="entity"/> is non-nil.</exception>
 		public static void WriteTo(this EntityHandle entity, MetadataFile module, ITextOutput output, Metadata.MetadataGenericContext genericContext, ILNameSyntax syntax = ILNameSyntax.Signature)
 		{
 			if (entity.IsNil)

@@ -21,6 +21,9 @@ using System.Reflection.Metadata;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Compares ECMA-335 signature blobs for semantic equivalence across potentially different metadata scopes.
+	/// </summary>
 	public static class SignatureBlobComparer
 	{
 		internal static (int GenericParameterCount, int ParameterCount) ReadParameterCount(ref BlobReader reader)
@@ -46,6 +49,18 @@ namespace ICSharpCode.Decompiler.Metadata
 			return (gp, p);
 		}
 
+		/// <summary>
+		/// Compares two method signatures for equivalence, including calling convention, return type, parameters, and generic arity.
+		/// </summary>
+		/// <param name="a">Method signature blob to compare.</param>
+		/// <param name="b">Method signature blob to compare against <paramref name="a"/>.</param>
+		/// <param name="contextForA">Metadata reader used to resolve type handles from <paramref name="a"/>.</param>
+		/// <param name="contextForB">Metadata reader used to resolve type handles from <paramref name="b"/>.</param>
+		/// <param name="skipModifiers">
+		/// <see langword="true"/> to ignore custom modifiers on either side, so signatures that differ only in
+		/// <c>modreq</c>/<c>modopt</c> compare equal.
+		/// </param>
+		/// <returns><see langword="true"/> when both blobs encode the same method signature; otherwise <see langword="false"/>.</returns>
 		public static bool EqualsMethodSignature(BlobReader a, BlobReader b, MetadataReader contextForA, MetadataReader contextForB, bool skipModifiers = false)
 		{
 			return EqualsMethodSignature(ref a, ref b, contextForA, contextForB, skipModifiers);
@@ -134,6 +149,14 @@ namespace ICSharpCode.Decompiler.Metadata
 			return true;
 		}
 
+		/// <summary>
+		/// Compares two type signatures for equivalence.
+		/// </summary>
+		/// <param name="a">Type signature blob to compare.</param>
+		/// <param name="b">Type signature blob to compare against <paramref name="a"/>.</param>
+		/// <param name="contextForA">Metadata reader used to resolve type handles from <paramref name="a"/>.</param>
+		/// <param name="contextForB">Metadata reader used to resolve type handles from <paramref name="b"/>.</param>
+		/// <returns><see langword="true"/> when both blobs encode the same type; otherwise <see langword="false"/>.</returns>
 		public static bool EqualsTypeSignature(BlobReader a, BlobReader b, MetadataReader contextForA, MetadataReader contextForB)
 		{
 			return EqualsTypeSignature(ref a, ref b, contextForA, contextForB);

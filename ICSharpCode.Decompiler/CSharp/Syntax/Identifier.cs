@@ -31,18 +31,30 @@ using System;
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
+	/// Represents an identifier token in the C# syntax tree, including source span and verbatim-identifier state.
 	/// <code>
 	/// identifier ::=
 	///       Simple_Identifier
 	///     | contextual_keyword
 	///     | discard_token
 	/// </code>
-	/// (C# lexical grammar §6.4.3)
+	/// (C# lexical grammar section 6.4.3)
 	/// </summary>
+	/// <remarks>
+	/// Most declaration and reference nodes store their textual name via an <see cref="Identifier"/> child in
+	/// <see cref="Slots.Identifier"/>. Keeping the identifier as a separate token node allows transforms to preserve
+	/// token-level information (for example <c>@</c>-escaping) without mutating parent-node shape.
+	/// </remarks>
 	[DecompilerAstNode]
 	public sealed partial class Identifier : AstNode
 	{
 		string name;
+		/// <summary>
+		/// Gets or sets the identifier text without a leading <c>@</c> marker.
+		/// </summary>
+		/// <exception cref="ArgumentNullException">
+		/// Thrown when set to <see langword="null"/>.
+		/// </exception>
 		public string Name {
 			get { return this.name; }
 			set {
@@ -53,21 +65,37 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		}
 
 		TextLocation startLocation;
+		/// <summary>
+		/// Gets the source location of the first character that belongs to this identifier token.
+		/// </summary>
 		public override TextLocation StartLocation {
 			get {
 				return startLocation;
 			}
 		}
 
+		/// <summary>
+		/// Updates <see cref="StartLocation"/> for tokens inserted by output visitors.
+		/// </summary>
+		/// <param name="value">The source position to associate with this token.</param>
 		internal void SetStartLocation(TextLocation value)
 		{
 			this.startLocation = value;
 		}
 
+		/// <summary>
+		/// Gets or sets whether the identifier should be emitted with a leading <c>@</c> escape.
+		/// </summary>
+		/// <remarks>
+		/// This flag affects formatting/output only; <see cref="Name"/> always stores the unescaped identifier text.
+		/// </remarks>
 		// The @-escaping is a lexical detail, not structural; exclude it from matching.
 		[ExcludeFromMatch]
 		public bool IsVerbatim { get; set; }
 
+		/// <summary>
+		/// Gets the source location immediately after the identifier token.
+		/// </summary>
 		public override TextLocation EndLocation {
 			get {
 				return new TextLocation(StartLocation.Line, StartLocation.Column + (Name ?? "").Length + (IsVerbatim ? 1 : 0));
@@ -79,6 +107,14 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			this.name = string.Empty;
 		}
 
+		/// <summary>
+		/// Initializes a new <see cref="Identifier"/> instance with explicit token text and source location.
+		/// </summary>
+		/// <param name="name">Identifier text without a leading <c>@</c>.</param>
+		/// <param name="location">Start location of the identifier token.</param>
+		/// <exception cref="ArgumentNullException">
+		/// <paramref name="name"/> is <see langword="null"/>.
+		/// </exception>
 		private Identifier(string name, TextLocation location)
 		{
 			if (name == null)
@@ -87,6 +123,14 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			this.startLocation = location;
 		}
 
+		/// <summary>
+		/// Creates an identifier at <see cref="TextLocation.Empty"/>.
+		/// </summary>
+		/// <param name="name">Identifier text, optionally including a leading <c>@</c>.</param>
+		/// <returns>
+		/// A new identifier node; a <see langword="null"/> or empty <paramref name="name"/> yields an identifier
+		/// whose <see cref="Name"/> is the empty string.
+		/// </returns>
 		public static Identifier Create(string name)
 		{
 			return Create(name, TextLocation.Empty);
@@ -99,6 +143,20 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return string.IsNullOrEmpty(name) ? null : Create(name);
 		}
 
+		/// <summary>
+		/// Creates an identifier at a specific source location.
+		/// </summary>
+		/// <param name="name">Identifier text, optionally including a leading <c>@</c>.</param>
+		/// <param name="location">Location of the first identifier character in source coordinates.</param>
+		/// <returns>
+		/// A new identifier node; a <see langword="null"/> or empty <paramref name="name"/> yields an identifier
+		/// whose <see cref="Name"/> is the empty string.
+		/// </returns>
+		/// <remarks>
+		/// When <paramref name="name"/> starts with <c>@</c>, the returned node has <see cref="IsVerbatim"/> set to
+		/// <see langword="true"/> and <paramref name="location"/> is shifted by one column so
+		/// <see cref="StartLocation"/> still points at the first character of <see cref="Name"/>.
+		/// </remarks>
 		public static Identifier Create(string name, TextLocation location)
 		{
 			if (string.IsNullOrEmpty(name))
@@ -109,6 +167,16 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				return new Identifier(name, location);
 		}
 
+		/// <summary>
+		/// Creates an identifier while explicitly controlling verbatim escaping state.
+		/// </summary>
+		/// <param name="name">Identifier text without a leading <c>@</c>.</param>
+		/// <param name="location">Location of the first identifier character.</param>
+		/// <param name="isVerbatim"><see langword="true"/> to emit the identifier as a verbatim identifier.</param>
+		/// <returns>
+		/// A new identifier node; a <see langword="null"/> or empty <paramref name="name"/> yields an identifier
+		/// whose <see cref="Name"/> is the empty string.
+		/// </returns>
 		public static Identifier Create(string name, TextLocation location, bool isVerbatim)
 		{
 			if (string.IsNullOrEmpty(name))

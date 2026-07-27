@@ -20,8 +20,12 @@
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Represents a variable (name/type pair).
+	/// Represents a symbol that stores or exposes a typed value, such as locals, parameters, and fields.
 	/// </summary>
+	/// <remarks>
+	/// This abstraction unifies several metadata-backed symbol kinds behind one contract used by semantic analysis and
+	/// decompilation transforms. Implementations may represent mutable runtime storage locations or compile-time constants.
+	/// </remarks>
 	public interface IVariable : ISymbol
 	{
 		/// <summary>
@@ -35,14 +39,24 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		IType Type { get; }
 
 		/// <summary>
-		/// Gets whether this variable is a constant (C#-like const).
+		/// Gets a value indicating whether the variable has a compile-time constant value.
 		/// </summary>
+		/// <value>
+		/// <see langword="true"/> for C# <c>const</c>-like symbols; otherwise <see langword="false"/>.
+		/// </value>
 		bool IsConst { get; }
 
 		/// <summary>
-		/// If this field is a constant, retrieves the value.
-		/// For parameters, this is the default value.
+		/// Gets the compile-time constant or default value associated with this variable.
 		/// </summary>
+		/// <param name="throwOnInvalidMetadata">
+		/// <see langword="true"/> to surface metadata decoding failures as exceptions; <see langword="false"/> to tolerate
+		/// malformed metadata and return <see langword="null"/> when a value cannot be decoded.
+		/// </param>
+		/// <returns>
+		/// The constant value for constant variables, or the default value for optional parameters;
+		/// otherwise <see langword="null"/>.
+		/// </returns>
 		object? GetConstantValue(bool throwOnInvalidMetadata = false);
 	}
 }

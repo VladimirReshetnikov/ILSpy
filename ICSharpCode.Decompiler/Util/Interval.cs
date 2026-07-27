@@ -23,13 +23,16 @@ using System.Collections.Generic;
 namespace ICSharpCode.Decompiler.Util
 {
 	/// <summary>
-	/// Represents a half-closed interval.
-	/// The start position is inclusive; but the end position is exclusive.
+	/// Represents a half-open interval over <see cref="int"/> values.
 	/// </summary>
 	/// <remarks>
-	/// Start &lt;= unchecked(End - 1): normal interval
-	/// Start == End: empty interval
-	/// Special case: Start == End == int.MinValue: interval containing all integers, not an empty interval!
+	/// <para>
+	/// The interval semantics are <c>[Start, End)</c> with an inclusive start and exclusive end.
+	/// </para>
+	/// <para>
+	/// <see cref="int.MinValue"/> in <see cref="End"/> is a sentinel that represents <c>int.MaxValue + 1</c>,
+	/// which allows the interval to include <see cref="int.MaxValue"/> without widening to <see cref="long"/>.
+	/// </para>
 	/// </remarks>
 	public struct Interval : IEquatable<Interval>
 	{
@@ -78,12 +81,20 @@ namespace ICSharpCode.Decompiler.Util
 			}
 		}
 
+		/// <summary>
+		/// Gets whether this interval contains no values.
+		/// </summary>
 		public bool IsEmpty {
 			get {
 				return Start > InclusiveEnd;
 			}
 		}
 
+		/// <summary>
+		/// Determines whether a value lies within this interval.
+		/// </summary>
+		/// <param name="val">Value to test.</param>
+		/// <returns><see langword="true"/> when <paramref name="val"/> is in <c>[Start, End)</c>; otherwise <see langword="false"/>.</returns>
 		public bool Contains(int val)
 		{
 			// Use 'val <= InclusiveEnd' instead of 'val < End' to allow intervals to include int.MaxValue.
@@ -93,6 +104,10 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Calculates the intersection between this interval and the other interval.
 		/// </summary>
+		/// <param name="other">The interval to intersect with this instance.</param>
+		/// <returns>
+		/// A new interval representing the overlap of both intervals, or the default empty interval when they do not overlap.
+		/// </returns>
 		public Interval Intersect(Interval other)
 		{
 			int start = Math.Max(this.Start, other.Start);
@@ -103,6 +118,9 @@ namespace ICSharpCode.Decompiler.Util
 				return default(Interval);
 		}
 
+		/// <summary>
+		/// Returns a string representation of the interval boundaries.
+		/// </summary>
 		public override string ToString()
 		{
 			if (End == int.MinValue)
@@ -117,11 +135,17 @@ namespace ICSharpCode.Decompiler.Util
 			return (obj is Interval) && Equals((Interval)obj);
 		}
 
+		/// <summary>
+		/// Determines whether this instance and <paramref name="other"/> represent the same interval.
+		/// </summary>
 		public bool Equals(Interval other)
 		{
 			return this.Start == other.Start && this.End == other.End;
 		}
 
+		/// <summary>
+		/// Returns a hash code derived from both boundaries.
+		/// </summary>
 		public override int GetHashCode()
 		{
 			return Start ^ End ^ (End << 7);
@@ -140,13 +164,16 @@ namespace ICSharpCode.Decompiler.Util
 	}
 
 	/// <summary>
-	/// Represents a half-closed interval.
-	/// The start position is inclusive; but the end position is exclusive.
+	/// Represents a half-open interval over <see cref="long"/> values.
 	/// </summary>
 	/// <remarks>
-	/// Start &lt;= unchecked(End - 1): normal interval
-	/// Start == End: empty interval
-	/// Special case: Start == End == long.MinValue: interval containing all integers, not an empty interval!
+	/// <para>
+	/// The interval semantics are <c>[Start, End)</c> with an inclusive start and exclusive end.
+	/// </para>
+	/// <para>
+	/// <see cref="long.MinValue"/> in <see cref="End"/> is a sentinel that represents <c>long.MaxValue + 1</c>,
+	/// which allows the interval to include <see cref="long.MaxValue"/>.
+	/// </para>
 	/// </remarks>
 	public struct LongInterval : IEquatable<LongInterval>
 	{
@@ -192,6 +219,9 @@ namespace ICSharpCode.Decompiler.Util
 		/// 
 		/// This method cannot be used to construct an empty interval.
 		/// </summary>
+		/// <param name="start">Inclusive start value of the interval.</param>
+		/// <param name="inclusiveEnd">Inclusive end value of the interval.</param>
+		/// <returns>A <see cref="LongInterval"/> spanning from <paramref name="start"/> to <paramref name="inclusiveEnd"/> (inclusive).</returns>
 		public static LongInterval Inclusive(long start, long inclusiveEnd)
 		{
 			if (!(start <= inclusiveEnd))
@@ -204,8 +234,8 @@ namespace ICSharpCode.Decompiler.Util
 		/// For empty intervals, this returns Start - 1.
 		/// </summary>
 		/// <remarks>
-		/// Because there is no empty interval at int.MinValue,
-		/// (Start==End==int.MinValue is a special case referring to [int.MinValue..int.MaxValue]),
+		/// Because there is no empty interval at long.MinValue,
+		/// (Start==End==long.MinValue is a special case referring to [long.MinValue..long.MaxValue]),
 		/// integer overflow is not a problem here.
 		/// </remarks>
 		public long InclusiveEnd {
@@ -214,12 +244,20 @@ namespace ICSharpCode.Decompiler.Util
 			}
 		}
 
+		/// <summary>
+		/// Gets whether this interval contains no values.
+		/// </summary>
 		public bool IsEmpty {
 			get {
 				return Start > InclusiveEnd;
 			}
 		}
 
+		/// <summary>
+		/// Determines whether a value lies within this interval.
+		/// </summary>
+		/// <param name="val">Value to test.</param>
+		/// <returns><see langword="true"/> when <paramref name="val"/> is in <c>[Start, End)</c>; otherwise <see langword="false"/>.</returns>
 		public bool Contains(long val)
 		{
 			// Use 'val <= InclusiveEnd' instead of 'val < End' to allow intervals to include long.MaxValue.
@@ -229,6 +267,10 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Calculates the intersection between this interval and the other interval.
 		/// </summary>
+		/// <param name="other">The interval to intersect with this instance.</param>
+		/// <returns>
+		/// A new interval representing the overlap of both intervals, or the default empty interval when they do not overlap.
+		/// </returns>
 		public LongInterval Intersect(LongInterval other)
 		{
 			long start = Math.Max(this.Start, other.Start);
@@ -262,6 +304,9 @@ namespace ICSharpCode.Decompiler.Util
 			}
 		}
 
+		/// <summary>
+		/// Returns a string representation of the interval boundaries.
+		/// </summary>
 		public override string ToString()
 		{
 			if (End == long.MinValue)
@@ -287,11 +332,17 @@ namespace ICSharpCode.Decompiler.Util
 			return (obj is LongInterval) && Equals((LongInterval)obj);
 		}
 
+		/// <summary>
+		/// Determines whether this instance and <paramref name="other"/> represent the same interval.
+		/// </summary>
 		public bool Equals(LongInterval other)
 		{
 			return this.Start == other.Start && this.End == other.End;
 		}
 
+		/// <summary>
+		/// Returns a hash code derived from both boundaries.
+		/// </summary>
 		public override int GetHashCode()
 		{
 			return (Start ^ End ^ (End << 7)).GetHashCode();

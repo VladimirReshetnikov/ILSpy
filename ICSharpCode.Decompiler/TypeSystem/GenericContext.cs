@@ -23,17 +23,47 @@ using ICSharpCode.Decompiler.TypeSystem.Implementation;
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
+	/// <summary>
+	/// Carries the generic type-parameter scope used when decoding metadata signatures.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The context stores separate parameter lists for the enclosing type and the current method.
+	/// The signature decoders in <see cref="MetadataModule"/> use this mapping to resolve generic parameter
+	/// indices (<c>!0</c>, <c>!!0</c>, and so on) to concrete <see cref="ITypeParameter"/> symbols.
+	/// </para>
+	/// <para>
+	/// Missing indices are mapped to dummy type parameters (see <see cref="Implementation.DummyTypeParameter"/>),
+	/// which lets decoding continue even for malformed metadata or partially known contexts.
+	/// </para>
+	/// </remarks>
 	public readonly struct GenericContext
 	{
+		/// <summary>
+		/// Type-level generic parameters visible from the current scope.
+		/// </summary>
 		public readonly IReadOnlyList<ITypeParameter> ClassTypeParameters;
+
+		/// <summary>
+		/// Method-level generic parameters visible from the current scope.
+		/// </summary>
 		public readonly IReadOnlyList<ITypeParameter> MethodTypeParameters;
 
+		/// <summary>
+		/// Initializes a context that only has class-level generic parameters.
+		/// </summary>
+		/// <param name="classTypeParameters">Type parameters declared on the current type.</param>
 		public GenericContext(IReadOnlyList<ITypeParameter> classTypeParameters)
 		{
 			this.ClassTypeParameters = classTypeParameters;
 			this.MethodTypeParameters = null;
 		}
 
+		/// <summary>
+		/// Initializes a context with explicit class-level and method-level generic parameters.
+		/// </summary>
+		/// <param name="classTypeParameters">Type parameters declared on the enclosing type.</param>
+		/// <param name="methodTypeParameters">Type parameters declared on the current method.</param>
 		public GenericContext(IReadOnlyList<ITypeParameter> classTypeParameters, IReadOnlyList<ITypeParameter> methodTypeParameters)
 		{
 			this.ClassTypeParameters = classTypeParameters;
@@ -60,6 +90,13 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Gets a class type parameter by metadata index.
+		/// </summary>
+		/// <param name="index">Zero-based type-parameter index in type scope.</param>
+		/// <returns>
+		/// The indexed class type parameter when available; otherwise a synthetic placeholder parameter.
+		/// </returns>
 		public ITypeParameter GetClassTypeParameter(int index)
 		{
 			if (index < ClassTypeParameters?.Count)
@@ -68,6 +105,13 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				return DummyTypeParameter.GetClassTypeParameter(index);
 		}
 
+		/// <summary>
+		/// Gets a method type parameter by metadata index.
+		/// </summary>
+		/// <param name="index">Zero-based type-parameter index in method scope.</param>
+		/// <returns>
+		/// The indexed method type parameter when available; otherwise a synthetic placeholder parameter.
+		/// </returns>
 		public ITypeParameter GetMethodTypeParameter(int index)
 		{
 			if (index < MethodTypeParameters?.Count)

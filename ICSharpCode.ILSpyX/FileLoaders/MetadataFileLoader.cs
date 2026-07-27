@@ -27,8 +27,20 @@ using static ICSharpCode.Decompiler.Metadata.MetadataFile;
 
 namespace ICSharpCode.ILSpyX.FileLoaders
 {
+	/// <summary>
+	/// Loads standalone metadata payloads such as metadata-only images and PDB metadata.
+	/// </summary>
 	public sealed class MetadataFileLoader : IFileLoader
 	{
+		/// <summary>
+		/// Attempts to interpret the stream as a metadata stream and create a <see cref="MetadataFile"/>.
+		/// </summary>
+		/// <param name="fileName">Display name or source path of the file being loaded.</param>
+		/// <param name="stream">Input stream containing the candidate metadata payload.</param>
+		/// <param name="settings">Load options for the current operation. Not used by this loader.</param>
+		/// <returns>
+		/// A successful <see cref="LoadResult"/> when the file is metadata; otherwise <see langword="null"/>.
+		/// </returns>
 		public Task<LoadResult?> Load(string fileName, Stream stream, FileLoadContext settings)
 		{
 			try

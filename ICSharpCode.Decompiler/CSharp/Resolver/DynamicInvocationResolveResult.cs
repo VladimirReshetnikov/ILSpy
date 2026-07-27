@@ -25,51 +25,71 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.CSharp.Resolver
 {
+	/// <summary>
+	/// Identifies the syntactic shape of a dynamic invocation operation.
+	/// </summary>
 	public enum DynamicInvocationType
 	{
 		/// <summary>
-		/// The invocation is a normal invocation ( 'a(b)' ).
+		/// A call expression such as <c>target(args)</c>.
 		/// </summary>
 		Invocation,
 
 		/// <summary>
-		/// The invocation is an indexing ( 'a[b]' ).
+		/// An indexer-style access such as <c>target[index]</c>.
 		/// </summary>
 		Indexing,
 
 		/// <summary>
-		/// The invocation is an object creation ( 'new a(b)' ).
+		/// A dynamic object-creation expression such as <c>new target(args)</c>.
 		/// </summary>
 		ObjectCreation,
 	}
 
 	/// <summary>
-	/// Represents the result of an invocation of a member of a dynamic object.
+	/// Represents an invocation performed through C# dynamic binding.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The result type is always <see cref="SpecialType.Dynamic"/> because the final member and return type are established
+	/// at runtime by the binder.
+	/// </para>
+	/// <para>
+	/// This node is used for dynamic method calls, dynamic index operations, and dynamic constructor invocations.
+	/// </para>
+	/// </remarks>
 	public class DynamicInvocationResolveResult : ResolveResult
 	{
 		/// <summary>
-		/// Target of the invocation. Can be a dynamic expression or a <see cref="MethodGroupResolveResult"/>.
+		/// Gets the invocation target.
 		/// </summary>
+		/// <remarks>
+		/// The target can be a dynamic expression or a <see cref="MethodGroupResolveResult"/> when the operation starts from
+		/// a method-group-like shape before dynamic dispatch.
+		/// </remarks>
 		public readonly ResolveResult Target;
 
 		/// <summary>
-		/// Type of the invocation.
+		/// Gets the invocation shape represented by this node.
 		/// </summary>
 		public readonly DynamicInvocationType InvocationType;
 
 		/// <summary>
-		/// Arguments for the call. Named arguments will be instances of <see cref="NamedArgumentResolveResult"/>.
+		/// Gets the invocation arguments in source order.
 		/// </summary>
+		/// <remarks>
+		/// Named arguments are represented as <see cref="NamedArgumentResolveResult"/> instances.
+		/// </remarks>
 		public readonly IList<ResolveResult> Arguments;
 
 		/// <summary>
-		/// Gets the list of initializer statements that are appplied to the result of this invocation.
-		/// This is used to represent object and collection initializers.
-		/// With the initializer statements, the <see cref="InitializedObjectResolveResult"/> is used
-		/// to refer to the result of this invocation.
-		/// Initializer statements can only exist if the <see cref="InvocationType"/> is <see cref="DynamicInvocationType.ObjectCreation"/>.
+		/// Gets object or collection initializer statements attached to this invocation result.
 		/// </summary>
+		/// <remarks>
+		/// Initializer statements are only meaningful for <see cref="DynamicInvocationType.ObjectCreation"/>.
+		/// When they are present, references to the newly created object are represented by
+		/// <see cref="InitializedObjectResolveResult"/> nodes.
+		/// </remarks>
 		public readonly IList<ResolveResult> InitializerStatements;
 
 		/// <summary>
@@ -79,6 +99,14 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 		/// </summary>
 		public readonly IMember Symbol;
 
+		/// <summary>
+		/// Initializes a new dynamic invocation resolve result.
+		/// </summary>
+		/// <param name="target">The invocation target.</param>
+		/// <param name="invocationType">The syntactic invocation shape.</param>
+		/// <param name="arguments">The argument list in source order.</param>
+		/// <param name="initializerStatements">Optional initializer statements associated with object creation.</param>
+		/// <param name="symbol">Optional synthesized member standing in for the member the binder will pick.</param>
 		public DynamicInvocationResolveResult(ResolveResult target, DynamicInvocationType invocationType, IList<ResolveResult> arguments, IList<ResolveResult> initializerStatements = null, IMember symbol = null) : base(SpecialType.Dynamic)
 		{
 			this.Target = target;
@@ -88,6 +116,10 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			this.Symbol = symbol;
 		}
 
+		/// <summary>
+		/// Returns a debugger-oriented textual representation of this resolve result.
+		/// </summary>
+		/// <returns>A fixed label identifying the node as a dynamic invocation.</returns>
 		public override string ToString()
 		{
 			return string.Format(CultureInfo.InvariantCulture, "[Dynamic invocation ]");

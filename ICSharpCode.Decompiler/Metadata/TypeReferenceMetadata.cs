@@ -26,14 +26,30 @@ using System.Reflection.Metadata;
 namespace ICSharpCode.Decompiler.Metadata
 {
 #if !VSADDIN
+	/// <summary>
+	/// Lightweight projection of a <see cref="TypeReference"/> row that exposes related member and nested type references.
+	/// </summary>
 	public sealed class TypeReferenceMetadata
 	{
 		readonly TypeReference entry;
 
+		/// <summary>
+		/// Gets the metadata reader that owns this type reference row.
+		/// </summary>
 		public MetadataReader Metadata { get; }
+
+		/// <summary>
+		/// Gets the handle that identifies the underlying <see cref="TypeReference"/> row.
+		/// </summary>
 		public TypeReferenceHandle Handle { get; }
 
 		string? name;
+		/// <summary>
+		/// Gets the simple type name stored in the type reference row.
+		/// </summary>
+		/// <remarks>
+		/// If metadata is malformed, a stable fallback string containing the row handle is returned.
+		/// </remarks>
 		public string Name {
 			get {
 				try
@@ -48,6 +64,12 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 		string? @namespace;
+		/// <summary>
+		/// Gets the namespace stored in the type reference row.
+		/// </summary>
+		/// <remarks>
+		/// If metadata is malformed, a stable fallback string containing the row handle is returned.
+		/// </remarks>
 		public string Namespace {
 			get {
 				try
@@ -61,9 +83,15 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Gets the resolution scope for this type reference (module, module reference, assembly reference, or enclosing type).
+		/// </summary>
 		public EntityHandle ResolutionScope => entry.ResolutionScope;
 
 		ImmutableArray<MemberReferenceMetadata> memberReferences;
+		/// <summary>
+		/// Gets member references whose parent is this type reference, ordered by member name.
+		/// </summary>
 		public ImmutableArray<MemberReferenceMetadata> MemberReferences {
 			get {
 				var value = memberReferences;
@@ -81,6 +109,9 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 		ImmutableArray<TypeReferenceMetadata> typeReferences;
+		/// <summary>
+		/// Gets type references whose resolution scope is this type reference, ordered by type name.
+		/// </summary>
 		public ImmutableArray<TypeReferenceMetadata> TypeReferences {
 			get {
 				var value = typeReferences;
@@ -97,6 +128,13 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Creates a metadata projection for a type reference row.
+		/// </summary>
+		/// <param name="metadata">Metadata reader containing the type reference table.</param>
+		/// <param name="handle">Handle identifying the type reference row to project.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="metadata"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentNullException"><paramref name="handle"/> is nil.</exception>
 		public TypeReferenceMetadata(MetadataReader metadata, TypeReferenceHandle handle)
 		{
 			Metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
@@ -106,6 +144,9 @@ namespace ICSharpCode.Decompiler.Metadata
 			entry = metadata.GetTypeReference(handle);
 		}
 
+		/// <summary>
+		/// Returns a display-friendly qualified name in <c>Namespace::Name</c> form.
+		/// </summary>
 		public override string ToString() => $"{Namespace}::{Name}";
 	}
 #endif

@@ -26,20 +26,41 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.FlowAnalysis
 {
 	/// <summary>
-	/// Description of Dominance.
+	/// Provides dominance-analysis algorithms for <see cref="ControlFlowNode"/> graphs.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The routines in this type compute immediate dominators and auxiliary reachability/frontier-style information used by
+	/// higher-level flow analyses in the decompiler pipeline.
+	/// </para>
+	/// <para>
+	/// The APIs mutate dominance-related fields on <see cref="ControlFlowNode"/> instances in-place. Callers are expected to provide
+	/// a graph whose dominance bookkeeping fields are not already populated.
+	/// </para>
+	/// </remarks>
 	public static class Dominance
 	{
 		/// <summary>
-		/// Computes the dominator tree.
+		/// Computes immediate dominators and dominator-tree children for every node reachable from <paramref name="entryPoint"/>.
 		/// </summary>
+		/// <param name="entryPoint">The control-flow graph entry node.</param>
+		/// <param name="cancellationToken">A cancellation token that is observed between dominance-iteration passes.</param>
 		/// <remarks>
-		/// Precondition: the dominance tree is not already computed for some nodes reachable from entryPoint
-		/// (i.e. ImmediateDominator and DominatorTreeChildren are both null),
-		/// and the visited flag is false for any nodes reachable from entryPoint.
-		/// 
-		/// Postcondition: a dominator tree is constructed for all nodes reachable from entryPoint,
-		/// and the visited flag remains false.
+		/// <para>
+		/// Preconditions:
+		/// </para>
+		/// <list type="bullet">
+		/// <item><description>Dominance fields are not already computed on reachable nodes (<see cref="ControlFlowNode.ImmediateDominator"/> and <see cref="ControlFlowNode.DominatorTreeChildren"/> are <see langword="null"/>).</description></item>
+		/// <item><description><see cref="ControlFlowNode.Visited"/> is <see langword="false"/> for reachable nodes.</description></item>
+		/// </list>
+		/// <para>
+		/// Postconditions:
+		/// </para>
+		/// <list type="bullet">
+		/// <item><description>Reachable nodes have populated <see cref="ControlFlowNode.ImmediateDominator"/>, <see cref="ControlFlowNode.DominatorTreeChildren"/>, and <see cref="ControlFlowNode.PostOrderNumber"/> values.</description></item>
+		/// <item><description>The synthetic self-dominator assigned to the entry during computation is cleared before returning.</description></item>
+		/// <item><description><see cref="ControlFlowNode.Visited"/> is reset to <see langword="false"/> on processed nodes.</description></item>
+		/// </list>
 		/// </remarks>
 		public static void ComputeDominance(ControlFlowNode entryPoint, CancellationToken cancellationToken = default(CancellationToken))
 		{
@@ -108,10 +129,18 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 		}
 
 		/// <summary>
-		/// Returns the common ancestor of a and b in the dominator tree.
-		/// 
-		/// Precondition: a and b are part of the same dominator tree.
+		/// Returns the nearest common dominator (lowest common ancestor) of two nodes.
 		/// </summary>
+		/// <param name="a">The first node.</param>
+		/// <param name="b">The second node.</param>
+		/// <returns>The nearest shared ancestor in the dominator tree.</returns>
+		/// <remarks>
+		/// Preconditions:
+		/// <list type="bullet">
+		/// <item><description>Both nodes belong to the same computed dominator tree.</description></item>
+		/// <item><description><see cref="ControlFlowNode.PostOrderNumber"/> and <see cref="ControlFlowNode.ImmediateDominator"/> are valid.</description></item>
+		/// </list>
+		/// </remarks>
 		public static ControlFlowNode FindCommonDominator(ControlFlowNode a, ControlFlowNode b)
 		{
 			while (a != b)
@@ -125,17 +154,22 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 		}
 
 		/// <summary>
-		/// Computes a BitSet where
-		/// <c>result[i] == true</c> iff cfg[i] is reachable and there is some node that is
-		/// reachable from cfg[i] but not dominated by cfg[i].
-		/// 
-		/// This is similar to "does cfg[i] have a non-empty dominance frontier?",
-		/// except that it uses non-strict dominance where the definition of dominance frontiers
-		/// uses "strictly dominates".
-		/// 
-		/// Precondition:
-		///  Dominance was computed for cfg and <c>cfg[i].UserIndex == i</c> for all i.
+		/// Marks nodes that can reach at least one node outside their own dominance region.
 		/// </summary>
+		/// <param name="cfg">The control-flow graph indexed by <see cref="ControlFlowNode.UserIndex"/>.</param>
+		/// <returns>
+		/// A bitset where bit <c>i</c> is set when <c>cfg[i]</c> is reachable and there exists a reachable node that is
+		/// reachable from <c>cfg[i]</c> but not dominated by <c>cfg[i]</c>.
+		/// </returns>
+		/// <remarks>
+		/// <para>
+		/// This metric is related to a non-empty dominance frontier, but it uses non-strict dominance semantics
+		/// (frontier definitions usually rely on strict dominance).
+		/// </para>
+		/// <para>
+		/// Preconditions: dominance has already been computed, and each node obeys <c>cfg[i].UserIndex == i</c>.
+		/// </para>
+		/// </remarks>
 		public static BitSet MarkNodesWithReachableExits(ControlFlowNode[] cfg)
 		{
 #if DEBUG

@@ -32,18 +32,44 @@ namespace ICSharpCode.Decompiler.Documentation
 	/// all possibilities.
 	/// The type parameter count only applies to the innermost type, all outer types must be non-generic.
 	/// </summary>
+	/// <remarks>
+	/// XML documentation IDs encode nested types by using <c>.</c>, while metadata represents nesting with separate type-definition scopes.
+	/// This helper delays committing to a namespace/type boundary until resolution time and probes all legal splits.
+	/// </remarks>
 	[Serializable]
 	public class GetPotentiallyNestedClassTypeReference : ITypeReference
 	{
 		readonly string typeName;
 		readonly int typeParameterCount;
 
+		/// <summary>
+		/// Initializes a type reference that resolves a documentation-style type name where the top-level type boundary is ambiguous.
+		/// </summary>
+		/// <param name="typeName">
+		/// Full type name from an XML documentation ID (for example <c>Namespace.Outer.Inner</c>) where dots can represent either
+		/// namespace separators or nesting separators.
+		/// </param>
+		/// <param name="typeParameterCount">
+		/// Generic arity of the innermost type in <paramref name="typeName"/>. Outer types are assumed to be non-generic.
+		/// </param>
 		public GetPotentiallyNestedClassTypeReference(string typeName, int typeParameterCount)
 		{
 			this.typeName = typeName;
 			this.typeParameterCount = typeParameterCount;
 		}
 
+		/// <summary>
+		/// Resolves this type reference by trying every valid split between namespace and nested-type segments.
+		/// </summary>
+		/// <param name="context">Type-system context that supplies the current module and compilation modules used for lookup.</param>
+		/// <returns>
+		/// The first matching type definition across the current module and compilation modules; otherwise an <see cref="UnknownType"/>
+		/// built from the best-effort namespace/name split.
+		/// </returns>
+		/// <remarks>
+		/// XML documentation IDs flatten nested types into dotted names. Because metadata stores nested-type boundaries separately,
+		/// this resolver scans candidate boundaries from right to left and tests nested chains in each module.
+		/// </remarks>
 		public IType Resolve(ITypeResolveContext context)
 		{
 			string[] parts = typeName.Split('.');
@@ -77,10 +103,16 @@ namespace ICSharpCode.Decompiler.Documentation
 		/// <summary>
 		/// Resolves the type reference within the context of the given PE file.
 		/// </summary>
+		/// <param name="module">PE file whose type definitions and exported type forwarders are probed.</param>
 		/// <returns>Either TypeDefinitionHandle, if the type is defined in the module or ExportedTypeHandle,
 		/// if the module contains a type forwarder. Returns a nil handle, if the type was not found.</returns>
+		/// <remarks>
+		/// The probing strategy mirrors <see cref="Resolve(ITypeResolveContext)"/>, but uses metadata handles directly so callers can avoid
+		/// constructing type-system objects when they only need low-level metadata identity.
+		/// </remarks>
 		public EntityHandle ResolveInPEFile(MetadataFile module)
 		{
+
 			string[] parts = typeName.Split('.');
 			for (int i = parts.Length - 1; i >= 0; i--)
 			{

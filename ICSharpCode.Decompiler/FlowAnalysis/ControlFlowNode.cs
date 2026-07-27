@@ -80,12 +80,21 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 		/// </summary>
 		public readonly List<ControlFlowNode> Successors = new List<ControlFlowNode>();
 
+		/// <summary>
+		/// Adds a directed control-flow edge from this node to <paramref name="target"/>.
+		/// </summary>
+		/// <param name="target">The successor node to connect to this node.</param>
 		public void AddEdgeTo(ControlFlowNode target)
 		{
 			this.Successors.Add(target);
 			target.Predecessors.Add(this);
 		}
 
+		/// <summary>
+		/// Traverses the graph in depth-first pre-order starting at this node.
+		/// </summary>
+		/// <param name="children">A selector that returns child nodes for each visited node.</param>
+		/// <param name="visitAction">An action invoked when a node is first discovered.</param>
 		public void TraversePreOrder(Func<ControlFlowNode, IEnumerable<ControlFlowNode>> children, Action<ControlFlowNode> visitAction)
 		{
 			GraphTraversal.DepthFirstSearch(new[] { this }, Visit, children);
@@ -100,6 +109,11 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			}
 		}
 
+		/// <summary>
+		/// Traverses the graph in depth-first post-order starting at this node.
+		/// </summary>
+		/// <param name="children">A selector that returns child nodes for each visited node.</param>
+		/// <param name="visitAction">An action invoked after all child nodes were visited.</param>
 		public void TraversePostOrder(Func<ControlFlowNode, IEnumerable<ControlFlowNode>> children, Action<ControlFlowNode> visitAction)
 		{
 			GraphTraversal.DepthFirstSearch(new[] { this }, Visit, children, postorderAction: visitAction);

@@ -126,6 +126,12 @@ namespace ICSharpCode.Decompiler.Output
 		/// </summary>
 		SupportExtensionDeclarations = 0x400000,
 
+		/// <summary>
+		/// Combined profile used by default symbol-to-text conversion.
+		/// </summary>
+		/// <remarks>
+		/// Includes access modifiers, parameter details, return type, type parameters, declaration keyword, and a compact body marker.
+		/// </remarks>
 		StandardConversionFlags = ShowParameterNames |
 			ShowAccessibility |
 			UsePrivateProtectedAccessibility |
@@ -140,6 +146,9 @@ namespace ICSharpCode.Decompiler.Output
 			ShowDefinitionKeyword |
 			ShowBody,
 
+		/// <summary>
+		/// Enables every currently defined conversion option.
+		/// </summary>
 		All = 0x1fffff,
 	}
 
@@ -148,12 +157,38 @@ namespace ICSharpCode.Decompiler.Output
 	/// </summary>
 	public interface IAmbience
 	{
+		/// <summary>
+		/// Gets or sets formatting flags that control symbol rendering behavior.
+		/// </summary>
+		/// <value>A combination of <see cref="Output.ConversionFlags"/> values.</value>
 		ConversionFlags ConversionFlags { get; set; }
 
+		/// <summary>
+		/// Converts a symbol into a user-facing textual representation.
+		/// </summary>
+		/// <param name="symbol">The symbol to render.</param>
+		/// <returns>The formatted symbol text.</returns>
 		string ConvertSymbol(ISymbol symbol);
+
+		/// <summary>
+		/// Converts a type into a user-facing textual representation.
+		/// </summary>
+		/// <param name="type">The type to render.</param>
+		/// <returns>The formatted type text.</returns>
 		string ConvertType(IType type);
+
+		/// <summary>
+		/// Converts a compile-time constant value into C#-style display text.
+		/// </summary>
+		/// <param name="constantValue">The constant value to render.</param>
+		/// <returns>The formatted constant representation.</returns>
 		string ConvertConstantValue(object constantValue);
 
+		/// <summary>
+		/// Wraps raw documentation text into a comment representation suitable for display.
+		/// </summary>
+		/// <param name="comment">The unwrapped comment content.</param>
+		/// <returns>The wrapped comment text.</returns>
 		string WrapComment(string comment);
 	}
 }

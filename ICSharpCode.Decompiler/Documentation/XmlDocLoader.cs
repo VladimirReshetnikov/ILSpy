@@ -29,8 +29,16 @@ using ICSharpCode.Decompiler.Metadata;
 namespace ICSharpCode.Decompiler.Documentation
 {
 	/// <summary>
-	/// Helps finding and loading .xml documentation.
+	/// Locates and caches XML documentation providers for metadata modules.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Lookup prefers side-by-side XML files (including localized subdirectories) and falls back to known .NET Framework reference/runtime directories.
+	/// </para>
+	/// <para>
+	/// Results are cached per <see cref="MetadataFile"/> instance, including negative lookups, so repeated documentation queries avoid repeated filesystem probing.
+	/// </para>
+	/// </remarks>
 	public static class XmlDocLoader
 	{
 		static readonly Lazy<XmlDocumentationProvider> mscorlibDocumentation = new Lazy<XmlDocumentationProvider>(LoadMscorlibDocumentation);
@@ -49,10 +57,33 @@ namespace ICSharpCode.Decompiler.Documentation
 			return TryLoadModernRefPackDocumentation(typeof(object).Assembly.Location);
 		}
 
+		/// <summary>
+		/// Gets lazily loaded documentation for <c>mscorlib.dll</c> from the best available framework profile.
+		/// </summary>
+		/// <value>
+		/// A shared provider instance when a framework XML file can be located; otherwise <see langword="null"/>.
+		/// The lookup runs at most once per process via <see cref="Lazy{T}"/>.
+		/// </value>
 		public static XmlDocumentationProvider MscorlibDocumentation {
 			get { return mscorlibDocumentation.Value; }
 		}
 
+		/// <summary>
+		/// Loads (or retrieves from cache) the XML documentation provider associated with a metadata module.
+		/// </summary>
+		/// <param name="module">Module whose assembly path and runtime are used to locate XML documentation.</param>
+		/// <returns>A documentation provider for <paramref name="module"/>, or <see langword="null"/> when no suitable XML file is found.</returns>
+		/// <exception cref="ArgumentNullException"><paramref name="module"/> is <see langword="null"/>.</exception>
+		/// <remarks>
+		/// <para>
+		/// Both successful and unsuccessful probes are cached in <see cref="cache"/>. This avoids repeated disk probing for assemblies that
+		/// are known to have no sidecar documentation.
+		/// </para>
+		/// <para>
+		/// The method first checks a side-by-side XML next to <see cref="MetadataFile.FileName"/> (including culture folders), and only then
+		/// falls back to framework/reference-assembly locations inferred from <see cref="MetadataFile.GetRuntime"/>.
+		/// </para>
+		/// </remarks>
 		public static XmlDocumentationProvider LoadDocumentation(MetadataFile module)
 		{
 			if (module == null)
@@ -306,9 +337,22 @@ namespace ICSharpCode.Decompiler.Documentation
 		}
 
 		/// <summary>
-		/// Given the assembly file name, looks up the XML documentation file name.
-		/// Returns null if no XML documentation file is found.
+		/// Resolves the best XML documentation file path for an assembly path, honoring UI-culture-specific folders.
 		/// </summary>
+		/// <param name="fileName">Assembly file path whose extension is replaced with <c>.xml</c> during probing.</param>
+		/// <returns>
+		/// First existing candidate from culture-specific, language fallback, neutral, and English fallback locations;
+		/// otherwise <see langword="null"/>.
+		/// </returns>
+		/// <remarks>
+		/// Probe order mirrors how Microsoft ships framework XML docs:
+		/// <list type="number">
+		/// <item><description><c>&lt;assemblyDir&gt;\&lt;CurrentUICulture.Name&gt;\Assembly.xml</c></description></item>
+		/// <item><description><c>&lt;assemblyDir&gt;\&lt;CurrentUICulture.TwoLetterISOLanguageName&gt;\Assembly.xml</c></description></item>
+		/// <item><description><c>&lt;assemblyDir&gt;\Assembly.xml</c></description></item>
+		/// <item><description><c>&lt;assemblyDir&gt;\en\Assembly.xml</c> (only when current language is not English)</description></item>
+		/// </list>
+		/// </remarks>
 		internal static string LookupLocalizedXmlDoc(string fileName)
 		{
 			if (string.IsNullOrEmpty(fileName))
@@ -347,6 +391,12 @@ namespace ICSharpCode.Decompiler.Documentation
 			return null;
 		}
 
+		/// <summary>
+		/// Builds the conventional culture-subdirectory XML documentation path for a given assembly XML file.
+		/// </summary>
+		/// <param name="fileName">Base XML documentation path without culture subfolder insertion.</param>
+		/// <param name="language">Culture name or language code to insert as a subdirectory name.</param>
+		/// <returns><paramref name="fileName"/> rewritten to <c>&lt;directory&gt;\&lt;language&gt;\&lt;fileName&gt;</c>.</returns>
 		private static string GetLocalizedName(string fileName, string language)
 		{
 			return Path.Combine(Path.GetDirectoryName(fileName), language, Path.GetFileName(fileName));

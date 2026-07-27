@@ -25,23 +25,46 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents the result of a method, constructor or indexer invocation.
+	/// Represents the semantic result of invoking a method, constructor, delegate, or indexer.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <see cref="Arguments"/> stores arguments in source-evaluation order. Call-argument order can differ when named arguments,
+	/// optional parameters, or <c>params</c> expansion are involved; use <see cref="GetArgumentsForCall"/> when consumer logic requires
+	/// parameter-mapped order.
+	/// </para>
+	/// <para>
+	/// <see cref="InitializerStatements"/> captures semantic operations produced by object and collection initializers that execute after
+	/// the invocation result has been created.
+	/// </para>
+	/// </remarks>
 	public class InvocationResolveResult : MemberResolveResult
 	{
 		/// <summary>
-		/// Gets the arguments that are being passed to the method, in the order the arguments are being evaluated.
+		/// Gets the arguments as they are evaluated at the call site.
 		/// </summary>
 		public readonly IList<ResolveResult> Arguments;
 
 		/// <summary>
-		/// Gets the list of initializer statements that are appplied to the result of this invocation.
-		/// This is used to represent object and collection initializers.
-		/// With the initializer statements, the <see cref="InitializedObjectResolveResult"/> is used
-		/// to refer to the result of this invocation.
+		/// Gets semantic operations that initialize the created value after invocation.
 		/// </summary>
+		/// <remarks>
+		/// Entries typically include assignment-like statements that reference <see cref="InitializedObjectResolveResult"/>.
+		/// </remarks>
 		public readonly IList<ResolveResult> InitializerStatements;
 
+		/// <summary>
+		/// Initializes a new invocation resolve result.
+		/// </summary>
+		/// <param name="targetResult">The resolved invocation target expression, or <see langword="null"/> for static calls.</param>
+		/// <param name="member">The callable member selected by overload resolution.</param>
+		/// <param name="arguments">Arguments in source-evaluation order. If <see langword="null"/>, an empty list is used.</param>
+		/// <param name="initializerStatements">
+		/// Object/collection initializer operations that execute after construction. If <see langword="null"/>, an empty list is used.
+		/// </param>
+		/// <param name="returnTypeOverride">
+		/// An optional type to expose from <see cref="ResolveResult.Type"/> instead of the computed member type.
+		/// </param>
 		public InvocationResolveResult(ResolveResult targetResult, IParameterizedMember member,
 									   IList<ResolveResult> arguments = null,
 									   IList<ResolveResult> initializerStatements = null,
@@ -52,21 +75,28 @@ namespace ICSharpCode.Decompiler.Semantics
 			this.InitializerStatements = initializerStatements ?? EmptyList<ResolveResult>.Instance;
 		}
 
+		/// <summary>
+		/// Gets the invoked callable member.
+		/// </summary>
 		public new IParameterizedMember Member {
 			get { return (IParameterizedMember)base.Member; }
 		}
 
 		/// <summary>
-		/// Gets the arguments in the order they are being passed to the method.
-		/// For parameter arrays (params), this will return an ArrayCreateResolveResult.
+		/// Gets arguments in call-parameter order.
 		/// </summary>
+		/// <returns>
+		/// A list whose entries correspond to parameter positions. For expanded <c>params</c> calls, implementations can synthesize an
+		/// <see cref="ArrayCreateResolveResult"/> to represent packed trailing arguments.
+		/// </returns>
 		[System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1024:UsePropertiesWhereAppropriate",
-														 Justification = "Derived methods may be expensive and create new lists")]
+									 Justification = "Derived methods may be expensive and create new lists")]
 		public virtual IList<ResolveResult> GetArgumentsForCall()
 		{
 			return Arguments;
 		}
 
+		/// <inheritdoc/>
 		public override IEnumerable<ResolveResult> GetChildResults()
 		{
 			return base.GetChildResults().Concat(this.Arguments).Concat(this.InitializerStatements);

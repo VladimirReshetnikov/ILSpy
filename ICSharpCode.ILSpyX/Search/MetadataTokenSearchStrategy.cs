@@ -27,10 +27,20 @@ using ICSharpCode.ILSpyX.Abstractions;
 
 namespace ICSharpCode.ILSpyX.Search
 {
+	/// <summary>
+	/// Searches for a specific metadata token (hex) and resolves it to a matching entity.
+	/// </summary>
 	public class MetadataTokenSearchStrategy : AbstractEntitySearchStrategy
 	{
 		readonly EntityHandle searchTermToken;
 
+		/// <summary>
+		/// Initializes a token-based entity search strategy.
+		/// </summary>
+		/// <param name="language">Language service used for result formatting.</param>
+		/// <param name="apiVisibility">Accessibility filter applied to resolved entities.</param>
+		/// <param name="request">Parsed search request whose first keyword is expected to be a hex token.</param>
+		/// <param name="resultQueue">Queue that receives matched entities.</param>
 		public MetadataTokenSearchStrategy(ILanguage language, ApiVisibility apiVisibility, SearchRequest request,
 			IProducerConsumerCollection<SearchResult> resultQueue)
 			: base(language, apiVisibility, request, resultQueue)
@@ -43,6 +53,11 @@ namespace ICSharpCode.ILSpyX.Search
 			}
 		}
 
+		/// <summary>
+		/// Resolves and evaluates the requested token in the specified module.
+		/// </summary>
+		/// <param name="module">Module whose metadata is queried.</param>
+		/// <param name="cancellationToken">Cancellation token used to abort the operation.</param>
 		public override void Search(MetadataFile module, CancellationToken cancellationToken)
 		{
 			cancellationToken.ThrowIfCancellationRequested();

@@ -21,9 +21,20 @@
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Represents a reference to a type.
-	/// Must be resolved before it can be used as type.
+	/// Represents an unresolved reference that can be bound to an <see cref="IType"/> in a specific resolve context.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Semantics.</b> Implementations capture type identity information independently from a concrete declaration.
+	/// The final <see cref="IType"/> may differ depending on generic substitutions, current member/type scope, and
+	/// compilation options supplied through <see cref="ITypeResolveContext"/>.
+	/// </para>
+	/// <para>
+	/// <b>Usage.</b> Consumers should delay assumptions about type shape until <see cref="Resolve"/> completes.
+	/// The same <see cref="ITypeReference"/> instance can resolve to different concrete type instances when invoked with
+	/// different contexts.
+	/// </para>
+	/// </remarks>
 	public interface ITypeReference
 	{
 		// Keep this interface simple: I decided against having GetMethods/GetEvents etc. here,
@@ -33,41 +44,72 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		// but when freezing the reference, one wouldn't expect the definition to freeze.
 
 		/// <summary>
-		/// Resolves this type reference.
+		/// Resolves this reference within the supplied semantic context.
 		/// </summary>
 		/// <param name="context">
-		/// Context to use for resolving this type reference.
-		/// Which kind of context is required depends on the which kind of type reference this is;
-		/// please consult the documentation of the method that was used to create this type reference,
-		/// or that of the class implementing this method.
+		/// The resolve context that provides compilation identity and current scope (module/type/member) for generic and
+		/// nested-name binding.
 		/// </param>
 		/// <returns>
-		/// Returns the resolved type.
-		/// In case of an error, returns an unknown type (<see cref="TypeKind.Unknown"/>).
-		/// Never returns null.
+		/// The resolved type. Returns an unknown type (<see cref="TypeKind.Unknown"/>) when binding fails.
+		/// Never returns <see langword="null"/>.
 		/// </returns>
 		IType Resolve(ITypeResolveContext context);
 	}
 
+	/// <summary>
+	/// Describes the ambient scope used by type and member reference resolution.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Semantics.</b> A resolve context carries both a compilation root and optional scope anchors
+	/// (<see cref="CurrentModule"/>, <see cref="CurrentTypeDefinition"/>, <see cref="CurrentMember"/>). Resolution
+	/// logic uses these anchors to interpret generic parameters, nested types, and member-local constructs.
+	/// </para>
+	/// <para>
+	/// <b>Usage.</b> Contexts are typically immutable snapshots; methods such as
+	/// <see cref="WithCurrentTypeDefinition"/> and <see cref="WithCurrentMember"/> produce derived contexts for narrower
+	/// scopes without mutating the original instance.
+	/// </para>
+	/// </remarks>
 	public interface ITypeResolveContext : ICompilationProvider
 	{
 		/// <summary>
-		/// Gets the current module.
-		/// This property may return null if this context does not specify any module.
+		/// Gets the module considered "current" for this resolution scope.
 		/// </summary>
+		/// <value>
+		/// The current module, or <see langword="null"/> when the context is compilation-wide and not anchored to a module.
+		/// </value>
 		IModule? CurrentModule { get; }
 
 		/// <summary>
-		/// Gets the current type definition.
+		/// Gets the current declaring type used for nested type/member lookup.
 		/// </summary>
+		/// <value>
+		/// The active type definition, or <see langword="null"/> when resolution is not occurring inside a type scope.
+		/// </value>
 		ITypeDefinition? CurrentTypeDefinition { get; }
 
 		/// <summary>
-		/// Gets the current member.
+		/// Gets the current member used for method type parameters and member-local symbol interpretation.
 		/// </summary>
+		/// <value>
+		/// The active member, or <see langword="null"/> when resolution is not anchored to a specific member body.
+		/// </value>
 		IMember? CurrentMember { get; }
 
+		/// <summary>
+		/// Creates a context with the specified current type while keeping the same compilation and module scope.
+		/// </summary>
+		/// <param name="typeDefinition">The replacement current type, or <see langword="null"/> to clear type scope.</param>
+		/// <returns>A context that reflects the requested type scope.</returns>
 		ITypeResolveContext WithCurrentTypeDefinition(ITypeDefinition? typeDefinition);
+
+		/// <summary>
+		/// Creates a context with the specified current member while keeping the same compilation and type scope.
+		/// </summary>
+		/// <param name="member">The replacement current member, or <see langword="null"/> to clear member scope.</param>
+		/// <returns>A context that reflects the requested member scope.</returns>
 		ITypeResolveContext WithCurrentMember(IMember? member);
 	}
 }

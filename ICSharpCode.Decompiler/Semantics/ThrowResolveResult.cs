@@ -20,8 +20,18 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.Semantics
 {
+	/// <summary>
+	/// Represents a <c>throw</c> expression in semantic form.
+	/// </summary>
+	/// <remarks>
+	/// Throw expressions are typeless in the language model, so this resolve result uses
+	/// <see cref="SpecialType.NoType"/> as its <see cref="ResolveResult.Type"/> payload.
+	/// </remarks>
 	class ThrowResolveResult : ResolveResult
 	{
+		/// <summary>
+		/// Initializes a throw-expression resolve result.
+		/// </summary>
 		public ThrowResolveResult() : base(SpecialType.NoType)
 		{
 		}

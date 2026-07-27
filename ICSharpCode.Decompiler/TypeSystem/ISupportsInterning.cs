@@ -21,19 +21,27 @@
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Interface for TypeSystem objects that support interning.
-	/// See <see cref="InterningProvider"/> for more information.
+	/// Defines structural identity used by <see cref="InterningProvider"/> when canonicalizing type-system objects.
 	/// </summary>
+	/// <remarks>
+	/// Implementations should expose equality semantics that are stable for the immutable state used as interning key data.
+	/// The methods on this interface are intentionally separate from ordinary <see cref="object.Equals(object?)"/> and
+	/// <see cref="object.GetHashCode()"/> so the type system can keep user-facing equality behavior independent from memory-
+	/// deduplication behavior.
+	/// </remarks>
 	public interface ISupportsInterning
 	{
 		/// <summary>
-		/// Gets a hash code for interning.
+		/// Returns a hash code that groups potentially equal instances for interning lookup.
 		/// </summary>
+		/// <returns>A hash code derived from the fields that participate in <see cref="EqualsForInterning"/>.</returns>
 		int GetHashCodeForInterning();
 
 		/// <summary>
-		/// Equality test for interning.
+		/// Determines whether this instance is interning-equivalent to <paramref name="other"/>.
 		/// </summary>
+		/// <param name="other">The candidate instance from the same interning domain.</param>
+		/// <returns><see langword="true"/> when both instances represent the same canonical value; otherwise <see langword="false"/>.</returns>
 		bool EqualsForInterning(ISupportsInterning other);
 	}
 }

@@ -25,20 +25,66 @@ using ICSharpCode.Decompiler.Metadata;
 
 namespace ICSharpCode.Decompiler.Disassembler
 {
+	/// <summary>
+	/// Provides a hook for post-processing metadata handle collections before they are emitted by
+	/// <see cref="ReflectionDisassembler"/>.
+	/// </summary>
 	public interface IEntityProcessor
 	{
+		/// <summary>
+		/// Reorders or filters interface implementation entries associated with the current type.
+		/// </summary>
+		/// <param name="module">Metadata source that can be used to inspect each handle.</param>
+		/// <param name="items">The interface implementation handles selected for output.</param>
+		/// <returns>The handles to emit, in the order they should appear in disassembled IL.</returns>
 		IReadOnlyCollection<InterfaceImplementationHandle> Process(MetadataFile module, IReadOnlyCollection<InterfaceImplementationHandle> items);
 
+		/// <summary>
+		/// Reorders or filters nested type definitions before they are written.
+		/// </summary>
+		/// <param name="module">Metadata source that can be used to inspect each handle.</param>
+		/// <param name="items">The type definition handles selected for output.</param>
+		/// <returns>The handles to emit, in the order they should appear in disassembled IL.</returns>
 		IReadOnlyCollection<TypeDefinitionHandle> Process(MetadataFile module, IReadOnlyCollection<TypeDefinitionHandle> items);
 
+		/// <summary>
+		/// Reorders or filters method definitions before method bodies/signatures are emitted.
+		/// </summary>
+		/// <param name="module">Metadata source that can be used to inspect each handle.</param>
+		/// <param name="items">The method definition handles selected for output.</param>
+		/// <returns>The handles to emit, in the order they should appear in disassembled IL.</returns>
 		IReadOnlyCollection<MethodDefinitionHandle> Process(MetadataFile module, IReadOnlyCollection<MethodDefinitionHandle> items);
 
+		/// <summary>
+		/// Reorders or filters property definitions before accessors and metadata are written.
+		/// </summary>
+		/// <param name="module">Metadata source that can be used to inspect each handle.</param>
+		/// <param name="items">The property definition handles selected for output.</param>
+		/// <returns>The handles to emit, in the order they should appear in disassembled IL.</returns>
 		IReadOnlyCollection<PropertyDefinitionHandle> Process(MetadataFile module, IReadOnlyCollection<PropertyDefinitionHandle> items);
 
+		/// <summary>
+		/// Reorders or filters event definitions before associated methods are emitted.
+		/// </summary>
+		/// <param name="module">Metadata source that can be used to inspect each handle.</param>
+		/// <param name="items">The event definition handles selected for output.</param>
+		/// <returns>The handles to emit, in the order they should appear in disassembled IL.</returns>
 		IReadOnlyCollection<EventDefinitionHandle> Process(MetadataFile module, IReadOnlyCollection<EventDefinitionHandle> items);
 
+		/// <summary>
+		/// Reorders or filters field definitions before they are emitted.
+		/// </summary>
+		/// <param name="module">Metadata source that can be used to inspect each handle.</param>
+		/// <param name="items">The field definition handles selected for output.</param>
+		/// <returns>The handles to emit, in the order they should appear in disassembled IL.</returns>
 		IReadOnlyCollection<FieldDefinitionHandle> Process(MetadataFile module, IReadOnlyCollection<FieldDefinitionHandle> items);
 
+		/// <summary>
+		/// Reorders or filters custom attributes before they are emitted on a declaration.
+		/// </summary>
+		/// <param name="module">Metadata source that can be used to inspect each handle.</param>
+		/// <param name="items">The custom attribute handles selected for output.</param>
+		/// <returns>The handles to emit, in the order they should appear in disassembled IL.</returns>
 		IReadOnlyCollection<CustomAttributeHandle> Process(MetadataFile module, IReadOnlyCollection<CustomAttributeHandle> items);
 	}
 }

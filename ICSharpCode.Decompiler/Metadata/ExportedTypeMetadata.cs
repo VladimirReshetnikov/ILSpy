@@ -34,10 +34,23 @@ namespace ICSharpCode.Decompiler.Metadata
 	{
 		readonly ExportedType entry;
 
+		/// <summary>
+		/// Gets the metadata reader that owns this exported type row.
+		/// </summary>
 		public MetadataReader Metadata { get; }
+
+		/// <summary>
+		/// Gets the handle that identifies the underlying <see cref="ExportedType"/> row.
+		/// </summary>
 		public ExportedTypeHandle Handle { get; }
 
 		string? name;
+		/// <summary>
+		/// Gets the simple type name stored in the exported type row.
+		/// </summary>
+		/// <remarks>
+		/// If metadata is malformed, a stable fallback string containing the row handle is returned.
+		/// </remarks>
 		public string Name {
 			get {
 				try
@@ -52,6 +65,12 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 		string? @namespace;
+		/// <summary>
+		/// Gets the namespace stored in the exported type row.
+		/// </summary>
+		/// <remarks>
+		/// If metadata is malformed, a stable fallback string containing the row handle is returned.
+		/// </remarks>
 		public string Namespace {
 			get {
 				try
@@ -65,12 +84,27 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Gets the implementation target for the exported type (file, assembly reference, or enclosing exported type).
+		/// </summary>
 		public EntityHandle Implementation => entry.Implementation;
+		/// <summary>
+		/// Gets raw <see cref="TypeAttributes"/> flags for the exported type.
+		/// </summary>
 		public TypeAttributes Attributes => entry.Attributes;
+		/// <summary>
+		/// Gets whether this row represents a forwarded type rather than a type defined in this assembly.
+		/// </summary>
 		public bool IsForwarder => entry.IsForwarder;
+		/// <summary>
+		/// Gets the namespace definition referenced by this exported type row.
+		/// </summary>
 		public NamespaceDefinition NamespaceDefinition => Metadata.GetNamespaceDefinition(entry.NamespaceDefinition);
 
 		ImmutableArray<ExportedTypeMetadata> exportedTypes;
+		/// <summary>
+		/// Gets exported types implemented by this exported type (nested exported types), ordered by namespace and name.
+		/// </summary>
 		public ImmutableArray<ExportedTypeMetadata> ExportedTypes {
 			get {
 				var value = exportedTypes;
@@ -88,6 +122,13 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Creates a metadata projection for an exported type row.
+		/// </summary>
+		/// <param name="metadata">Metadata reader containing the exported type table.</param>
+		/// <param name="handle">Handle identifying the exported type row to project.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="metadata"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentNullException"><paramref name="handle"/> is nil.</exception>
 		public ExportedTypeMetadata(MetadataReader metadata, ExportedTypeHandle handle)
 		{
 			Metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
@@ -97,6 +138,9 @@ namespace ICSharpCode.Decompiler.Metadata
 			entry = metadata.GetExportedType(handle);
 		}
 
+		/// <summary>
+		/// Returns a display-friendly qualified name in <c>Namespace::Name</c> form.
+		/// </summary>
 		public override string ToString() => $"{Namespace}::{Name}";
 	}
 #endif

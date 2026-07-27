@@ -25,13 +25,30 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Resolve result representing an array access.
+	/// Represents semantic indexing of an array or pointer target.
 	/// </summary>
+	/// <remarks>
+	/// For multidimensional arrays, <see cref="Indexes"/> contains one entry per dimension in source order.
+	/// </remarks>
 	public class ArrayAccessResolveResult : ResolveResult
 	{
+		/// <summary>
+		/// Gets the resolved target being indexed.
+		/// </summary>
 		public readonly ResolveResult Array;
+
+		/// <summary>
+		/// Gets index expressions in source order.
+		/// </summary>
 		public readonly IList<ResolveResult> Indexes;
 
+		/// <summary>
+		/// Initializes an array-access semantic node.
+		/// </summary>
+		/// <param name="elementType">The effective element type produced by the access operation.</param>
+		/// <param name="array">The resolved array or pointer target expression.</param>
+		/// <param name="indexes">Resolved index expressions in source order.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="array"/> or <paramref name="indexes"/> is <see langword="null"/>.</exception>
 		public ArrayAccessResolveResult(IType elementType, ResolveResult array, IList<ResolveResult> indexes) : base(elementType)
 		{
 			if (array == null)

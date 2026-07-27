@@ -22,15 +22,35 @@ using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.Util
 {
+	/// <summary>
+	/// Adapts a comparison delegate to <see cref="IComparer{T}"/>.
+	/// </summary>
+	/// <typeparam name="T">Element type to compare.</typeparam>
 	public class DelegateComparer<T> : IComparer<T>
 	{
 		private readonly Func<T?, T?, int> func;
 
+		/// <summary>
+		/// Initializes a comparer that delegates comparison to <paramref name="func"/>.
+		/// </summary>
+		/// <param name="func">
+		/// Comparison function that must follow standard comparer semantics:
+		/// negative for less-than, zero for equality, positive for greater-than.
+		/// </param>
+		/// <exception cref="ArgumentNullException"><paramref name="func"/> is <see langword="null"/>.</exception>
 		public DelegateComparer(Func<T?, T?, int> func)
 		{
 			this.func = func ?? throw new ArgumentNullException(nameof(func));
 		}
 
+		/// <summary>
+		/// Compares two values using the delegate provided at construction time.
+		/// </summary>
+		/// <param name="x">First value to compare.</param>
+		/// <param name="y">Second value to compare.</param>
+		/// <returns>
+		/// A signed integer whose sign indicates relative ordering between <paramref name="x"/> and <paramref name="y"/>.
+		/// </returns>
 		public int Compare(T? x, T? y)
 		{
 			return func(x, y);

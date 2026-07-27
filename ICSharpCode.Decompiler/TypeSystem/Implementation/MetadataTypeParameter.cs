@@ -28,6 +28,14 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
+
+	/// <summary>
+	/// Metadata-backed implementation of <see cref="ITypeParameter"/>.
+	/// </summary>
+	/// <remarks>
+	/// This type decodes ECMA-335 generic parameter tables lazily and maps optional custom-attribute based constraints
+	/// (for example unmanaged and nullable metadata) into the normalized constraint model expected by the decompiler type system.
+	/// </remarks>
 	sealed class MetadataTypeParameter : AbstractTypeParameter
 	{
 		readonly MetadataModule module;
@@ -41,6 +49,14 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		const byte nullabilityNotYetLoaded = 255;
 		byte nullabilityConstraint = nullabilityNotYetLoaded;
 
+		/// <summary>
+		/// Creates type parameters for a nested metadata owner, reusing inherited outer type parameters when applicable.
+		/// </summary>
+		/// <param name="module">Metadata module containing the generic parameter records.</param>
+		/// <param name="copyFromOuter">Declaring type whose existing type parameters should be reused for outer slots.</param>
+		/// <param name="owner">Concrete owner for newly materialized type-parameter slots.</param>
+		/// <param name="handles">Generic parameter handles in metadata order.</param>
+		/// <returns>An array aligned to <paramref name="handles"/> where outer slots may be reused and inner slots are decoded from metadata.</returns>
 		public static ITypeParameter[] Create(MetadataModule module, ITypeDefinition copyFromOuter, IEntity owner, GenericParameterHandleCollection handles)
 		{
 			if (handles.Count == 0)
@@ -59,6 +75,13 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return tps;
 		}
 
+		/// <summary>
+		/// Creates metadata-backed type parameters for a single generic owner.
+		/// </summary>
+		/// <param name="module">Metadata module containing the generic parameter records.</param>
+		/// <param name="owner">Generic type or method that declares the parameters.</param>
+		/// <param name="handles">Generic parameter handles in metadata order.</param>
+		/// <returns>An array of decoded <see cref="MetadataTypeParameter"/> instances.</returns>
 		public static ITypeParameter[] Create(MetadataModule module, IEntity owner, GenericParameterHandleCollection handles)
 		{
 			if (handles.Count == 0)
@@ -73,6 +96,14 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return tps;
 		}
 
+		/// <summary>
+		/// Decodes a single metadata generic-parameter row.
+		/// </summary>
+		/// <param name="module">Metadata module containing the generic parameter record.</param>
+		/// <param name="owner">Type or method that owns the parameter.</param>
+		/// <param name="index">Expected zero-based position used for consistency checks.</param>
+		/// <param name="handle">Handle of the generic parameter row.</param>
+		/// <returns>A metadata-backed type parameter.</returns>
 		public static MetadataTypeParameter Create(MetadataModule module, IEntity owner, int index, GenericParameterHandle handle)
 		{
 			var metadata = module.metadata;
@@ -103,6 +134,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
+		/// <summary>
+		/// Gets the metadata token for the underlying generic parameter row.
+		/// </summary>
 		public GenericParameterHandle MetadataToken => handle;
 
 		public override IEnumerable<IAttribute> GetAttributes()
@@ -121,6 +155,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		public override bool HasValueTypeConstraint => (attr & GenericParameterAttributes.NotNullableValueTypeConstraint) != 0;
 		public override bool AllowsRefLikeType => (attr & SRMExtensions.AllowByRefLike) != 0;
 
+		/// <summary>
+		/// Gets whether the parameter carries the unmanaged constraint marker recognized by the configured type-system feature set.
+		/// </summary>
 		public override bool HasUnmanagedConstraint {
 			get {
 				if (unmanagedConstraint == ThreeState.Unknown)
@@ -140,6 +177,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return gp.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.IsUnmanaged);
 		}
 
+		/// <summary>
+		/// Gets the nullable annotation constraint resolved from explicit <c>NullableAttribute</c> payloads or nullable context fallback.
+		/// </summary>
 		public override Nullability NullabilityConstraint {
 			get {
 				if (nullabilityConstraint == nullabilityNotYetLoaded)
@@ -187,6 +227,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
+		/// <summary>
+		/// Gets decoded type constraints with synthesized object/value-type anchors when metadata omits an explicit non-interface base.
+		/// </summary>
 		public override IReadOnlyList<TypeConstraint> TypeConstraints {
 			get {
 				var constraints = LazyInit.VolatileRead(ref this.constraints);

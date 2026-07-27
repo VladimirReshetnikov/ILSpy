@@ -27,10 +27,29 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
 	/// <summary>
-	/// Represents a specialized IMethod (e.g. after type substitution).
+	/// Represents an <see cref="IMethod"/> wrapper that applies type-parameter substitutions to the method surface.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// For generic methods, this type preserves method-level type-parameter ownership semantics while still allowing
+	/// substitution of declaring-type and method-type arguments.
+	/// </para>
+	/// <para>
+	/// Equality and specialization behavior intentionally use an internal substitution form that excludes synthetic
+	/// replacement of method type parameters so equivalent method projections compare consistently.
+	/// </para>
+	/// </remarks>
 	public class SpecializedMethod : SpecializedParameterizedMember, IMethod
 	{
+		/// <summary>
+		/// Creates a specialized method wrapper when the supplied substitution changes observable method semantics.
+		/// </summary>
+		/// <param name="methodDefinition">The unspecialized method definition.</param>
+		/// <param name="substitution">Type arguments to apply to declaring-type and method-type parameters.</param>
+		/// <returns>
+		/// <paramref name="methodDefinition"/> when specialization would be a no-op; otherwise a new
+		/// <see cref="SpecializedMethod"/>.
+		/// </returns>
 		internal static IMethod Create(IMethod methodDefinition, TypeParameterSubstitution substitution)
 		{
 			if (TypeParameterSubstitution.Identity.Equals(substitution))
@@ -52,6 +71,12 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		readonly bool isParameterized;
 		readonly TypeParameterSubstitution substitutionWithoutSpecializedTypeParameters;
 
+		/// <summary>
+		/// Initializes a specialized method wrapper over <paramref name="methodDefinition"/>.
+		/// </summary>
+		/// <param name="methodDefinition">The wrapped definition method.</param>
+		/// <param name="substitution">Substitution to apply when projecting method and parameter types.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="substitution"/> is <see langword="null"/>.</exception>
 		public SpecializedMethod(IMethod methodDefinition, TypeParameterSubstitution substitution)
 			: base(methodDefinition)
 		{

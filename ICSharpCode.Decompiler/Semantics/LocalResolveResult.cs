@@ -24,12 +24,21 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents a local variable or parameter.
+	/// Represents semantic classification for reading a local variable or parameter symbol.
 	/// </summary>
+	/// <remarks>
+	/// For <c>ref</c>/<c>in</c>/<c>out</c> parameters, <see cref="ResolveResult.Type"/> is normalized to the
+	/// element type so regular expression typing reflects value semantics.
+	/// </remarks>
 	public class LocalResolveResult : ResolveResult
 	{
 		readonly IVariable variable;
 
+		/// <summary>
+		/// Initializes a local-or-parameter resolve result.
+		/// </summary>
+		/// <param name="variable">The symbol resolved for the expression.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="variable"/> is <see langword="null"/>.</exception>
 		public LocalResolveResult(IVariable variable)
 			: base(UnpackTypeIfByRefParameter(variable))
 		{
@@ -50,18 +59,30 @@ namespace ICSharpCode.Decompiler.Semantics
 			return type;
 		}
 
+		/// <summary>
+		/// Gets the resolved local or parameter symbol.
+		/// </summary>
 		public IVariable Variable {
 			get { return variable; }
 		}
 
+		/// <summary>
+		/// Gets whether <see cref="Variable"/> represents a parameter instead of a local.
+		/// </summary>
 		public bool IsParameter {
 			get { return variable is IParameter; }
 		}
 
+		/// <summary>
+		/// Gets whether the resolved symbol is declared as <c>const</c>.
+		/// </summary>
 		public override bool IsCompileTimeConstant {
 			get { return variable.IsConst; }
 		}
 
+		/// <summary>
+		/// Gets the constant value for const locals; parameters always return <see langword="null"/>.
+		/// </summary>
 		public override object ConstantValue {
 			get { return IsParameter ? null : variable.GetConstantValue(); }
 		}

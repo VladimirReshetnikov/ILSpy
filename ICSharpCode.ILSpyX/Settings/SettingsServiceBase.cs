@@ -23,26 +23,55 @@ using System.Xml.Linq;
 
 namespace ICSharpCode.ILSpyX.Settings
 {
+	/// <summary>
+	/// Marks a settings object whose values are nested under a parent settings section.
+	/// </summary>
 	public interface IChildSettings
 	{
+		/// <summary>
+		/// Gets the section that owns this child settings object.
+		/// </summary>
 		ISettingsSection Parent { get; }
 	}
 
+	/// <summary>
+	/// Defines the persistence contract for one logical settings section.
+	/// </summary>
 	public interface ISettingsSection : INotifyPropertyChanged
 	{
+		/// <summary>
+		/// Gets the XML element name used to store this section.
+		/// </summary>
 		XName SectionName { get; }
 
+		/// <summary>
+		/// Loads section state from the specified XML element.
+		/// </summary>
+		/// <param name="section">XML element for this section. Callers pass an empty element when no persisted section exists.</param>
 		void LoadFromXml(XElement section);
 
+		/// <summary>
+		/// Serializes this section into an XML element that can be persisted.
+		/// </summary>
+		/// <returns>The serialized XML representation of this section.</returns>
 		XElement SaveToXml();
 	}
 
+	/// <summary>
+	/// Provides lazy loading and caching of <see cref="ISettingsSection"/> instances backed by an <see cref="ISettingsProvider"/>.
+	/// </summary>
+	/// <param name="spySettings">The settings store used to load persisted section elements.</param>
 	public class SettingsServiceBase(ISettingsProvider spySettings)
 	{
 		protected readonly ConcurrentDictionary<Type, ISettingsSection> sections = new();
 
 		protected ISettingsProvider SpySettings { get; set; } = spySettings;
 
+		/// <summary>
+		/// Gets a settings section instance, creating and loading it on first access.
+		/// </summary>
+		/// <typeparam name="T">Settings section type.</typeparam>
+		/// <returns>A cached instance of <typeparamref name="T"/>.</returns>
 		public T GetSettings<T>() where T : ISettingsSection, new()
 		{
 			return (T)sections.GetOrAdd(typeof(T), _ => {
@@ -57,6 +86,11 @@ namespace ICSharpCode.ILSpyX.Settings
 			});
 		}
 
+		/// <summary>
+		/// Persists a section by replacing or appending its element under the specified root.
+		/// </summary>
+		/// <param name="section">The section to serialize.</param>
+		/// <param name="root">The root XML element that contains all settings sections.</param>
 		protected static void SaveSection(ISettingsSection section, XElement root)
 		{
 			var element = section.SaveToXml();
@@ -68,6 +102,11 @@ namespace ICSharpCode.ILSpyX.Settings
 				root.Add(element);
 		}
 
+		/// <summary>
+		/// Handles <see cref="INotifyPropertyChanged.PropertyChanged"/> events raised by loaded sections.
+		/// </summary>
+		/// <param name="sender">The section (or child settings object) that raised the change event.</param>
+		/// <param name="e">Property-change metadata.</param>
 		protected virtual void Section_PropertyChanged(object? sender, PropertyChangedEventArgs e)
 		{
 		}

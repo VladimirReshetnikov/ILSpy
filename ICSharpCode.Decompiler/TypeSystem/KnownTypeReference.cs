@@ -235,11 +235,16 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets the known type reference for the specified type code.
 		/// Returns null for KnownTypeCode.None.
 		/// </summary>
+		/// <param name="typeCode">Known type code value used as an index into the known-type table.</param>
+		/// <returns>The corresponding <see cref="KnownTypeReference"/>, or <see langword="null"/> when <paramref name="typeCode"/> is <see cref="KnownTypeCode.None"/>.</returns>
 		public static KnownTypeReference? Get(KnownTypeCode typeCode)
 		{
 			return knownTypeReferences[(int)typeCode];
 		}
 
+		/// <summary>
+		/// Gets all non-null known type references in declaration order.
+		/// </summary>
 		public static IEnumerable<KnownTypeReference> AllKnownTypes {
 			get {
 				for (int i = 0; i < KnownTypeCodeCount; i++)
@@ -271,29 +276,56 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.baseType = baseType;
 		}
 
+		/// <summary>
+		/// Gets the enum code that identifies this well-known type entry.
+		/// </summary>
 		public KnownTypeCode KnownTypeCode {
 			get { return knownTypeCode; }
 		}
 
+		/// <summary>
+		/// Gets the namespace part of the metadata name.
+		/// </summary>
 		public string Namespace {
 			get { return namespaceName; }
 		}
 
+		/// <summary>
+		/// Gets the unqualified metadata type name.
+		/// </summary>
 		public string Name {
 			get { return name; }
 		}
 
+		/// <summary>
+		/// Gets the declared generic arity for the type.
+		/// </summary>
 		public int TypeParameterCount {
 			get { return typeParameterCount; }
 		}
 
+		/// <summary>
+		/// Gets a <see cref="TopLevelTypeName"/> view of this known type entry.
+		/// </summary>
 		public TopLevelTypeName TypeName => new TopLevelTypeName(namespaceName, name, typeParameterCount);
 
+		/// <summary>
+		/// Resolves this known type against the specified compilation context.
+		/// </summary>
+		/// <param name="context">Type resolve context that provides the current compilation.</param>
+		/// <returns>The resolved known type from <paramref name="context"/>.</returns>
 		public IType Resolve(ITypeResolveContext context)
 		{
 			return context.Compilation.FindType(knownTypeCode);
 		}
 
+		/// <summary>
+		/// Returns a display name for the known type.
+		/// </summary>
+		/// <returns>
+		/// C# keyword alias for primitive/runtime aliases (for example <c>int</c>, <c>string</c>);
+		/// otherwise a namespace-qualified metadata name.
+		/// </returns>
 		public override string ToString()
 		{
 			return GetCSharpNameByTypeCode(knownTypeCode) ?? (this.Namespace + "." + this.Name);
@@ -303,6 +335,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets the C# primitive type name from the known type code.
 		/// Returns null if there is no primitive name for the specified type.
 		/// </summary>
+		/// <param name="knownTypeCode">Known type code to map to a C# keyword.</param>
+		/// <returns>The C# keyword for primitive/runtime alias types; otherwise <see langword="null"/>.</returns>
 		public static string? GetCSharpNameByTypeCode(KnownTypeCode knownTypeCode)
 		{
 			switch (knownTypeCode)

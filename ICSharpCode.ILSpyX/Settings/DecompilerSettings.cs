@@ -24,14 +24,33 @@ using System.Xml.Linq;
 
 namespace ICSharpCode.ILSpyX.Settings
 {
+	/// <summary>
+	/// Persists user-selected <see cref="Decompiler.DecompilerSettings"/> values as an ILSpy settings section.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Only options marked as browsable in the base decompiler settings type are serialized.
+	/// This keeps the persisted payload focused on UI-exposed toggles and avoids storing internal or unsupported switches.
+	/// </para>
+	/// <para>
+	/// The persisted values are represented as XML attributes whose names match the corresponding setting property names.
+	/// </para>
+	/// </remarks>
 	public class DecompilerSettings : Decompiler.DecompilerSettings, ISettingsSection
 	{
 		static readonly PropertyInfo[] properties = typeof(Decompiler.DecompilerSettings).GetProperties()
 				.Where(p => p.GetCustomAttribute<BrowsableAttribute>()?.Browsable != false)
 				.ToArray();
 
+		/// <summary>
+		/// Gets the XML element name that contains persisted decompiler settings.
+		/// </summary>
 		public XName SectionName => "DecompilerSettings";
 
+		/// <summary>
+		/// Writes all browsable decompiler options into an XML element.
+		/// </summary>
+		/// <returns>An element named <c>DecompilerSettings</c> with one attribute per persisted option.</returns>
 		public XElement SaveToXml()
 		{
 			var section = new XElement(SectionName);
@@ -44,6 +63,13 @@ namespace ICSharpCode.ILSpyX.Settings
 			return section;
 		}
 
+		/// <summary>
+		/// Restores decompiler options from persisted XML attributes.
+		/// </summary>
+		/// <param name="section">The XML element to read values from.</param>
+		/// <remarks>
+		/// Missing attributes are ignored so that newly introduced options keep their in-memory defaults when older settings files are loaded.
+		/// </remarks>
 		public void LoadFromXml(XElement section)
 		{
 			foreach (var p in properties)
@@ -54,11 +80,21 @@ namespace ICSharpCode.ILSpyX.Settings
 			}
 		}
 
+		/// <summary>
+		/// Creates a copy of this settings instance.
+		/// </summary>
+		/// <returns>A cloned settings object with the same option values.</returns>
 		public override DecompilerSettings Clone()
 		{
 			return (DecompilerSettings)base.Clone();
 		}
 
+		/// <summary>
+		/// Looks up a decompiler option by property name.
+		/// </summary>
+		/// <param name="name">The option/property name to resolve.</param>
+		/// <param name="property">When this method returns <see langword="true"/>, receives metadata for the matching property; otherwise <see langword="null"/>.</param>
+		/// <returns><see langword="true"/> if <paramref name="name"/> matches a known browsable option; otherwise <see langword="false"/>.</returns>
 		public static bool IsKnownOption(string name, [NotNullWhen(true)] out PropertyInfo? property)
 		{
 			property = null;

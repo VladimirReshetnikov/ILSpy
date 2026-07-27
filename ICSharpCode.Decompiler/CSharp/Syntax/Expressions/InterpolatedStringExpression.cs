@@ -23,17 +23,35 @@ using System.Collections.Generic;
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// <c>interpolated_string_expression ::= interpolated_string_content*</c> (C# grammar §12.8.3)
+	/// Represents a C# interpolated string expression (<c>$"..."</c>).
+	/// <c>interpolated_string_expression ::= interpolated_string_content*</c> (C# grammar section 12.8.3)
 	/// </summary>
+	/// <remarks>
+	/// The expression stores its payload as an ordered <see cref="Content"/> collection containing either literal
+	/// segments (<see cref="InterpolatedStringText"/>) or interpolation holes (<see cref="Interpolation"/>).
+	/// </remarks>
 	[DecompilerAstNode]
 	public sealed partial class InterpolatedStringExpression : Expression
 	{
+		/// <summary>
+		/// The opening interpolated-string token (<c>$"</c>).
+		/// </summary>
 		public const string OpenQuote = "$\"";
+		/// <summary>
+		/// The closing interpolated-string token (<c>"</c>).
+		/// </summary>
 		public const string CloseQuote = "\"";
 
+		/// <summary>
+		/// Gets the ordered sequence of literal and interpolation nodes that compose the string body.
+		/// </summary>
 		[Slot("Content")]
 		public partial AstNodeCollection<InterpolatedStringContent> Content { get; }
 
+		/// <summary>
+		/// Initializes an interpolated string from existing content nodes.
+		/// </summary>
+		/// <param name="content">Content nodes to append in lexical order.</param>
 		public InterpolatedStringExpression(IList<InterpolatedStringContent> content)
 		{
 			Content.AddRange(content);
@@ -41,12 +59,13 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	}
 
 	/// <summary>
+	/// Base type for nodes that can appear inside an <see cref="InterpolatedStringExpression"/>.
 	/// <code>
 	/// interpolated_string_content ::=
 	///       interpolation
 	///     | interpolated_string_text
 	/// </code>
-	/// (C# grammar §12.8.3)
+	/// (C# grammar section 12.8.3)
 	/// </summary>
 	[DecompilerAstNode]
 	public abstract partial class InterpolatedStringContent : AstNode
@@ -62,9 +81,22 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		[Slot("Expression")]
 		public partial Expression Expression { get; set; }
 
+		/// <summary>
+		/// Gets the alignment component that follows the expression in <c>{expr,alignment}</c> forms.
+		/// </summary>
 		public int Alignment { get; }
 
+		/// <summary>
+		/// Gets the format-suffix text that follows a colon in <c>{expr:format}</c> forms.
+		/// </summary>
 		public string? Suffix { get; }
+
+		/// <summary>
+		/// Initializes an interpolation hole.
+		/// </summary>
+		/// <param name="expression">Expression to evaluate and format.</param>
+		/// <param name="alignment">Optional alignment width supplied in source or reconstructed during transforms.</param>
+		/// <param name="suffix">Optional format suffix (without the leading colon).</param>
 		public Interpolation(Expression expression, int alignment = 0, string? suffix = null)
 		{
 			Expression = expression;
@@ -74,17 +106,25 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	}
 
 	/// <summary>
-	/// <c>interpolated_string_text ::= text_character+</c> (C# lexical grammar §12.8.3)
+	/// Represents a literal text segment within an <see cref="InterpolatedStringExpression"/>.
+	/// <c>interpolated_string_text ::= text_character+</c> (C# lexical grammar section 12.8.3)
 	/// </summary>
 	[DecompilerAstNode]
 	public sealed partial class InterpolatedStringText : InterpolatedStringContent
 	{
+		/// <summary>
+		/// Gets or sets the literal text payload for this segment.
+		/// </summary>
 		public string Text { get; set; } = string.Empty;
 
 		public InterpolatedStringText()
 		{
 		}
 
+		/// <summary>
+		/// Initializes a literal interpolated-string text segment.
+		/// </summary>
+		/// <param name="text">Literal content for this segment.</param>
 		public InterpolatedStringText(string text)
 		{
 			Text = text;

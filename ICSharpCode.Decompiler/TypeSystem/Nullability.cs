@@ -18,10 +18,38 @@
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
+	/// <summary>
+	/// Describes nullability state as encoded in metadata and consumed by the decompiler type system.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This enum mirrors the three-state model used by nullable-reference metadata:
+	/// unknown/oblivious, explicitly non-null, and explicitly nullable.
+	/// </para>
+	/// <para>
+	/// The values are intentionally stable because they are persisted in caches and propagated through
+	/// multiple decoding stages (metadata readers, type-system wrappers, and AST transforms).
+	/// </para>
+	/// </remarks>
 	public enum Nullability : byte
 	{
+		/// <summary>
+		/// No explicit nullability annotation is available for the symbol.
+		/// </summary>
+		/// <remarks>
+		/// This commonly appears for assemblies compiled before nullable reference types or in contexts
+		/// where nullability is suppressed.
+		/// </remarks>
 		Oblivious = 0,
+
+		/// <summary>
+		/// The symbol is annotated as non-nullable.
+		/// </summary>
 		NotNullable = 1,
+
+		/// <summary>
+		/// The symbol is annotated as nullable.
+		/// </summary>
 		Nullable = 2
 	}
 }

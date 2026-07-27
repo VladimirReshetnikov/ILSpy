@@ -127,6 +127,8 @@ namespace ICSharpCode.ILSpy.Updates
 		/// download URL of a newer version, or <c>null</c> when no update is available /
 		/// no check was performed.
 		/// </summary>
+		/// <param name="settings">Persisted update settings controlling cadence and opt-in state.</param>
+		/// <returns>The update download URL, or <see langword="null"/> when no action is needed.</returns>
 		public static async Task<string?> CheckForUpdatesIfEnabledAsync(UpdateSettings settings)
 		{
 			if (!settings.AutomaticUpdateCheckEnabled)

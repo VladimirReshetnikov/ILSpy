@@ -31,6 +31,10 @@ namespace ICSharpCode.ILSpyX.Settings
 	{
 		readonly Mutex mutex;
 
+		/// <summary>
+		/// Acquires (or waits for) the named system mutex.
+		/// </summary>
+		/// <param name="name">Global mutex name used to serialize access.</param>
 		public MutexProtector(string name)
 		{
 			this.mutex = new Mutex(true, name, out bool createdNew);
@@ -46,6 +50,9 @@ namespace ICSharpCode.ILSpyX.Settings
 			}
 		}
 
+		/// <summary>
+		/// Releases the held mutex and disposes the underlying <see cref="Mutex"/> instance.
+		/// </summary>
 		public void Dispose()
 		{
 			mutex.ReleaseMutex();

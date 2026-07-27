@@ -22,10 +22,24 @@ using System.Linq;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Thread-safe accumulator for reference-resolution diagnostics keyed by assembly full name.
+	/// </summary>
+	/// <remarks>
+	/// This type is used while probing assembly references from multiple resolution paths
+	/// (assembly list, framework packs, and explicit file probes) so the UI can later render
+	/// a per-reference load log.
+	/// </remarks>
 	public class ReferenceLoadInfo
 	{
 		readonly Dictionary<string, UnresolvedAssemblyNameReference> loadedAssemblyReferences = new Dictionary<string, UnresolvedAssemblyNameReference>();
 
+		/// <summary>
+		/// Appends a diagnostic message for the specified assembly reference.
+		/// </summary>
+		/// <param name="fullName">Assembly full name used as the aggregation key.</param>
+		/// <param name="kind">Severity of the diagnostic message.</param>
+		/// <param name="message">Diagnostic text describing the resolution outcome.</param>
 		public void AddMessage(string fullName, MessageKind kind, string message)
 		{
 			lock (loadedAssemblyReferences)
@@ -39,6 +53,13 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Appends a diagnostic message unless the most recently stored message for the same
+		/// assembly has the same severity and text.
+		/// </summary>
+		/// <param name="fullName">Assembly full name used as the aggregation key.</param>
+		/// <param name="kind">Severity of the diagnostic message.</param>
+		/// <param name="message">Diagnostic text describing the resolution outcome.</param>
 		public void AddMessageOnce(string fullName, MessageKind kind, string message)
 		{
 			lock (loadedAssemblyReferences)
@@ -58,6 +79,12 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Looks up aggregated diagnostics for one assembly reference.
+		/// </summary>
+		/// <param name="fullName">Assembly full name used as the aggregation key.</param>
+		/// <param name="info">When this method returns <c>true</c>, receives the matching entry.</param>
+		/// <returns><c>true</c> if an entry exists for <paramref name="fullName"/>; otherwise <c>false</c>.</returns>
 		public bool TryGetInfo(string fullName, out UnresolvedAssemblyNameReference info)
 		{
 			lock (loadedAssemblyReferences)
@@ -66,6 +93,9 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Gets a point-in-time snapshot of all tracked reference diagnostics.
+		/// </summary>
 		public IReadOnlyList<UnresolvedAssemblyNameReference> Entries {
 			get {
 				lock (loadedAssemblyReferences)
@@ -75,6 +105,9 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Gets whether any tracked reference contains at least one <see cref="MessageKind.Error"/> message.
+		/// </summary>
 		public bool HasErrors {
 			get {
 				lock (loadedAssemblyReferences)

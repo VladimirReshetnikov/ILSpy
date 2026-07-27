@@ -21,9 +21,12 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents the implicitly-typed "out var".
-	/// Special-cased in overload resolution to be compatible with any out-parameter.
+	/// Represents an implicitly typed <c>out var</c> placeholder used during decompilation.
 	/// </summary>
+	/// <remarks>
+	/// The node is attached when <c>out var</c> syntax is preferred but later transforms may still fall back to an explicit type.
+	/// <see cref="OriginalVariableType"/> preserves that fallback type information.
+	/// </remarks>
 	class OutVarResolveResult : ResolveResult
 	{
 		/// <summary>
@@ -31,6 +34,10 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// </summary>
 		public readonly IType OriginalVariableType;
 
+		/// <summary>
+		/// Initializes an <c>out var</c> semantic placeholder.
+		/// </summary>
+		/// <param name="originalVariableType">The explicit variable type to use when <c>out var</c> cannot be emitted.</param>
 		public OutVarResolveResult(IType originalVariableType) : base(SpecialType.NoType) { OriginalVariableType = originalVariableType; }
 	}
 }

@@ -32,19 +32,35 @@ using ICSharpCode.ILSpyX.Instrumentation;
 
 namespace ICSharpCode.ILSpyX
 {
+	/// <summary>
+	/// Immutable snapshot of loaded assemblies with lazily-built lookup indexes used by resolver paths.
+	/// </summary>
 	class AssemblyListSnapshot
 	{
 		readonly ImmutableArray<LoadedAssembly> assemblies;
 		Dictionary<string, MetadataFile>? asmLookupByFullName;
 		Dictionary<string, MetadataFile>? asmLookupByShortName;
 		Dictionary<string, List<(MetadataFile module, Version version)>>? asmLookupByShortNameGrouped;
+		/// <summary>
+		/// Gets the snapshot payload captured from the assembly list.
+		/// </summary>
 		public ImmutableArray<LoadedAssembly> Assemblies => assemblies;
 
+		/// <summary>
+		/// Captures a point-in-time set of loaded assemblies for deterministic resolver/search operations.
+		/// </summary>
+		/// <param name="assemblies">Assemblies included in this snapshot.</param>
 		public AssemblyListSnapshot(ImmutableArray<LoadedAssembly> assemblies)
 		{
 			this.assemblies = assemblies;
 		}
 
+		/// <summary>
+		/// Attempts to resolve an assembly reference against snapshot assemblies using TFM-scoped full-name or short-name matching.
+		/// </summary>
+		/// <param name="reference">The assembly reference to match.</param>
+		/// <param name="tfm">Target framework moniker used to scope candidates.</param>
+		/// <returns>The best matching loaded module, or <see langword="null"/> if none matches.</returns>
 		public async Task<MetadataFile?> TryGetModuleAsync(IAssemblyReference reference, string tfm)
 		{
 			bool isWinRT = reference.IsWindowsRuntime;
@@ -64,6 +80,14 @@ namespace ICSharpCode.ILSpyX
 			return null;
 		}
 
+		/// <summary>
+		/// Attempts fallback resolution by assembly short name and version ordering when an exact identity match is unavailable.
+		/// </summary>
+		/// <param name="reference">The unresolved assembly reference.</param>
+		/// <returns>
+		/// A module with the smallest version greater than or equal to <paramref name="reference"/>,
+		/// or the highest available version if all candidates are older; otherwise <see langword="null"/>.
+		/// </returns>
 		public async Task<MetadataFile?> TryGetSimilarModuleAsync(IAssemblyReference reference)
 		{
 			var lookup = LazyInit.VolatileRead(ref asmLookupByShortNameGrouped);
@@ -166,8 +190,9 @@ namespace ICSharpCode.ILSpyX
 		}
 
 		/// <summary>
-		/// Gets all loaded assemblies recursively, including assemblies found in bundles or packages.
+		/// Enumerates all loadable assemblies reachable from this snapshot, including descendants discovered inside packages/bundles.
 		/// </summary>
+		/// <returns>A flattened list of top-level and package-contained assemblies.</returns>
 		public async Task<IList<LoadedAssembly>> GetAllAssembliesAsync()
 		{
 			var results = new List<LoadedAssembly>(assemblies.Length);

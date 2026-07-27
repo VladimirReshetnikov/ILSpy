@@ -22,17 +22,39 @@ using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
+	/// <summary>
+	/// Extends <see cref="ITypeResolveContext"/> with local-symbol visibility information for expression/body analysis.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <b>Semantics.</b> This context models the lexical state at a specific position within executable code.
+	/// In addition to module/type/member scope, it exposes locally declared variables and lambda-state information used
+	/// by resolver components when binding identifiers.
+	/// </para>
+	/// <para>
+	/// <b>Usage.</b> Implementations are typically transient snapshots created while traversing AST or IL bodies.
+	/// Consumers should treat <see cref="LocalVariables"/> as the variables visible at that source location, not as a
+	/// complete method-level declaration list.
+	/// </para>
+	/// </remarks>
 	public interface ICodeContext : ITypeResolveContext
 	{
 		/// <summary>
-		/// Gets all currently visible local variables and lambda parameters.
-		/// Does not include method parameters.
+		/// Gets the set of locals and lambda parameters visible at the current code location.
 		/// </summary>
+		/// <value>
+		/// An enumeration of visible block-scoped variables and lambda parameters.
+		/// Method parameters are intentionally excluded.
+		/// </value>
 		IEnumerable<IVariable> LocalVariables { get; }
 
 		/// <summary>
-		/// Gets whether the context is within a lambda expression or anonymous method.
+		/// Gets whether this context is nested inside a lambda expression or anonymous method body.
 		/// </summary>
+		/// <value>
+		/// <see langword="true"/> when lookup semantics should treat lambda capture and parameter rules as active;
+		/// otherwise <see langword="false"/>.
+		/// </value>
 		bool IsWithinLambdaExpression { get; }
 	}
 }

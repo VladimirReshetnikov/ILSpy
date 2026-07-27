@@ -23,8 +23,19 @@ using ICSharpCode.Decompiler.TypeSystem.Implementation;
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
+	/// <summary>
+	/// Provides helper methods for mapping between IL stack categories, primitive metadata types, and decompiler type abstractions.
+	/// </summary>
+	/// <remarks>
+	/// These helpers are used throughout IL reading, transform validation, and C# expression reconstruction to keep
+	/// numeric/sign semantics consistent when the original metadata type is partially erased at IL stack level.
+	/// </remarks>
 	public static class TypeUtils
 	{
+		/// <summary>
+		/// Sentinel byte-size used to represent native-sized integer and pointer-like categories.
+		/// </summary>
+		/// <value>Constant <c>6</c>, intentionally between 4-byte and 8-byte integer widths for ordering comparisons.</value>
 		public const int NativeIntSize = 6; // between 4 (Int32) and 8 (Int64)
 
 		/// <summary>
@@ -32,6 +43,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Returns <c>NativeIntSize</c> for pointer-sized types.
 		/// Returns 0 for structs and other types of unknown size.
 		/// </summary>
+		/// <param name="type">The type to classify.</param>
+		/// <returns>
+		/// The storage size in bytes for known scalar types,
+		/// <see cref="NativeIntSize"/> for pointer-sized categories,
+		/// or <c>0</c> when no concrete size can be determined.
+		/// </returns>
 		public static int GetSize(this IType type)
 		{
 			switch (type.Kind)
@@ -81,6 +98,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Gets the size of the input stack type.
 		/// </summary>
+		/// <param name="type">The IL stack type to classify.</param>
 		/// <returns>
 		/// * 4 for <c>I4</c>,
 		/// * 8 for <c>I8</c>,
@@ -103,6 +121,15 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Picks the wider of two types using <see cref="GetSize(IType)"/>.
+		/// </summary>
+		/// <param name="type1">The first candidate type.</param>
+		/// <param name="type2">The second candidate type.</param>
+		/// <returns>
+		/// <paramref name="type1"/> when it is at least as wide as <paramref name="type2"/>;
+		/// otherwise <paramref name="type2"/>.
+		/// </returns>
 		public static IType GetLargerType(IType type1, IType type2)
 		{
 			return GetSize(type1) >= GetSize(type2) ? type1 : type2;
@@ -114,6 +141,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// * bool, sbyte, byte, char, short, ushort
 		/// * any enums that have a small integer type as underlying type
 		/// </summary>
+		/// <param name="type">The type to inspect.</param>
+		/// <returns><c>true</c> if <paramref name="type"/> occupies fewer than 4 bytes; otherwise <c>false</c>.</returns>
 		public static bool IsSmallIntegerType(this IType type)
 		{
 			int size = GetSize(type);
@@ -125,6 +154,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// 
 		/// Unlike the ILAst, C# does not consider bool, char or enums to be small integers.
 		/// </summary>
+		/// <param name="type">The type to inspect.</param>
+		/// <returns><c>true</c> for C# small integer primitives; otherwise <c>false</c>.</returns>
 		public static bool IsCSharpSmallIntegerType(this IType type)
 		{
 			switch (type.GetDefinition()?.KnownTypeCode)
@@ -144,6 +175,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// 
 		/// Returns false for (U)IntPtr.
 		/// </summary>
+		/// <param name="type">The type to inspect.</param>
+		/// <returns><c>true</c> when <paramref name="type"/> is <c>nint</c> or <c>nuint</c>; otherwise <c>false</c>.</returns>
 		public static bool IsCSharpNativeIntegerType(this IType type)
 		{
 			switch (type.Kind)
@@ -161,6 +194,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// 
 		/// Unlike the ILAst, C# does not consider bool, enums, pointers or IntPtr to be integers.
 		/// </summary>
+		/// <param name="type">The type to inspect.</param>
+		/// <returns><c>true</c> for C# primitive integral types; otherwise <c>false</c>.</returns>
 		public static bool IsCSharpPrimitiveIntegerType(this IType type)
 		{
 			switch (type.GetDefinition()?.KnownTypeCode)
@@ -183,6 +218,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets whether the type is an IL integer type.
 		/// Returns true for I4, I, or I8.
 		/// </summary>
+		/// <param name="type">The IL stack type to inspect.</param>
+		/// <returns><c>true</c> for integer stack categories; otherwise <c>false</c>.</returns>
 		public static bool IsIntegerType(this StackType type)
 		{
 			switch (type)
@@ -200,6 +237,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets whether the type is an IL floating point type.
 		/// Returns true for F4 or F8.
 		/// </summary>
+		/// <param name="type">The IL stack type to inspect.</param>
+		/// <returns><c>true</c> for floating-point stack categories; otherwise <c>false</c>.</returns>
 		public static bool IsFloatType(this StackType type)
 		{
 			switch (type)
@@ -216,6 +255,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets whether reading/writing an element of accessType from the pointer
 		/// is equivalent to reading/writing an element of the pointer's element type.
 		/// </summary>
+		/// <param name="pointerType">The pointer or by-reference type that determines the effective memory element type.</param>
+		/// <param name="accessType">The value type used by the memory operation.</param>
+		/// <returns><c>true</c> if the access is type-compatible with the pointer element type; otherwise <c>false</c>.</returns>
 		/// <remarks>
 		/// The access semantics may sligthly differ on read accesses of small integer types,
 		/// due to zero extension vs. sign extension when the signs differ.
@@ -234,6 +276,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets whether reading/writing an element of accessType from the pointer
 		/// is equivalent to reading/writing an element of the memoryType.
 		/// </summary>
+		/// <param name="memoryType">The effective element type stored at the target memory location.</param>
+		/// <param name="accessType">The value type used by the memory operation.</param>
+		/// <returns>
+		/// <c>true</c> when the access remains compatible after type erasure and stack-type checks;
+		/// otherwise <c>false</c>.
+		/// </returns>
 		/// <remarks>
 		/// The access semantics may sligthly differ on read accesses of small integer types,
 		/// due to zero extension vs. sign extension when the signs differ.
@@ -260,6 +308,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Gets the stack type corresponding to this type.
 		/// </summary>
+		/// <param name="type">The type to map to an IL stack category.</param>
+		/// <returns>The stack category used to represent <paramref name="type"/> in IL.</returns>
 		public static StackType GetStackType(this IType type)
 		{
 			switch (type.Kind)
@@ -320,6 +370,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// If type is an enumeration type, returns the underlying type.
 		/// Otherwise, returns type unmodified.
 		/// </summary>
+		/// <param name="type">The type to normalize.</param>
+		/// <returns>The enum underlying type, or <paramref name="type"/> if it is not an enum.</returns>
 		public static IType GetEnumUnderlyingType(this IType type)
 		{
 			type = type.SkipModifiers();
@@ -329,6 +381,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Gets the sign of the input type.
 		/// </summary>
+		/// <param name="type">The type to classify.</param>
+		/// <returns>The inferred sign category for <paramref name="type"/>.</returns>
 		/// <remarks>
 		/// Integer types (including IntPtr/UIntPtr) return the sign as expected.
 		/// Floating point types and <c>decimal</c> are considered to be signed.
@@ -378,6 +432,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Maps the KnownTypeCode values to the corresponding PrimitiveTypes.
 		/// </summary>
+		/// <param name="knownTypeCode">The known type code to convert.</param>
+		/// <returns>The corresponding primitive type, or <see cref="PrimitiveType.None"/> when no direct mapping exists.</returns>
 		public static PrimitiveType ToPrimitiveType(this KnownTypeCode knownTypeCode)
 		{
 			switch (knownTypeCode)
@@ -415,6 +471,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Maps the KnownTypeCode values to the corresponding PrimitiveTypes.
 		/// </summary>
+		/// <param name="type">The type to convert.</param>
+		/// <returns>The corresponding primitive type, or <see cref="PrimitiveType.None"/> when no direct mapping exists.</returns>
 		public static PrimitiveType ToPrimitiveType(this IType type)
 		{
 			type = type.SkipModifiers();
@@ -437,6 +495,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Maps the PrimitiveType values to the corresponding KnownTypeCodes.
 		/// </summary>
+		/// <param name="primitiveType">The primitive type to convert.</param>
+		/// <returns>The corresponding known type code, or <see cref="KnownTypeCode.None"/> when no direct mapping exists.</returns>
 		public static KnownTypeCode ToKnownTypeCode(this PrimitiveType primitiveType)
 		{
 			switch (primitiveType)
@@ -471,6 +531,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Maps an IL stack category to the closest <see cref="KnownTypeCode"/>.
+		/// </summary>
+		/// <param name="stackType">The stack category to convert.</param>
+		/// <param name="sign">The sign preference to apply for integer stack categories.</param>
+		/// <returns>The corresponding known type code, or <see cref="KnownTypeCode.None"/> when no direct mapping exists.</returns>
 		public static KnownTypeCode ToKnownTypeCode(this StackType stackType, Sign sign = Sign.None)
 		{
 			switch (stackType)
@@ -494,6 +560,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Maps an IL stack category to the closest <see cref="PrimitiveType"/>.
+		/// </summary>
+		/// <param name="stackType">The stack category to convert.</param>
+		/// <param name="sign">The sign preference to apply for integer stack categories.</param>
+		/// <returns>The corresponding primitive type, or <see cref="PrimitiveType.None"/> when no direct mapping exists.</returns>
 		public static PrimitiveType ToPrimitiveType(this StackType stackType, Sign sign = Sign.None)
 		{
 			switch (stackType)
@@ -518,10 +590,24 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 	}
 
+	/// <summary>
+	/// Represents signedness classification used by IL numeric operations and conversion logic.
+	/// </summary>
 	public enum Sign : byte
 	{
+		/// <summary>
+		/// No sign semantics are known or required for the operation.
+		/// </summary>
 		None,
+
+		/// <summary>
+		/// Signed integer semantics are required.
+		/// </summary>
 		Signed,
+
+		/// <summary>
+		/// Unsigned integer semantics are required.
+		/// </summary>
 		Unsigned
 	}
 }

@@ -32,6 +32,9 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 		internal static string gas = "AT & T";
 		internal static string[] disassemblyFormats = [intel, gas];
 
+		/// <summary>
+		/// Gets the list of disassembly syntax labels exposed in the ReadyToRun options UI.
+		/// </summary>
 		public string[] DisassemblyFormats {
 			get {
 				return disassemblyFormats;
@@ -39,31 +42,50 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 		}
 
 		private bool isShowUnwindInfo;
+		/// <summary>
+		/// Gets or sets whether unwind annotations are emitted next to decoded instructions.
+		/// </summary>
 		public bool IsShowUnwindInfo {
 			get => isShowUnwindInfo;
 			set => SetProperty(ref isShowUnwindInfo, value);
 		}
 
 		private bool isShowDebugInfo;
+		/// <summary>
+		/// Gets or sets whether native-to-IL debug mapping and local-variable location notes are shown.
+		/// </summary>
 		public bool IsShowDebugInfo {
 			get => isShowDebugInfo;
 			set => SetProperty(ref isShowDebugInfo, value);
 		}
 
 		private bool isShowGCInfo;
+		/// <summary>
+		/// Gets or sets whether GC transition information is displayed for each instruction offset.
+		/// </summary>
 		public bool IsShowGCInfo {
 			get => isShowGCInfo;
 			set => SetProperty(ref isShowGCInfo, value);
 		}
 
 		private string disassemblyFormat;
+		/// <summary>
+		/// Gets or sets the syntax flavor used by the architecture-specific formatter (for example Intel or AT&amp;T).
+		/// </summary>
 		public string DisassemblyFormat {
 			get => disassemblyFormat;
 			set => SetProperty(ref disassemblyFormat, value);
 		}
 
+		/// <summary>
+		/// Gets the XML section name used when persisting ReadyToRun options in ILSpy settings.
+		/// </summary>
 		public XName SectionName { get; } = ns + "ReadyToRunOptions";
 
+		/// <summary>
+		/// Populates the option values from a serialized settings section.
+		/// </summary>
+		/// <param name="e">The XML element containing persisted ReadyToRun option attributes.</param>
 		public void LoadFromXml(XElement e)
 		{
 			XAttribute format = e.Attribute("DisassemblyFormat");
@@ -79,6 +101,10 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 			IsShowGCInfo = showGc != null && (bool)showGc;
 		}
 
+		/// <summary>
+		/// Serializes the current ReadyToRun option values into a settings section element.
+		/// </summary>
+		/// <returns>An <see cref="XElement"/> that can be written back into ILSpy's settings snapshot.</returns>
 		public XElement SaveToXml()
 		{
 			var section = new XElement(SectionName);

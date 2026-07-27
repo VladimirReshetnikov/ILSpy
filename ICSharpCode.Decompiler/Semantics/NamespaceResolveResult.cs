@@ -23,21 +23,35 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents that an expression resolved to a namespace.
+	/// Represents a name lookup that resolved to a namespace symbol.
 	/// </summary>
+	/// <remarks>
+	/// Namespace resolve results are frequently attached to type references built by <c>TypeSystemAstBuilder</c> so later transforms can
+	/// keep namespace/type ambiguity decisions stable.
+	/// </remarks>
 	public class NamespaceResolveResult : ResolveResult
 	{
 		readonly INamespace ns;
 
+		/// <summary>
+		/// Initializes a namespace resolve result.
+		/// </summary>
+		/// <param name="ns">The resolved namespace symbol.</param>
 		public NamespaceResolveResult(INamespace ns) : base(SpecialType.NoType)
 		{
 			this.ns = ns;
 		}
 
+		/// <summary>
+		/// Gets the resolved namespace symbol.
+		/// </summary>
 		public INamespace Namespace {
 			get { return ns; }
 		}
 
+		/// <summary>
+		/// Gets the fully qualified namespace name.
+		/// </summary>
 		public string NamespaceName {
 			get { return ns.FullName; }
 		}

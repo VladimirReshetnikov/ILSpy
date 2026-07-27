@@ -26,6 +26,7 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 	public partial class ClassDiagrammerFactory
 	{
 		/// <summary>Returns a cached display name for <paramref name="type"/>.</summary>
+		/// <param name="type">Type for which a diagram label is required.</param>
 		private string GetName(IType type)
 		{
 			if (labels!.TryGetValue(type, out string? value))
@@ -35,6 +36,7 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 		}
 
 		/// <summary>Generates a display name for <paramref name="type"/>.</summary>
+		/// <param name="type">Type to convert into Mermaid-compatible label text.</param>
 		private string GenerateName(IType type)
 		{
 			// non-generic types

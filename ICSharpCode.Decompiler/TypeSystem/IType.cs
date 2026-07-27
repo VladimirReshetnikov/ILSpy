@@ -334,21 +334,39 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		IEnumerable<IMethod> GetAccessors(Predicate<IMethod>? filter = null, GetMemberOptions options = GetMemberOptions.None);
 	}
 
+	/// <summary>
+	/// Controls specialization and inheritance behavior for member-enumeration APIs on <see cref="IType"/>.
+	/// </summary>
+	/// <remarks>
+	/// These flags are consumed by all <c>Get*</c> member-list methods (for example <see cref="IType.GetMethods(Predicate{IMethod}, GetMemberOptions)"/>)
+	/// and may be combined to tune whether callers receive inherited members and/or specialized wrappers.
+	/// </remarks>
 	[Flags]
 	public enum GetMemberOptions
 	{
 		/// <summary>
-		/// No options specified - this is the default.
-		/// Members will be specialized, and inherited members will be included.
+		/// Uses default lookup behavior.
 		/// </summary>
+		/// <remarks>
+		/// Default behavior returns inherited members and performs type-parameter substitution when the queried receiver
+		/// is a parameterized type.
+		/// </remarks>
 		None = 0x00,
 		/// <summary>
-		/// Do not specialize the returned members - directly return the definitions.
+		/// Returns underlying member definitions without applying receiver-specific substitution.
 		/// </summary>
+		/// <remarks>
+		/// When this flag is set on a parameterized receiver (for example <c>List&lt;string&gt;</c>), returned members expose
+		/// their original generic signatures from the definition type rather than specialized wrapper members.
+		/// </remarks>
 		ReturnMemberDefinitions = 0x01,
 		/// <summary>
-		/// Do not list inherited members - only list members defined directly on this type.
+		/// Restricts results to members declared directly on the current type.
 		/// </summary>
+		/// <remarks>
+		/// Suppresses inherited members from base classes and interfaces. This does not affect specialization behavior;
+		/// combine with <see cref="ReturnMemberDefinitions"/> when both constraints are required.
+		/// </remarks>
 		IgnoreInheritedMembers = 0x02
 	}
 }

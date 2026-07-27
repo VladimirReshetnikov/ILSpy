@@ -35,6 +35,15 @@ namespace ICSharpCode.ILSpy.TextView
 
 		public ReferenceSegment ReferenceSegment => referenceSegment;
 
+		/// <summary>
+		/// Creates a visual line text element with the specified length.
+		/// It uses the <see cref="ITextRunConstructionContext.VisualLine"/> and its
+		/// <see cref="VisualLineElement.RelativeTextOffset"/> to find the actual text string.
+		/// </summary>
+		/// <param name="parentVisualLine">The visual line that owns this text element.</param>
+		/// <param name="length">The number of document characters represented by this element.</param>
+		/// <param name="parent">The generator that created this element.</param>
+		/// <param name="referenceSegment">Reference metadata used for cursor and navigation behavior.</param>
 		public VisualLineReferenceText(VisualLine parentVisualLine, int length, ReferenceElementGenerator parent, ReferenceSegment referenceSegment)
 			: base(parentVisualLine, length)
 		{

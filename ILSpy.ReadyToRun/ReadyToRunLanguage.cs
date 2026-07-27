@@ -108,6 +108,9 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 	}
 #endif
 
+	/// <summary>
+	/// ILSpy language backend that renders native ReadyToRun method bodies as annotated assembly text.
+	/// </summary>
 	[Export(typeof(Language))]
 	[Shared]
 	[method: ImportingConstructor]
@@ -117,17 +120,35 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 	{
 		private static readonly ConditionalWeakTable<MetadataFile, ReadyToRunReaderCacheEntry> readyToRunReaders = new ConditionalWeakTable<MetadataFile, ReadyToRunReaderCacheEntry>();
 
+		/// <summary>
+		/// Gets the display name shown in ILSpy's language selector.
+		/// </summary>
 		public override string Name => "ReadyToRun";
 
+		/// <summary>
+		/// Gets the file extension used for ReadyToRun text exports.
+		/// </summary>
 		public override string FileExtension {
 			get { return ".asm"; }
 		}
 
+		/// <summary>
+		/// Writes a semicolon-prefixed comment line using assembler-style syntax.
+		/// </summary>
+		/// <param name="output">Target text sink receiving the comment.</param>
+		/// <param name="comment">Comment payload without the leading comment marker.</param>
 		public override void WriteCommentLine(ITextOutput output, string comment)
 		{
 			output.WriteLine("; " + comment);
 		}
 
+		/// <summary>
+		/// Emits assembly-level ReadyToRun metadata headers and then delegates standard tree decompilation to the base language.
+		/// </summary>
+		/// <param name="assembly">Loaded assembly selected for decompilation.</param>
+		/// <param name="output">Destination for decompiled text.</param>
+		/// <param name="options">Current decompilation options and cancellation state.</param>
+		/// <returns>The project identifier returned by the base decompilation pipeline.</returns>
 		public override ProjectId DecompileAssembly(LoadedAssembly assembly, ITextOutput output, DecompilationOptions options)
 		{
 			PEFile module = assembly.GetMetadataFileAsync().GetAwaiter().GetResult() as PEFile;
@@ -151,6 +172,12 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 			return base.DecompileAssembly(assembly, output, options);
 		}
 
+		/// <summary>
+		/// Decompiles the selected managed method by locating corresponding ReadyToRun runtime functions and disassembling their native code.
+		/// </summary>
+		/// <param name="method">Method metadata used to locate ReadyToRun entries.</param>
+		/// <param name="output">Destination for assembly output and annotations.</param>
+		/// <param name="options">Decompilation options controlling cancellation and formatting behavior.</param>
 		public override void DecompileMethod(IMethod method, ITextOutput output, DecompilationOptions options)
 		{
 			PEFile module = method.ParentModule.MetadataFile as PEFile;
@@ -232,6 +259,13 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 			}
 		}
 
+		/// <summary>
+		/// Reuses IL language rendering for metadata entities shown while browsing ReadyToRun output.
+		/// </summary>
+		/// <param name="entity">Entity for which rich text is requested.</param>
+		/// <param name="conversionFlags">Controls how much of the entity's signature is written.</param>
+		/// <param name="boldTypeNames">Whether type names are emphasized in the result.</param>
+		/// <returns>Rich text produced by the IL language service.</returns>
 		public override RichText GetRichText(IEntity entity, ConversionFlags conversionFlags, bool boldTypeNames = false)
 		{
 			return languageService.Value.GetLanguage("IL").GetRichText(entity, conversionFlags, boldTypeNames);
@@ -294,17 +328,34 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 			private LoadedAssembly loadedAssembly;
 			private Decompiler.Metadata.IAssemblyResolver assemblyResolver;
 
+			/// <summary>
+			/// Creates a resolver that maps ReadyToRun assembly references through ILSpy's loaded-assembly resolution pipeline.
+			/// </summary>
+			/// <param name="loadedAssembly">Assembly context that provides metadata and module resolution services.</param>
 			public ReadyToRunAssemblyResolver(LoadedAssembly loadedAssembly)
 			{
 				this.loadedAssembly = loadedAssembly;
 				assemblyResolver = loadedAssembly.GetAssemblyResolver();
 			}
 
+			/// <summary>
+			/// Resolves an assembly reference handle from metadata into ReadyToRun assembly metadata.
+			/// </summary>
+			/// <param name="metadataReader">Metadata reader that owns <paramref name="assemblyReferenceHandle"/>.</param>
+			/// <param name="assemblyReferenceHandle">Handle identifying the referenced assembly.</param>
+			/// <param name="parentFile">Parent file path supplied by the ReadyToRun reader (unused by this resolver).</param>
+			/// <returns>Assembly metadata for the resolved module, or <see langword="null"/> when resolution fails.</returns>
 			public IAssemblyMetadata FindAssembly(MetadataReader metadataReader, AssemblyReferenceHandle assemblyReferenceHandle, string parentFile)
 			{
 				return GetAssemblyMetadata(assemblyResolver.Resolve(new Decompiler.Metadata.AssemblyReference(metadataReader, assemblyReferenceHandle)));
 			}
 
+			/// <summary>
+			/// Resolves a module by simple file name within the current loaded-assembly context.
+			/// </summary>
+			/// <param name="simpleName">Simple module name to resolve.</param>
+			/// <param name="parentFile">Parent file path supplied by the ReadyToRun reader (unused by this resolver).</param>
+			/// <returns>Assembly metadata for the resolved module, or <see langword="null"/> when not found.</returns>
 			public IAssemblyMetadata FindAssembly(string simpleName, string parentFile)
 			{
 				return GetAssemblyMetadata(assemblyResolver.ResolveModule(loadedAssembly.GetMetadataFileOrNull(), simpleName));
@@ -325,8 +376,15 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 
 		private class IlSpyAssemblyMetadata : StandaloneAssemblyMetadata
 		{
+			/// <summary>
+			/// Gets the PE module wrapped by this ReadyToRun assembly metadata adapter.
+			/// </summary>
 			public PEFile Module { get; private set; }
 
+			/// <summary>
+			/// Initializes metadata adapter state for a module resolved by ILSpy.
+			/// </summary>
+			/// <param name="module">Resolved PE module that provides metadata and image reader access.</param>
 			public IlSpyAssemblyMetadata(PEFile module) : base(module.Reader)
 			{
 				Module = module;

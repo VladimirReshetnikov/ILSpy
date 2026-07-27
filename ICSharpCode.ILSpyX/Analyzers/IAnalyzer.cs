@@ -29,21 +29,37 @@ namespace ICSharpCode.ILSpyX.Analyzers
 	public interface IAnalyzer
 	{
 		/// <summary>
-		/// Returns true, if the analyzer should be shown for a symbol, otherwise false.
-		/// Implementations must tolerate a null argument and return false.
+		/// Determines whether this analyzer should be offered for the specified symbol.
 		/// </summary>
+		/// <param name="symbol">Symbol currently selected in the analyzer UI, or <see langword="null"/> when none is.</param>
+		/// <returns>
+		/// <see langword="true"/> when the analyzer can process <paramref name="symbol"/>; otherwise <see langword="false"/>.
+		/// Implementations must tolerate a <see langword="null"/> argument and return <see langword="false"/> for it.
+		/// </returns>
 		bool Show(ISymbol? symbol);
 
 		/// <summary>
-		/// Returns all symbols found by this analyzer.
+		/// Produces analyzer results for the selected symbol.
 		/// </summary>
+		/// <param name="analyzedSymbol">Root symbol being analyzed.</param>
+		/// <param name="context">Execution context with scope, language, and cancellation information.</param>
+		/// <returns>A (possibly lazy) sequence of symbols to display as analyzer results.</returns>
 		IEnumerable<ISymbol> Analyze(ISymbol analyzedSymbol, AnalyzerContext context);
 	}
 
+	/// <summary>
+	/// Metadata exposed by <see cref="ExportAnalyzerAttribute"/> and consumed when composing analyzer menu entries.
+	/// </summary>
 	public interface IAnalyzerMetadata
 	{
+		/// <summary>
+		/// Gets the localized header shown in the analyzer root node.
+		/// </summary>
 		string Header { get; }
 
+		/// <summary>
+		/// Gets the sort key used to order analyzers in the context menu.
+		/// </summary>
 		int Order { get; }
 	}
 }

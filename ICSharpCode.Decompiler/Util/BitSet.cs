@@ -26,8 +26,19 @@ using System.Text;
 namespace ICSharpCode.Decompiler.Util
 {
 	/// <summary>
-	/// Improved version of BitArray
+	/// Represents a fixed-size mutable set of non-negative integers backed by packed 64-bit words.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This type is used by control-flow and data-flow analyses where the domain size is known in advance (for example
+	/// node IDs or variable IDs). The constructor rounds capacity up to full words, so storage can include trailing bits
+	/// outside the caller's logical range.
+	/// </para>
+	/// <para>
+	/// Set operations assume both operands were created with compatible capacities. Some methods assert this in debug
+	/// builds, while release builds rely on callers to preserve that invariant.
+	/// </para>
+	/// </remarks>
 	public class BitSet
 	{
 		const int BitsPerWord = 64;
@@ -45,6 +56,7 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Creates a new bitset, where initially all bits are zero.
 		/// </summary>
+		/// <param name="capacity">The logical number of addressable bits expected by callers.</param>
 		public BitSet(int capacity)
 		{
 			this.words = new ulong[Math.Max(1, WordIndex(capacity + BitsPerWord - 1))];
@@ -55,11 +67,23 @@ namespace ICSharpCode.Decompiler.Util
 			this.words = bits;
 		}
 
+		/// <summary>
+		/// Creates a deep copy of this bitset.
+		/// </summary>
+		/// <returns>A new <see cref="BitSet"/> with the same bit pattern.</returns>
 		public BitSet Clone()
 		{
 			return new BitSet((ulong[])words.Clone());
 		}
 
+		/// <summary>
+		/// Gets or sets whether the bit at <paramref name="index"/> is set.
+		/// </summary>
+		/// <param name="index">Zero-based bit index.</param>
+		/// <value><see langword="true"/> when the bit is set; otherwise <see langword="false"/>.</value>
+		/// <exception cref="IndexOutOfRangeException">
+		/// <paramref name="index"/> is outside the storage allocated by this instance.
+		/// </exception>
 		public bool this[int index] {
 			get {
 				return (words[WordIndex(index)] & (1UL << index)) != 0;
@@ -119,6 +143,8 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Gets whether both bitsets have the same content.
 		/// </summary>
+		/// <param name="other">The set to compare with this instance.</param>
+		/// <returns><see langword="true"/> when all stored words are equal; otherwise <see langword="false"/>.</returns>
 		public bool SetEquals(BitSet other)
 		{
 			Debug.Assert(words.Length == other.words.Length);
@@ -133,6 +159,11 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Gets whether this set is a subset of other, or equal.
 		/// </summary>
+		/// <param name="other">The candidate superset.</param>
+		/// <returns>
+		/// <see langword="true"/> when each set bit in this instance is also set in <paramref name="other"/>;
+		/// otherwise <see langword="false"/>.
+		/// </returns>
 		public bool IsSubsetOf(BitSet other)
 		{
 			for (int i = 0; i < words.Length; i++)
@@ -146,16 +177,37 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Gets whether this set is a superset of other, or equal.
 		/// </summary>
+		/// <param name="other">The candidate subset.</param>
+		/// <returns>
+		/// <see langword="true"/> when each set bit in <paramref name="other"/> is set in this instance;
+		/// otherwise <see langword="false"/>.
+		/// </returns>
 		public bool IsSupersetOf(BitSet other)
 		{
 			return other.IsSubsetOf(this);
 		}
 
+		/// <summary>
+		/// Gets whether this set is a strict subset of <paramref name="other"/>.
+		/// </summary>
+		/// <param name="other">The candidate strict superset.</param>
+		/// <returns>
+		/// <see langword="true"/> when this set is a subset of <paramref name="other"/> but not equal to it;
+		/// otherwise <see langword="false"/>.
+		/// </returns>
 		public bool IsProperSubsetOf(BitSet other)
 		{
 			return IsSubsetOf(other) && !SetEquals(other);
 		}
 
+		/// <summary>
+		/// Gets whether this set is a strict superset of <paramref name="other"/>.
+		/// </summary>
+		/// <param name="other">The candidate strict subset.</param>
+		/// <returns>
+		/// <see langword="true"/> when this set is a superset of <paramref name="other"/> but not equal to it;
+		/// otherwise <see langword="false"/>.
+		/// </returns>
 		public bool IsProperSupersetOf(BitSet other)
 		{
 			return IsSupersetOf(other) && !SetEquals(other);
@@ -174,6 +226,10 @@ namespace ICSharpCode.Decompiler.Util
 			return false;
 		}
 
+		/// <summary>
+		/// Sets this instance to the union of itself and <paramref name="other"/>.
+		/// </summary>
+		/// <param name="other">The set whose bits are added to this instance.</param>
 		public void UnionWith(BitSet other)
 		{
 			Debug.Assert(words.Length == other.words.Length);
@@ -183,6 +239,10 @@ namespace ICSharpCode.Decompiler.Util
 			}
 		}
 
+		/// <summary>
+		/// Sets this instance to the intersection of itself and <paramref name="other"/>.
+		/// </summary>
+		/// <param name="other">The set used to filter this instance.</param>
 		public void IntersectWith(BitSet other)
 		{
 			for (int i = 0; i < words.Length; i++)
@@ -191,6 +251,10 @@ namespace ICSharpCode.Decompiler.Util
 			}
 		}
 
+		/// <summary>
+		/// Sets the bit at <paramref name="index"/>.
+		/// </summary>
+		/// <param name="index">Zero-based bit index.</param>
 		public void Set(int index)
 		{
 			words[WordIndex(index)] |= (1UL << index);
@@ -199,6 +263,8 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Sets all bits i; where startIndex &lt;= i &lt; endIndex.
 		/// </summary>
+		/// <param name="startIndex">Inclusive start of the range.</param>
+		/// <param name="endIndex">Exclusive end of the range.</param>
 		public void Set(int startIndex, int endIndex)
 		{
 			Debug.Assert(startIndex <= endIndex);
@@ -228,6 +294,10 @@ namespace ICSharpCode.Decompiler.Util
 		// Note: intentionally no SetAll(), because it would also set the
 		// extra bits (due to the capacity being rounded up to a full word).
 
+		/// <summary>
+		/// Clears the bit at <paramref name="index"/>.
+		/// </summary>
+		/// <param name="index">Zero-based bit index.</param>
 		public void Clear(int index)
 		{
 			words[WordIndex(index)] &= ~(1UL << index);
@@ -236,6 +306,8 @@ namespace ICSharpCode.Decompiler.Util
 		/// <summary>
 		/// Clear all bits i; where startIndex &lt;= i &lt; endIndex.
 		/// </summary>
+		/// <param name="startIndex">Inclusive start of the range.</param>
+		/// <param name="endIndex">Exclusive end of the range.</param>
 		public void Clear(int startIndex, int endIndex)
 		{
 			Debug.Assert(startIndex <= endIndex);
@@ -262,6 +334,9 @@ namespace ICSharpCode.Decompiler.Util
 			}
 		}
 
+		/// <summary>
+		/// Clears every stored bit in this instance.
+		/// </summary>
 		public void ClearAll()
 		{
 			for (int i = 0; i < words.Length; i++)
@@ -270,6 +345,15 @@ namespace ICSharpCode.Decompiler.Util
 			}
 		}
 
+		/// <summary>
+		/// Finds the first set bit in the specified range.
+		/// </summary>
+		/// <param name="startIndex">Inclusive start of the search range.</param>
+		/// <param name="endIndex">Exclusive end of the search range.</param>
+		/// <returns>
+		/// The index of the first set bit in <c>[<paramref name="startIndex"/>, <paramref name="endIndex"/>)</c>,
+		/// or <c>-1</c> when the range contains no set bit.
+		/// </returns>
 		public int NextSetBit(int startIndex, int endIndex)
 		{
 			Debug.Assert(startIndex <= endIndex);
@@ -315,6 +399,12 @@ namespace ICSharpCode.Decompiler.Util
 			return -1;
 		}
 
+		/// <summary>
+		/// Enumerates set-bit indices in ascending order within the specified range.
+		/// </summary>
+		/// <param name="startIndex">Inclusive start of the range.</param>
+		/// <param name="endIndex">Exclusive end of the range.</param>
+		/// <returns>A deferred sequence that yields each set index once.</returns>
 		public IEnumerable<int> SetBits(int startIndex, int endIndex)
 		{
 			while (true)
@@ -327,12 +417,20 @@ namespace ICSharpCode.Decompiler.Util
 			}
 		}
 
+		/// <summary>
+		/// Replaces this instance with a copy of <paramref name="incoming"/>.
+		/// </summary>
+		/// <param name="incoming">The source set to copy from.</param>
 		public void ReplaceWith(BitSet incoming)
 		{
 			Debug.Assert(words.Length == incoming.words.Length);
 			Array.Copy(incoming.words, 0, words, 0, words.Length);
 		}
 
+		/// <summary>
+		/// Returns a diagnostic representation of set indices.
+		/// </summary>
+		/// <returns>A comma-separated list enclosed in braces, truncated for very large sets.</returns>
 		public override string ToString()
 		{
 			StringBuilder b = new StringBuilder();

@@ -98,6 +98,16 @@ namespace ICSharpCode.ILSpy.Languages
 		/// Returns <c>null</c> for handle kinds we don't recognise; the strategy skips its
 		/// pre-filter for those handles and falls through to the slower resolve.
 		/// </summary>
+		/// <param name="module">Metadata module that owns <paramref name="handle"/>.</param>
+		/// <param name="handle">Entity handle to format.</param>
+		/// <param name="fullName">Whether namespace and declaring type names should be included.</param>
+		/// <param name="omitGenerics">Whether generic arity/arguments should be omitted from the result.</param>
+		/// <returns>Search-oriented text for the entity.</returns>
+		/// <param name="module">Metadata module that owns <paramref name="handle"/>.</param>
+		/// <param name="handle">Entity handle to format.</param>
+		/// <param name="fullName">Whether namespace and declaring type names should be included.</param>
+		/// <param name="omitGenerics">Whether generic arity/arguments should be omitted from the result.</param>
+		/// <returns>Search-oriented text for the entity.</returns>
 		public virtual string GetEntityName(MetadataFile module, EntityHandle handle, bool fullName, bool omitGenerics)
 		{
 			ArgumentNullException.ThrowIfNull(module);
@@ -146,6 +156,12 @@ namespace ICSharpCode.ILSpy.Languages
 			}
 		}
 
+		/// <summary>
+		/// Converts a type definition, reference or specification into a string. This method is used by tree nodes and search results.
+		/// </summary>
+		/// <param name="type">Type to convert into display text.</param>
+		/// <param name="conversionFlags">Formatting flags controlling qualification and syntax style.</param>
+		/// <returns>A textual representation of <paramref name="type"/>.</returns>
 		public virtual string TypeToString(IType type, ConversionFlags conversionFlags = ConversionFlags.UseFullyQualifiedTypeNames | ConversionFlags.UseFullyQualifiedEntityNames)
 		{
 			ArgumentNullException.ThrowIfNull(type);
@@ -172,6 +188,12 @@ namespace ICSharpCode.ILSpy.Languages
 			output.WriteLine("// " + comment);
 		}
 
+		/// <summary>
+		/// Converts a member signature to a string.
+		/// This is used for displaying the tooltip on a member reference.
+		/// </summary>
+		/// <param name="entity">Referenced member to render.</param>
+		/// <returns>A plain-text tooltip string.</returns>
 		public virtual string GetTooltip(IEntity entity)
 		{
 			ArgumentNullException.ThrowIfNull(entity);

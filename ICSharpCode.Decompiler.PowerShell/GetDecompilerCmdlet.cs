@@ -29,27 +29,49 @@ using ICSharpCode.ILSpyX.PdbProvider;
 
 namespace ICSharpCode.Decompiler.PowerShell
 {
+	/// <summary>
+	/// Creates a configured <see cref="CSharpDecompiler"/> instance for an input assembly so
+	/// subsequent cmdlets can query types, metadata, or source text without reopening the file.
+	/// </summary>
 	[Cmdlet(VerbsCommon.Get, "Decompiler")]
 	[OutputType(typeof(CSharpDecompiler))]
 	public class GetDecompilerCmdlet : PSCmdlet
 	{
+		/// <summary>
+		/// Gets or sets the path to the assembly that will be loaded into a decompiler session.
+		/// </summary>
 		[Parameter(Position = 0, Mandatory = true, HelpMessage = "Path to the assembly you want to decompile")]
 		[Alias("PSPath")]
 		[ValidateNotNullOrEmpty]
 		public string LiteralPath { get; set; }
 
+		/// <summary>
+		/// Gets or sets the C# language version used when emitting decompiled source.
+		/// </summary>
 		[Parameter(HelpMessage = "C# Language version to be used by the decompiler")]
 		public LanguageVersion LanguageVersion { get; set; } = LanguageVersion.Latest;
 
+		/// <summary>
+		/// Gets or sets whether the decompiler should remove stores to locals that are never read.
+		/// </summary>
 		[Parameter(HelpMessage = "Remove dead stores")]
 		public bool RemoveDeadStores { get; set; }
 
+		/// <summary>
+		/// Gets or sets whether unreachable code should be eliminated during decompilation.
+		/// </summary>
 		[Parameter(HelpMessage = "Remove dead code")]
 		public bool RemoveDeadCode { get; set; }
 
+		/// <summary>
+		/// Gets or sets an optional PDB file path used to enrich decompiled output with debug symbols.
+		/// </summary>
 		[Parameter(HelpMessage = "Use PDB")]
 		public string PDBFilePath { get; set; }
 
+		/// <summary>
+		/// Resolves the requested assembly path, initializes a <see cref="CSharpDecompiler"/>, and writes it to the pipeline.
+		/// </summary>
 		protected override void ProcessRecord()
 		{
 			string path = GetUnresolvedProviderPathFromPSPath(LiteralPath);

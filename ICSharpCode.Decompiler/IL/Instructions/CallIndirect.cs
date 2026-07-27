@@ -29,15 +29,42 @@ namespace ICSharpCode.Decompiler.IL
 	{
 		// Note: while in IL the arguments come first and the function pointer last;
 		// in the ILAst we're handling it as in C#: the function pointer is evaluated first, the arguments later.
+		/// <summary>
+		/// Slot that stores the expression producing the function pointer target.
+		/// </summary>
 		public static readonly SlotInfo FunctionPointerSlot = new SlotInfo("FunctionPointer", canInlineInto: true);
+		/// <summary>
+		/// Collection slot containing the call arguments in evaluation order.
+		/// </summary>
 		public static readonly SlotInfo ArgumentSlot = new SlotInfo("Argument", canInlineInto: true, isCollection: true);
 
 		ILInstruction functionPointer = null!;
+		/// <summary>
+		/// Gets the instruction collection that represents arguments passed to the indirect call.
+		/// </summary>
 		public readonly InstructionCollection<ILInstruction> Arguments;
+
+		/// <summary>
+		/// Gets whether the function pointer signature is treated as an instance call.
+		/// </summary>
+		/// <remarks>
+		/// When this flag is <see langword="true"/>, the first entry in <see cref="Arguments"/> is the receiver argument.
+		/// </remarks>
 		public bool IsInstance { get; }
+
+		/// <summary>
+		/// Gets whether the call uses explicit-<c>this</c> calling convention metadata.
+		/// </summary>
 		public bool HasExplicitThis { get; }
+
+		/// <summary>
+		/// Gets the function pointer signature used for argument and return typing.
+		/// </summary>
 		public FunctionPointerType FunctionPointerType { get; }
 
+		/// <summary>
+		/// Gets or sets the instruction that computes the function pointer target.
+		/// </summary>
 		public ILInstruction FunctionPointer {
 			get {
 				return functionPointer;
@@ -48,6 +75,14 @@ namespace ICSharpCode.Decompiler.IL
 			}
 		}
 
+		/// <summary>
+		/// Creates an indirect call instruction.
+		/// </summary>
+		/// <param name="isInstance"><see langword="true"/> when the argument list includes an instance receiver.</param>
+		/// <param name="hasExplicitThis"><see langword="true"/> when the signature uses explicit-<c>this</c> metadata.</param>
+		/// <param name="functionPointerType">The signature that defines return and parameter types.</param>
+		/// <param name="functionPointer">The expression producing the function pointer target.</param>
+		/// <param name="arguments">The argument expressions. The first argument is the receiver when <paramref name="isInstance"/> is <see langword="true"/>.</param>
 		public CallIndirect(bool isInstance, bool hasExplicitThis, FunctionPointerType functionPointerType,
 			ILInstruction functionPointer, IEnumerable<ILInstruction> arguments) : base(OpCode.CallIndirect)
 		{
@@ -66,6 +101,9 @@ namespace ICSharpCode.Decompiler.IL
 			).WithILRange(this);
 		}
 
+		/// <summary>
+		/// Gets the stack type of the call result.
+		/// </summary>
 		public override StackType ResultType => FunctionPointerType.ReturnType.GetStackType();
 
 		internal override void CheckInvariant(ILPhase phase)
@@ -137,6 +175,12 @@ namespace ICSharpCode.Decompiler.IL
 			return flags;
 		}
 
+		/// <summary>
+		/// Gets direct side-effect flags for indirect calls.
+		/// </summary>
+		/// <remarks>
+		/// Indirect calls are always modeled as potentially throwing and side-effecting because the target is not statically fixed.
+		/// </remarks>
 		public override InstructionFlags DirectFlags {
 			get {
 				return InstructionFlags.MayThrow | InstructionFlags.SideEffect;

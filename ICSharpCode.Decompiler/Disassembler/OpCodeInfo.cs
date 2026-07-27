@@ -26,13 +26,39 @@ using ICSharpCode.Decompiler.Metadata;
 
 namespace ICSharpCode.Decompiler.Disassembler
 {
+	/// <summary>
+	/// Describes one IL opcode and helper metadata used by disassembly output.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// <see cref="Name"/> preserves the textual mnemonic emitted in disassembly, including trailing dots for prefix opcodes.
+	/// <see cref="EncodedName"/> converts that mnemonic into the naming style used by
+	/// <see href="https://learn.microsoft.com/dotnet/api/system.reflection.emit.opcodes">System.Reflection.Emit.OpCodes</see>
+	/// documentation URLs.
+	/// </para>
+	/// <para>
+	/// This is a value type so opcode metadata can be passed and compared without allocations in hot disassembly paths.
+	/// </para>
+	/// </remarks>
 	public struct OpCodeInfo : IEquatable<OpCodeInfo>
 	{
+		/// <summary>
+		/// The numeric opcode value.
+		/// </summary>
 		public readonly ILOpCode Code;
+
+		/// <summary>
+		/// The IL mnemonic used in textual output.
+		/// </summary>
 		public readonly string Name;
 
 		string encodedName;
 
+		/// <summary>
+		/// Initializes a new opcode descriptor.
+		/// </summary>
+		/// <param name="code">The numeric opcode value.</param>
+		/// <param name="name">The textual IL mnemonic.</param>
 		public OpCodeInfo(ILOpCode code, string name)
 		{
 			this.Code = code;
@@ -40,6 +66,13 @@ namespace ICSharpCode.Decompiler.Disassembler
 			this.encodedName = null;
 		}
 
+		/// <summary>
+		/// Compares this opcode descriptor with another instance.
+		/// </summary>
+		/// <param name="other">The instance to compare against.</param>
+		/// <returns>
+		/// <see langword="true"/> when both <see cref="Code"/> and <see cref="Name"/> are equal; otherwise <see langword="false"/>.
+		/// </returns>
 		public bool Equals(OpCodeInfo other)
 		{
 			return other.Code == this.Code && other.Name == this.Name;
@@ -60,7 +93,20 @@ namespace ICSharpCode.Decompiler.Disassembler
 			return unchecked(982451629 * Code.GetHashCode() + 982451653 * Name.GetHashCode());
 		}
 
+		/// <summary>
+		/// Gets the reference URL for this opcode in .NET API documentation.
+		/// </summary>
+		/// <value>
+		/// A URL under <c>system.reflection.emit.opcodes</c> built from <see cref="EncodedName"/>.
+		/// </value>
 		public string Link => "https://docs.microsoft.com/dotnet/api/system.reflection.emit.opcodes." + EncodedName.ToLowerInvariant();
+
+		/// <summary>
+		/// Gets the opcode name encoded in the <see cref="System.Reflection.Emit.OpCodes"/> naming style.
+		/// </summary>
+		/// <value>
+		/// The cached encoded name used for documentation links and interop with reflection opcode naming.
+		/// </value>
 		public string EncodedName {
 			get {
 				if (encodedName != null)

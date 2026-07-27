@@ -25,8 +25,26 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.Disassembler
 {
+	/// <summary>
+	/// Provides low-level IL bytecode decoding helpers used by the disassembler and control-flow scanners.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Methods on this type operate directly on <see cref="BlobReader"/> and advance its offset as they decode operands.
+	/// Most helpers are intentionally tolerant of truncated method bodies so malformed metadata can still be inspected.
+	/// </para>
+	/// <para>
+	/// The API assumes callers provide the correct opcode for follow-up decoding calls such as <see cref="DecodeIndex(ref BlobReader, ILOpCode)"/>.
+	/// Supplying a mismatched opcode results in undefined decoding semantics and may throw.
+	/// </para>
+	/// </remarks>
 	public static class ILParser
 	{
+		/// <summary>
+		/// Decodes one IL opcode from the current reader position.
+		/// </summary>
+		/// <param name="blob">The method body reader.</param>
+		/// <returns>The decoded one-byte or two-byte opcode value.</returns>
 		public static ILOpCode DecodeOpCode(this ref BlobReader blob)
 		{
 			byte opCodeByte = blob.ReadByte();
@@ -74,6 +92,14 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Skips the operand bytes of the specified opcode.
+		/// </summary>
+		/// <param name="blob">The method body reader.</param>
+		/// <param name="opCode">The opcode whose operand should be skipped.</param>
+		/// <remarks>
+		/// For malformed or truncated bodies, this method advances to the end of the blob instead of throwing.
+		/// </remarks>
 		public static void SkipOperand(this ref BlobReader blob, ILOpCode opCode)
 		{
 			var opType = opCode.GetOperandType();
@@ -105,6 +131,14 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Decodes a branch target operand and returns the absolute target offset.
+		/// </summary>
+		/// <param name="blob">The method body reader positioned at the branch operand.</param>
+		/// <param name="opCode">A branch opcode with either short or long branch operand width.</param>
+		/// <returns>
+		/// The absolute target offset when enough bytes are available; otherwise <see cref="int.MinValue"/>.
+		/// </returns>
 		public static int DecodeBranchTarget(this ref BlobReader blob, ILOpCode opCode)
 		{
 			int opSize = opCode.GetBranchOperandSize();
@@ -119,6 +153,14 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Decodes switch branch targets and returns absolute offsets.
+		/// </summary>
+		/// <param name="blob">The method body reader positioned at the switch operand.</param>
+		/// <returns>An array of absolute target offsets. The array can be empty for malformed input.</returns>
+		/// <remarks>
+		/// When the encoded target count exceeds the remaining bytes, decoding is truncated to the available payload.
+		/// </remarks>
 		public static int[] DecodeSwitchTargets(this ref BlobReader blob)
 		{
 			if (blob.RemainingBytes < 4)
@@ -146,11 +188,26 @@ namespace ICSharpCode.Decompiler.Disassembler
 			return targets;
 		}
 
+		/// <summary>
+		/// Decodes a user-string token operand and resolves it to the corresponding metadata string.
+		/// </summary>
+		/// <param name="blob">The method body reader positioned at the token operand.</param>
+		/// <param name="metadata">The metadata reader used to resolve the token.</param>
+		/// <returns>The decoded user string.</returns>
 		public static string DecodeUserString(this ref BlobReader blob, MetadataReader metadata)
 		{
 			return metadata.GetUserString(MetadataTokens.UserStringHandle(blob.ReadInt32()));
 		}
 
+		/// <summary>
+		/// Decodes a local-variable or parameter index operand.
+		/// </summary>
+		/// <param name="blob">The method body reader positioned at the index operand.</param>
+		/// <param name="opCode">The opcode that determines operand width.</param>
+		/// <returns>The decoded index value.</returns>
+		/// <exception cref="ArgumentException">
+		/// <paramref name="opCode"/> does not carry a variable-index operand.
+		/// </exception>
 		public static int DecodeIndex(this ref BlobReader blob, ILOpCode opCode)
 		{
 			switch (opCode.GetOperandType())
@@ -164,11 +221,23 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Determines whether the opcode semantically terminates execution of the current method region.
+		/// </summary>
+		/// <param name="opCode">The opcode to inspect.</param>
+		/// <returns>
+		/// <see langword="true"/> for <c>ret</c>, <c>endfilter</c>, and <c>endfinally</c>; otherwise <see langword="false"/>.
+		/// </returns>
 		public static bool IsReturn(this ILOpCode opCode)
 		{
 			return opCode == ILOpCode.Ret || opCode == ILOpCode.Endfilter || opCode == ILOpCode.Endfinally;
 		}
 
+		/// <summary>
+		/// Computes the method-header size in bytes for the specified method body reader.
+		/// </summary>
+		/// <param name="bodyBlockReader">A reader positioned at the start of a method body header.</param>
+		/// <returns>The tiny-header size (<c>1</c>) or the decoded fat-header size in bytes.</returns>
 		public static int GetHeaderSize(BlobReader bodyBlockReader)
 		{
 			byte header = bodyBlockReader.ReadByte();
@@ -185,6 +254,14 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Scans a method body and marks all statically encoded branch targets.
+		/// </summary>
+		/// <param name="blob">The method body reader.</param>
+		/// <param name="branchTargets">A bit set that receives marked branch target offsets.</param>
+		/// <remarks>
+		/// This routine only marks targets that fall inside the current method-body blob.
+		/// </remarks>
 		public static void SetBranchTargets(ref BlobReader blob, BitSet branchTargets)
 		{
 			while (blob.RemainingBytes > 0)

@@ -21,42 +21,46 @@ using System;
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Represents an error while resolving a reference to a type or a member.
+	/// Represents a failure while resolving a metadata reference to a type or member symbol.
 	/// </summary>
+	/// <remarks>
+	/// This exception is used when reference resolution fails after metadata has been parsed successfully,
+	/// for example when an expected target assembly/type/member cannot be found in the current resolution context.
+	/// </remarks>
 	[Serializable]
 	public class ReferenceResolvingException : Exception
 	{
 		/// <summary>
-		/// Initializes a new instance of the <see cref="ReferenceResolvingException"/> class
+		/// Initializes a new instance of the <see cref="ReferenceResolvingException"/> class.
 		/// </summary>
 		public ReferenceResolvingException()
 		{
 		}
 
 		/// <summary>
-		/// Initializes a new instance of the <see cref="ReferenceResolvingException"/> class
+		/// Initializes a new instance of the <see cref="ReferenceResolvingException"/> class.
 		/// </summary>
-		/// <param name="message">A <see cref="T:System.String"/> that describes the error. The content of message is intended to be understood by humans. The caller of this constructor is required to ensure that this string has been localized for the current system culture.</param>
+		/// <param name="message">Message describing the resolution failure.</param>
 		public ReferenceResolvingException(string message)
 			: base(message)
 		{
 		}
 
 		/// <summary>
-		/// Initializes a new instance of the <see cref="ReferenceResolvingException"/> class
+		/// Initializes a new instance of the <see cref="ReferenceResolvingException"/> class.
 		/// </summary>
-		/// <param name="message">A <see cref="T:System.String"/> that describes the error. The content of message is intended to be understood by humans. The caller of this constructor is required to ensure that this string has been localized for the current system culture.</param>
-		/// <param name="inner">The exception that is the cause of the current exception. If the innerException parameter is not a null reference, the current exception is raised in a catch block that handles the inner exception.</param>
+		/// <param name="message">Message describing the resolution failure.</param>
+		/// <param name="inner">Underlying exception that caused this resolution failure.</param>
 		public ReferenceResolvingException(string message, Exception inner)
 			: base(message, inner)
 		{
 		}
 
 		/// <summary>
-		/// Initializes a new instance of the <see cref="ReferenceResolvingException"/> class
+		/// Initializes a new instance of the <see cref="ReferenceResolvingException"/> class.
 		/// </summary>
-		/// <param name="info">The object that holds the serialized object data.</param>
-		/// <param name="context">The contextual information about the source or destination.</param>
+		/// <param name="info">Serialized exception payload.</param>
+		/// <param name="context">Serialization context.</param>
 		protected ReferenceResolvingException(System.Runtime.Serialization.SerializationInfo info, System.Runtime.Serialization.StreamingContext context)
 			: base(info, context)
 		{

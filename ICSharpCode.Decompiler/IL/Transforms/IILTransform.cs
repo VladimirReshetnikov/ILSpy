@@ -33,10 +33,25 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.IL.Transforms
 {
 	/// <summary>
-	/// Per-function IL transform.
+	/// Defines a transform that rewrites a complete <see cref="ILFunction"/>.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Implementations participate in an ordered pipeline, and each transform observes the output of all
+	/// previous transforms in that pipeline.
+	/// </para>
+	/// <para>
+	/// Implementations are expected to preserve IL invariants for <see cref="ILPhase.Normal"/> before returning,
+	/// because the pipeline validates invariants between transform invocations.
+	/// </para>
+	/// </remarks>
 	public interface IILTransform
 	{
+		/// <summary>
+		/// Executes the transform against <paramref name="function"/>.
+		/// </summary>
+		/// <param name="function">The function currently being normalized or reduced.</param>
+		/// <param name="context">Per-run services and settings shared across transforms.</param>
 		void Run(ILFunction function, ILTransformContext context);
 	}
 
@@ -45,12 +60,43 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 	/// </summary>
 	public class ILTransformContext
 	{
+		/// <summary>
+		/// Gets the function currently being transformed.
+		/// </summary>
 		public ILFunction Function { get; }
+
+		/// <summary>
+		/// Gets the semantic type-system model used by transforms while analyzing metadata and symbols.
+		/// </summary>
 		public IDecompilerTypeSystem TypeSystem { get; }
+
+		/// <summary>
+		/// Gets debug-symbol access for the current decompilation run, if symbols are available.
+		/// </summary>
 		public IDebugInfoProvider? DebugInfo { get; }
+
+		/// <summary>
+		/// Gets the decompiler settings that control transform behavior.
+		/// </summary>
 		public DecompilerSettings Settings { get; }
+
+		/// <summary>
+		/// Gets or sets the cancellation token that transforms should observe during long-running work.
+		/// </summary>
 		public CancellationToken CancellationToken { get; set; }
+
+		/// <summary>
+		/// Gets or sets the step recorder used by transform debugging instrumentation.
+		/// </summary>
+		/// <remarks>
+		/// Derived contexts intentionally share the same <see cref="Stepper"/> instance so that nested transforms
+		/// contribute to one ordered step stream.
+		/// </remarks>
 		public Stepper Stepper { get; set; }
+
+		/// <summary>
+		/// Gets the metadata file of the main module currently being decompiled.
+		/// </summary>
 		public Metadata.MetadataFile PEFile => TypeSystem.MainModule.MetadataFile;
 
 		internal DecompileRun? DecompileRun { get; set; }
@@ -67,6 +113,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			}
 		}
 
+		/// <summary>
+		/// Initializes a transform context for a specific function.
+		/// </summary>
+		/// <param name="function">The function that transforms will mutate.</param>
+		/// <param name="typeSystem">The type-system graph that owns <paramref name="function"/>.</param>
+		/// <param name="debugInfo">Debug-symbol provider to use during transforms, or <see langword="null"/>.</param>
+		/// <param name="settings">Decompiler settings for this run. If <see langword="null"/>, default settings are used.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="function"/> or <paramref name="typeSystem"/> is <see langword="null"/>.</exception>
 		public ILTransformContext(ILFunction function, IDecompilerTypeSystem typeSystem, IDebugInfoProvider? debugInfo, DecompilerSettings? settings = null)
 		{
 			this.Function = function ?? throw new ArgumentNullException(nameof(function));
@@ -76,6 +130,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			Stepper = new Stepper();
 		}
 
+		/// <summary>
+		/// Initializes a child context that reuses state from another context.
+		/// </summary>
+		/// <param name="context">The context to copy shared services and run state from.</param>
+		/// <param name="function">Optional replacement for <see cref="Function"/>. If <see langword="null"/>, the original function is kept.</param>
 		public ILTransformContext(ILTransformContext context, ILFunction? function = null)
 		{
 			this.Function = function ?? context.Function;
@@ -88,8 +147,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		}
 
 		/// <summary>
-		/// Creates a new ILReader instance for decompiling another method in the same assembly.
+		/// Creates an <see cref="ILReader"/> configured to decode additional methods in the same module.
 		/// </summary>
+		/// <returns>
+		/// A new reader initialized with <see cref="Settings"/> and <see cref="DebugInfo"/> from this context.
+		/// </returns>
 		internal ILReader CreateILReader()
 		{
 			return new ILReader(TypeSystem.MainModule) {
@@ -100,9 +162,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		}
 
 		/// <summary>
-		/// Call this method immediately before performing a transform step.
-		/// Unlike <c>context.Stepper.Step()</c>, calls to this method are only compiled in debug builds.
+		/// Records a single transform step in STEP-enabled builds.
 		/// </summary>
+		/// <param name="description">Human-readable label for the step.</param>
+		/// <param name="near">Instruction near which the step occurred, or <see langword="null"/>.</param>
+		/// <remarks>
+		/// Unlike direct calls to <see cref="Stepper.Step(string, DebugStepNodeInfo?)"/>, calls to this wrapper are removed
+		/// from non-STEP builds due to the <see cref="ConditionalAttribute"/> on the method.
+		/// </remarks>
 		[Conditional("STEP")]
 		[DebuggerStepThrough]
 		internal void Step(string description, ILInstruction? near)
@@ -110,6 +177,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			Stepper.Step(description, CreateNodeInfo(near));
 		}
 
+		/// <summary>
+		/// Starts a grouped step region in STEP-enabled builds.
+		/// </summary>
+		/// <param name="description">Group label used in the step tree.</param>
+		/// <param name="near">Instruction near which the group starts, or <see langword="null"/>.</param>
 		[Conditional("STEP")]
 		[DebuggerStepThrough]
 		internal void StepStartGroup(string description, ILInstruction? near = null)
@@ -117,6 +189,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			Stepper.StartGroup(description, CreateNodeInfo(near));
 		}
 
+		/// <summary>
+		/// Ends the current grouped step region in STEP-enabled builds.
+		/// </summary>
+		/// <param name="keepIfEmpty">
+		/// <see langword="true"/> to keep empty groups in the recorded output; otherwise empty groups are removed.
+		/// </param>
 		[Conditional("STEP")]
 		internal void StepEndGroup(bool keepIfEmpty = false)
 		{

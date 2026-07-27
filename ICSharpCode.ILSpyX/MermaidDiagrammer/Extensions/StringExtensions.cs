@@ -27,16 +27,23 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer.Extensions
 	{
 		/// <summary>Replaces all consecutive horizontal white space characters in
 		/// <paramref name="input"/> with <paramref name="normalizeTo"/> while leaving line breaks intact.</summary>
+		/// <param name="input">Input string whose horizontal whitespace should be normalized.</param>
+		/// <param name="normalizeTo">Replacement text used for each run of spaces or tabs.</param>
 		internal static string NormalizeHorizontalWhiteSpace(this string input, string normalizeTo = " ")
 			=> Regex.Replace(input, @"[ \t]+", normalizeTo);
 
 		/// <summary>Replaces all occurrences of <paramref name="oldValues"/> in
 		/// <paramref name="input"/> with <paramref name="newValue"/>.</summary>
+		/// <param name="input">The string to process.</param>
+		/// <param name="oldValues">Substrings that should each be replaced.</param>
+		/// <param name="newValue">Replacement value used for every matched substring.</param>
 		internal static string ReplaceAll(this string input, IEnumerable<string> oldValues, string? newValue)
 			=> oldValues.Aggregate(input, (aggregate, oldValue) => aggregate.Replace(oldValue, newValue));
 
 		/// <summary>Joins the specified <paramref name="strings"/> to a single one
 		/// using the specified <paramref name="separator"/> as a delimiter.</summary>
+		/// <param name="strings">Strings to join, or <see langword="null"/> to produce an empty result.</param>
+		/// <param name="separator">Delimiter inserted between each element.</param>
 		/// <param name="pad">Whether to pad the start and end of the string with the <paramref name="separator"/> as well.</param>
 		internal static string Join(this IEnumerable<string?>? strings, string separator, bool pad = false)
 		{
@@ -49,6 +56,8 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer.Extensions
 
 		/// <summary>Formats all items in <paramref name="collection"/> using the supplied <paramref name="format"/> strategy
 		/// and returns a string collection - even if the incoming <paramref name="collection"/> is null.</summary>
+		/// <param name="collection">Source items to format.</param>
+		/// <param name="format">Projection that converts a source item into its string representation.</param>
 		internal static IEnumerable<string> FormatAll<T>(this IEnumerable<T>? collection, Func<T, string> format)
 			=> collection?.Select(format) ?? [];
 	}

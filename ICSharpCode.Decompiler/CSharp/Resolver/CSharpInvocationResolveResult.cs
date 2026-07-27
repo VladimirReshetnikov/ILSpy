@@ -26,30 +26,51 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.CSharp.Resolver
 {
 	/// <summary>
-	/// Represents the result of a method, constructor or indexer invocation.
-	/// Provides additional C#-specific information for InvocationResolveResult.
+	/// Represents the result of resolving a method, constructor, or indexer invocation with C#-specific overload details.
 	/// </summary>
+	/// <remarks>
+	/// <see cref="InvocationResolveResult"/> captures the target member and argument list; this derived type additionally records
+	/// overload-resolution diagnostics and argument-to-parameter mapping information required by C# transforms.
+	/// </remarks>
 	public class CSharpInvocationResolveResult : InvocationResolveResult
 	{
+		/// <summary>
+		/// Gets overload-resolution diagnostics attached to this invocation.
+		/// </summary>
 		public readonly OverloadResolutionErrors OverloadResolutionErrors;
 
 		/// <summary>
-		/// Gets whether this invocation is calling an extension method using extension method syntax.
+		/// Gets a value indicating whether this invocation uses extension-method syntax.
 		/// </summary>
 		public readonly bool IsExtensionMethodInvocation;
 
 		/// <summary>
-		/// Gets whether this invocation is calling a delegate (without explicitly calling ".Invoke()").
+		/// Gets a value indicating whether this invocation is a delegate call written without an explicit <c>.Invoke()</c>.
 		/// </summary>
 		public readonly bool IsDelegateInvocation;
 
 		/// <summary>
-		/// Gets whether a params-Array is being used in its expanded form.
+		/// Gets a value indicating whether a <c>params</c> parameter is consumed in expanded form.
 		/// </summary>
 		public readonly bool IsExpandedForm;
 
 		readonly IReadOnlyList<int> argumentToParameterMap;
 
+		/// <summary>
+		/// Initializes a C# invocation resolve result.
+		/// </summary>
+		/// <param name="targetResult">The invocation target expression.</param>
+		/// <param name="member">The selected callable member.</param>
+		/// <param name="arguments">The arguments supplied at the call site, in source order.</param>
+		/// <param name="overloadResolutionErrors">The overload-resolution state for this invocation.</param>
+		/// <param name="isExtensionMethodInvocation"><see langword="true"/> when extension method syntax was used.</param>
+		/// <param name="isExpandedForm"><see langword="true"/> when the final <c>params</c> parameter is expanded from individual arguments.</param>
+		/// <param name="isDelegateInvocation"><see langword="true"/> when the invocation calls a delegate instance.</param>
+		/// <param name="argumentToParameterMap">
+		/// Optional mapping from argument indices to parameter indices. Unmapped arguments are represented by <c>-1</c>.
+		/// </param>
+		/// <param name="initializerStatements">Optional object/collection initializer statements associated with this invocation result.</param>
+		/// <param name="returnTypeOverride">Optional return type override used by specific resolver paths.</param>
 		public CSharpInvocationResolveResult(
 			ResolveResult targetResult, IParameterizedMember member,
 			IList<ResolveResult> arguments,
@@ -70,21 +91,44 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			this.argumentToParameterMap = argumentToParameterMap;
 		}
 
+		/// <summary>
+		/// Gets a value indicating whether this invocation is considered erroneous by overload resolution.
+		/// </summary>
+		/// <value>
+		/// <see langword="true"/> when <see cref="OverloadResolutionErrors"/> is not <see cref="OverloadResolutionErrors.None"/>;
+		/// otherwise, <see langword="false"/>.
+		/// </value>
 		public override bool IsError {
 			get { return this.OverloadResolutionErrors != OverloadResolutionErrors.None; }
 		}
 
 		/// <summary>
-		/// Gets an array that maps argument indices to parameter indices.
-		/// For arguments that could not be mapped to any parameter, the value will be -1.
-		/// 
-		/// parameterIndex = ArgumentToParameterMap[argumentIndex]
+		/// Returns the argument-to-parameter index mapping for this invocation.
 		/// </summary>
+		/// <returns>
+		/// A read-only index map where each argument index maps to a parameter index, or <c>-1</c> when an argument could not be mapped.
+		/// The method returns <see langword="null"/> when no explicit mapping was captured.
+		/// </returns>
 		public IReadOnlyList<int> GetArgumentToParameterMap()
 		{
 			return argumentToParameterMap;
 		}
 
+		/// <summary>
+		/// Produces the effective argument list aligned to <see cref="InvocationResolveResult.Member"/> parameters.
+		/// </summary>
+		/// <remarks>
+		/// <para>
+		/// This materializes C# call semantics by expanding <c>params</c> arguments into an array creation,
+		/// unwrapping named arguments to positional values, and injecting constants for omitted optional parameters.
+		/// </para>
+		/// <para>
+		/// Parameters that still cannot be satisfied are filled with <see cref="ErrorResolveResult.UnknownError"/>.
+		/// </para>
+		/// </remarks>
+		/// <returns>
+		/// A positional argument list with one entry per parameter of <see cref="InvocationResolveResult.Member"/>.
+		/// </returns>
 		public override IList<ResolveResult> GetArgumentsForCall()
 		{
 			ResolveResult[] results = new ResolveResult[Member.Parameters.Count];

@@ -25,21 +25,27 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Resolve result representing an array creation.
+	/// Represents semantic array creation, including optional dimension sizes and initializer values.
 	/// </summary>
 	public class ArrayCreateResolveResult : ResolveResult
 	{
 		/// <summary>
-		/// Gets the size arguments.
+		/// Gets resolved expressions that specify the length of each declared dimension.
 		/// </summary>
 		public readonly IReadOnlyList<ResolveResult> SizeArguments;
 
 		/// <summary>
-		/// Gets the initializer elements.
-		/// This field may be null if no initializer was specified.
+		/// Gets resolved initializer elements, or <see langword="null"/> when no initializer is present.
 		/// </summary>
 		public readonly IReadOnlyList<ResolveResult> InitializerElements;
 
+		/// <summary>
+		/// Initializes an array-creation semantic node.
+		/// </summary>
+		/// <param name="arrayType">The produced array type.</param>
+		/// <param name="sizeArguments">Dimension-size expressions. This list can be empty for implicitly-sized initializers.</param>
+		/// <param name="initializerElements">Initializer values, or <see langword="null"/> when no initializer is specified.</param>
+		/// <exception cref="ArgumentNullException"><paramref name="sizeArguments"/> is <see langword="null"/>.</exception>
 		public ArrayCreateResolveResult(IType arrayType, IReadOnlyList<ResolveResult> sizeArguments, IReadOnlyList<ResolveResult> initializerElements)
 			: base(arrayType)
 		{

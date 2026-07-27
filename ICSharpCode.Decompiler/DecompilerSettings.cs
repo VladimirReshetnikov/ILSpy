@@ -40,6 +40,7 @@ namespace ICSharpCode.Decompiler
 		/// Creates a new DecompilerSettings instance with initial settings
 		/// appropriate for the specified language version.
 		/// </summary>
+		/// <param name="languageVersion">The language version used to disable newer reconstruction features.</param>
 		/// <remarks>
 		/// This does not imply that the resulting code strictly uses only language features from
 		/// that version. Language constructs like generics or ref locals cannot be removed from
@@ -53,6 +54,7 @@ namespace ICSharpCode.Decompiler
 		/// <summary>
 		/// Deactivates all language features from versions newer than <paramref name="languageVersion"/>.
 		/// </summary>
+		/// <param name="languageVersion">The highest C# language version the decompiler should target.</param>
 		public void SetLanguageVersion(CSharp.LanguageVersion languageVersion)
 		{
 			// By default, all decompiler features are enabled.
@@ -181,6 +183,15 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <summary>
+		/// Computes the minimum C# language version that can represent all features currently enabled in this settings instance.
+		/// </summary>
+		/// <remarks>
+		/// This is used by project decompilation to avoid selecting a language version that would make the generated code invalid.
+		/// </remarks>
+		/// <returns>
+		/// The lowest <see cref="CSharp.LanguageVersion"/> that supports all currently enabled decompiler output features.
+		/// </returns>
 		public CSharp.LanguageVersion GetMinimumRequiredVersion()
 		{
 			if (extensionMembers || firstClassSpanTypes || useFieldKeyword)
@@ -2474,6 +2485,12 @@ namespace ICSharpCode.Decompiler
 
 		CSharpFormattingOptions csharpFormattingOptions;
 
+		/// <summary>
+		/// Gets or sets the formatting options that control C# output layout (indentation, wrapping and member formatting).
+		/// </summary>
+		/// <remarks>
+		/// The value is lazily initialized with an Allman-style configuration that is tuned for decompiler output.
+		/// </remarks>
 		[Browsable(false)]
 		public CSharpFormattingOptions CSharpFormattingOptions {
 			get {
@@ -2497,8 +2514,15 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <inheritdoc cref="INotifyPropertyChanged.PropertyChanged"/>
 		public event PropertyChangedEventHandler PropertyChanged;
 
+		/// <summary>
+		/// Raises <see cref="PropertyChanged"/> for the provided property name.
+		/// </summary>
+		/// <param name="propertyName">
+		/// The name of the property that changed. Defaults to the caller member name.
+		/// </param>
 		protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
 		{
 			if (PropertyChanged != null)
@@ -2507,6 +2531,13 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <summary>
+		/// Creates a copy of this settings object.
+		/// </summary>
+		/// <returns>
+		/// A new <see cref="DecompilerSettings"/> instance with the same option values, including a cloned
+		/// <see cref="CSharpFormattingOptions"/> object when formatting options were initialized.
+		/// </returns>
 		public virtual DecompilerSettings Clone()
 		{
 			DecompilerSettings settings = (DecompilerSettings)MemberwiseClone();

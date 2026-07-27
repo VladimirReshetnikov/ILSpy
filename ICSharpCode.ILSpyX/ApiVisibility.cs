@@ -18,10 +18,22 @@
 
 namespace ICSharpCode.ILSpyX
 {
+	/// <summary>
+	/// Controls which accessibility levels are considered visible in search and tree filtering.
+	/// </summary>
 	public enum ApiVisibility
 	{
+		/// <summary>
+		/// Show only public API surface.
+		/// </summary>
 		PublicOnly,
+		/// <summary>
+		/// Show public and internal members, but hide private implementation details.
+		/// </summary>
 		PublicAndInternal,
+		/// <summary>
+		/// Show all members regardless of accessibility.
+		/// </summary>
 		All
 	}
 }

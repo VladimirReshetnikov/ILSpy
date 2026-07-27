@@ -18,6 +18,13 @@
 
 namespace ICSharpCode.Decompiler.CSharp.Resolver
 {
+	/// <summary>
+	/// Specifies the syntactic context for simple-name lookup.
+	/// </summary>
+	/// <remarks>
+	/// The resolver uses this value to apply context-sensitive filtering, for example suppressing
+	/// non-invocable members when resolving invocation targets or restricting aliases in using directives.
+	/// </remarks>
 	public enum NameLookupMode
 	{
 		/// <summary>

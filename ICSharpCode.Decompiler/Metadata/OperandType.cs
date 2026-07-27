@@ -21,6 +21,13 @@ using System.Reflection.Metadata;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Describes the operand encoding expected for an IL opcode.
+	/// </summary>
+	/// <remarks>
+	/// Values map to the ECMA-335 operand families used by the disassembler and IL parser to determine
+	/// how many bytes to read and how to interpret those bytes.
+	/// </remarks>
 	public enum OperandType
 	{
 		BrTarget,
@@ -44,6 +51,14 @@ namespace ICSharpCode.Decompiler.Metadata
 
 	public static partial class ILOpCodeExtensions
 	{
+		/// <summary>
+		/// Gets the operand encoding for a specific IL opcode.
+		/// </summary>
+		/// <param name="opCode">The opcode to inspect.</param>
+		/// <returns>
+		/// The corresponding <see cref="OperandType"/> value, or <c>(OperandType)255</c> when the opcode is outside
+		/// the generated lookup table.
+		/// </returns>
 		public static OperandType GetOperandType(this ILOpCode opCode)
 		{
 			ushort index = (ushort)((((int)opCode & 0x200) >> 1) | ((int)opCode & 0xff));
@@ -52,6 +67,11 @@ namespace ICSharpCode.Decompiler.Metadata
 			return (OperandType)operandTypes[index];
 		}
 
+		/// <summary>
+		/// Gets ILAsm-style display text for an opcode.
+		/// </summary>
+		/// <param name="opCode">The opcode to format.</param>
+		/// <returns>The display name for <paramref name="opCode"/>, or an empty string for undefined values.</returns>
 		public static string GetDisplayName(this ILOpCode opCode)
 		{
 			ushort index = (ushort)((((int)opCode & 0x200) >> 1) | ((int)opCode & 0xff));
@@ -60,6 +80,11 @@ namespace ICSharpCode.Decompiler.Metadata
 			return operandNames[index];
 		}
 
+		/// <summary>
+		/// Determines whether an opcode has a known display name in ILSpy's generated opcode table.
+		/// </summary>
+		/// <param name="opCode">The opcode to validate.</param>
+		/// <returns><see langword="true"/> when the opcode is recognized; otherwise <see langword="false"/>.</returns>
 		public static bool IsDefined(this ILOpCode opCode)
 		{
 			return !string.IsNullOrEmpty(GetDisplayName(opCode));

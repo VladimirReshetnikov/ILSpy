@@ -28,12 +28,17 @@ namespace ICSharpCode.Decompiler.Semantics
 	/// which are compile-time constants as well.
 	/// For example, a reference to a <c>const</c> field results in a <see cref="MemberResolveResult"/>.
 	/// 
-	/// Check <see cref="ResolveResult.IsCompileTimeConstant"/> to determine is a resolve result is a constant.
+	/// Check <see cref="ResolveResult.IsCompileTimeConstant"/> to determine whether a resolve result is semantically constant.
 	/// </summary>
 	public class ConstantResolveResult : ResolveResult
 	{
 		object constantValue;
 
+		/// <summary>
+		/// Initializes a compile-time constant semantic node.
+		/// </summary>
+		/// <param name="type">The expression type exposed for the constant.</param>
+		/// <param name="constantValue">The compile-time value encoded by this result.</param>
 		public ConstantResolveResult(IType type, object constantValue) : base(type)
 		{
 			this.constantValue = constantValue;

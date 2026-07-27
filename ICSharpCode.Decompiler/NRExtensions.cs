@@ -23,8 +23,20 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler
 {
+	/// <summary>
+	/// Extension helpers for identifying compiler-generated symbols and retrieving metadata-backed documentation.
+	/// </summary>
+	/// <remarks>
+	/// These helpers are used across decompiler transforms and output shaping to decide whether synthesized artifacts
+	/// should be hidden, rewritten, or rendered using higher-level language constructs.
+	/// </remarks>
 	public static class NRExtensions
 	{
+		/// <summary>
+		/// Determines whether an entity is marked with <see cref="KnownAttribute.CompilerGenerated"/>.
+		/// </summary>
+		/// <param name="entity">Entity to inspect.</param>
+		/// <returns><see langword="true"/> when the compiler-generated attribute is present; otherwise <see langword="false"/>.</returns>
 		public static bool IsCompilerGenerated(this IEntity entity)
 		{
 			if (entity != null)
@@ -34,6 +46,11 @@ namespace ICSharpCode.Decompiler
 			return false;
 		}
 
+		/// <summary>
+		/// Determines whether an entity is compiler-generated itself or declared inside a compiler-generated type.
+		/// </summary>
+		/// <param name="entity">Entity to inspect.</param>
+		/// <returns><see langword="true"/> if the entity or any declaring type is compiler-generated.</returns>
 		public static bool IsCompilerGeneratedOrIsInCompilerGeneratedClass(this IEntity entity)
 		{
 			if (entity == null)
@@ -43,16 +60,31 @@ namespace ICSharpCode.Decompiler
 			return IsCompilerGeneratedOrIsInCompilerGeneratedClass(entity.DeclaringTypeDefinition);
 		}
 
+		/// <summary>
+		/// Checks whether a member name follows compiler-generated naming conventions.
+		/// </summary>
+		/// <param name="member">Member to inspect.</param>
+		/// <returns><see langword="true"/> if the name starts with <c>&lt;</c>; otherwise <see langword="false"/>.</returns>
 		public static bool HasGeneratedName(this IMember member)
 		{
 			return member.Name.StartsWith("<", StringComparison.Ordinal);
 		}
 
+		/// <summary>
+		/// Checks whether a type name follows compiler-generated naming conventions.
+		/// </summary>
+		/// <param name="type">Type to inspect.</param>
+		/// <returns><see langword="true"/> if the type name is mangled in a compiler-generated style.</returns>
 		public static bool HasGeneratedName(this IType type)
 		{
 			return type.Name.StartsWith("<", StringComparison.Ordinal) || type.Name.Contains("<");
 		}
 
+		/// <summary>
+		/// Determines whether a type matches the anonymous-type pattern used by C# and VB compilers.
+		/// </summary>
+		/// <param name="type">Type to inspect.</param>
+		/// <returns><see langword="true"/> if the type appears to be an anonymous compiler-generated type.</returns>
 		public static bool IsAnonymousType(this IType type)
 		{
 			if (type == null)
@@ -107,6 +139,11 @@ namespace ICSharpCode.Decompiler
 			return propertyCount == typeParameterCount;
 		}
 
+		/// <summary>
+		/// Determines whether a type graph contains any anonymous type occurrence.
+		/// </summary>
+		/// <param name="type">Root type to traverse.</param>
+		/// <returns><see langword="true"/> if an anonymous type is found anywhere in the visited structure.</returns>
 		public static bool ContainsAnonymousType(this IType type)
 		{
 			var visitor = new ContainsAnonTypeVisitor();
@@ -116,6 +153,9 @@ namespace ICSharpCode.Decompiler
 
 		class ContainsAnonTypeVisitor : TypeVisitor
 		{
+			/// <summary>
+			/// Gets whether any visited type matched the anonymous-type predicate.
+			/// </summary>
 			public bool ContainsAnonType;
 
 			public override IType VisitOtherType(IType type)
@@ -133,6 +173,13 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <summary>
+		/// Loads XML documentation text for an entity from the owning module's documentation provider.
+		/// </summary>
+		/// <param name="entity">Entity whose documentation should be retrieved.</param>
+		/// <returns>
+		/// Raw XML documentation content when available; otherwise <see langword="null"/>.
+		/// </returns>
 		internal static string GetDocumentation(this IEntity entity)
 		{
 			var docProvider = XmlDocLoader.LoadDocumentation(entity.ParentModule.MetadataFile);
@@ -141,6 +188,13 @@ namespace ICSharpCode.Decompiler
 			return docProvider.GetDocumentation(entity);
 		}
 
+		/// <summary>
+		/// Reads raw metadata <see cref="System.Reflection.TypeAttributes"/> for a type definition.
+		/// </summary>
+		/// <param name="type">Type definition to inspect.</param>
+		/// <returns>
+		/// Metadata attributes from the declaring module when available; otherwise <c>0</c>.
+		/// </returns>
 		internal static System.Reflection.TypeAttributes GetMetadataAttributes(this ITypeDefinition type)
 		{
 			var metadata = type.ParentModule.MetadataFile?.Metadata;

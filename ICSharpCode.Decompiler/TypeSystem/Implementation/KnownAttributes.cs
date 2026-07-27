@@ -207,17 +207,36 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			new TopLevelTypeName("System.Runtime.CompilerServices", "OverloadResolutionPriorityAttribute"),
 		};
 
+		/// <summary>
+		/// Maps a <see cref="KnownAttribute"/> value to its canonical metadata type name.
+		/// </summary>
+		/// <param name="attr">The known-attribute identifier.</param>
+		/// <returns>A reference to the corresponding top-level type name.</returns>
 		public static ref readonly TopLevelTypeName GetTypeName(this KnownAttribute attr)
 		{
 			Debug.Assert(attr != KnownAttribute.None);
 			return ref typeNames[(int)attr];
 		}
 
+		/// <summary>
+		/// Resolves the runtime type represented by <paramref name="attrType"/> in <paramref name="compilation"/>.
+		/// </summary>
+		/// <param name="compilation">Compilation used for type lookup.</param>
+		/// <param name="attrType">Known attribute kind to resolve.</param>
+		/// <returns>The resolved attribute type, or <see cref="SpecialType.UnknownType"/> if unresolved.</returns>
 		public static IType FindType(this ICompilation compilation, KnownAttribute attrType)
 		{
 			return compilation.FindType(attrType.GetTypeName());
 		}
 
+		/// <summary>
+		/// Classifies an attribute type definition as one of ILSpy's known attributes.
+		/// </summary>
+		/// <param name="attributeType">Type definition to classify.</param>
+		/// <returns>
+		/// The matching <see cref="KnownAttribute"/> value when <paramref name="attributeType"/> derives from
+		/// <see cref="KnownTypeCode.Attribute"/> and matches a known metadata name; otherwise <see cref="KnownAttribute.None"/>.
+		/// </returns>
 		public static KnownAttribute IsKnownAttributeType(this ITypeDefinition attributeType)
 		{
 			if (!attributeType.GetNonInterfaceBaseTypes().Any(t => t.IsKnownType(KnownTypeCode.Attribute)))
@@ -230,6 +249,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			return KnownAttribute.None;
 		}
 
+		/// <summary>
+		/// Determines whether ILSpy treats the attribute as user-authored custom metadata.
+		/// </summary>
+		/// <param name="knownAttribute">Attribute identifier to classify.</param>
+		/// <returns>
+		/// <see langword="true"/> for attributes considered custom-language metadata;
+		/// <see langword="false"/> for low-level runtime/interop/signature attributes handled specially.
+		/// </returns>
 		public static bool IsCustomAttribute(this KnownAttribute knownAttribute)
 		{
 			switch (knownAttribute)

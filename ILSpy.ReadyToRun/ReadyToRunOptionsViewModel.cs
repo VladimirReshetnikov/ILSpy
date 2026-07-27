@@ -33,6 +33,9 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 		[ObservableProperty]
 		ReadyToRunOptions options = null!;
 
+		/// <summary>
+		/// Gets the localized title displayed for this option page in ILSpy's settings dialog.
+		/// </summary>
 		public string Title => global::ILSpy.ReadyToRun.Properties.Resources.ReadyToRun;
 
 		public void Load(SettingsService service)
@@ -40,6 +43,9 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 			Options = service.GetSettings<ReadyToRunOptions>();
 		}
 
+		/// <summary>
+		/// Restores default ReadyToRun option values by loading from an empty settings element.
+		/// </summary>
 		public void LoadDefaults()
 		{
 			Options.LoadFromXml(new XElement("ReadyToRunOptions"));

@@ -27,46 +27,79 @@ using ICSharpCode.ILSpyX.Abstractions;
 
 namespace ICSharpCode.ILSpyX.Search
 {
+	/// <summary>
+	/// Selects the domain searched by a strategy.
+	/// </summary>
 	public enum SearchMode
 	{
+		/// <summary>Search types and members together.</summary>
 		TypeAndMember,
+		/// <summary>Search only type definitions.</summary>
 		Type,
+		/// <summary>Search members using <see cref="MemberSearchKind"/> to refine the target.</summary>
 		Member,
+		/// <summary>Search only method members.</summary>
 		Method,
+		/// <summary>Search only field members.</summary>
 		Field,
+		/// <summary>Search only property members.</summary>
 		Property,
+		/// <summary>Search only event members.</summary>
 		Event,
+		/// <summary>Search literal values inside member bodies.</summary>
 		Literal,
+		/// <summary>Search entities by metadata token value.</summary>
 		Token,
+		/// <summary>Search manifest and embedded resources.</summary>
 		Resource,
+		/// <summary>Search assembly-level metadata.</summary>
 		Assembly,
+		/// <summary>Search namespace names.</summary>
 		Namespace
 	}
 
+	/// <summary>
+	/// Captures immutable options and collaborators used to execute a search pass.
+	/// </summary>
 	public struct SearchRequest
 	{
+		/// <summary>Decompiler settings snapshot used when a strategy needs language-specific formatting details.</summary>
 		public DecompilerSettings DecompilerSettings;
+		/// <summary>Factory used by resource-oriented strategies to build tree nodes for recursive traversal.</summary>
 		public ITreeNodeFactory TreeNodeFactory;
+		/// <summary>Factory that projects matched objects into concrete <see cref="SearchResult"/> instances.</summary>
 		public ISearchResultFactory SearchResultFactory;
+		/// <summary>Primary domain to search.</summary>
 		public SearchMode Mode;
+		/// <summary>Assembly metadata field selected when <see cref="Mode"/> is <see cref="SearchMode.Assembly"/>.</summary>
 		public AssemblySearchKind AssemblySearchKind;
+		/// <summary>Member category selected when <see cref="Mode"/> is <see cref="SearchMode.Member"/>.</summary>
 		public MemberSearchKind MemberSearchKind;
+		/// <summary>Parsed keyword tokens from the query (operators such as <c>+</c>, <c>-</c>, <c>=</c>, and <c>~</c> are preserved).</summary>
 		public string[] Keywords;
+		/// <summary>Regular expression filter parsed from the query, or <see langword="null"/> when keyword matching is used.</summary>
 		public Regex? RegEx;
+		/// <summary>Indicates that name matching should include fully qualified names, not only simple member/type names.</summary>
 		public bool FullNameSearch;
+		/// <summary>Indicates that generic arity and arguments should be omitted before matching plain-text keywords.</summary>
 		public bool OmitGenerics;
 		// When set, CheckVisibility bypasses the api-visibility filter so private /
 		// compiler-generated entities (state-machines, display classes, anonymous
-		// closures — anything with `<...>` segments in its metadata name) become
+		// closures, anything with `<...>` segments in its metadata name) become
 		// findable. Set by the query parser when the user types `<` or `>` in
 		// their search term: those characters are characteristically present in
 		// compiler-generated names and rare in everyday API names, so they're a
 		// reliable signal that the user wants the visibility filter relaxed.
 		public bool IncludePrivateApi;
+		/// <summary>Optional namespace substring restriction from the <c>innamespace:</c> prefix.</summary>
 		public string InNamespace;
+		/// <summary>Optional assembly-name restriction from the <c>inassembly:</c> prefix.</summary>
 		public string InAssembly;
 	}
 
+	/// <summary>
+	/// Base class that provides term matching and result queueing for concrete search strategies.
+	/// </summary>
 	public abstract class AbstractSearchStrategy
 	{
 		protected readonly string[] searchTerm;
@@ -76,6 +109,11 @@ namespace ICSharpCode.ILSpyX.Search
 		protected readonly SearchRequest searchRequest;
 		private readonly IProducerConsumerCollection<SearchResult> resultQueue;
 
+		/// <summary>
+		/// Initializes a strategy with a parsed <see cref="SearchRequest"/> and destination result queue.
+		/// </summary>
+		/// <param name="request">The search configuration and shared service references.</param>
+		/// <param name="resultQueue">The concurrent queue that receives discovered matches.</param>
 		protected AbstractSearchStrategy(SearchRequest request, IProducerConsumerCollection<SearchResult> resultQueue)
 		{
 			this.resultQueue = resultQueue;
@@ -86,8 +124,18 @@ namespace ICSharpCode.ILSpyX.Search
 			this.omitGenerics = request.OmitGenerics;
 		}
 
+		/// <summary>
+		/// Searches a metadata module and reports matches through the result queue.
+		/// </summary>
+		/// <param name="module">The module to search.</param>
+		/// <param name="cancellationToken">Token used to cancel the search early.</param>
 		public abstract void Search(MetadataFile module, CancellationToken cancellationToken);
 
+		/// <summary>
+		/// Evaluates whether a candidate name satisfies configured keyword or regex filters.
+		/// </summary>
+		/// <param name="name">The candidate text to match.</param>
+		/// <returns><see langword="true"/> when the candidate passes all filters; otherwise, <see langword="false"/>.</returns>
 		protected virtual bool IsMatch(string name)
 		{
 			if (regex != null)
@@ -167,6 +215,10 @@ namespace ICSharpCode.ILSpyX.Search
 			return false;
 		}
 
+		/// <summary>
+		/// Enqueues a discovered search result.
+		/// </summary>
+		/// <param name="result">The result to publish.</param>
 		protected void OnFoundResult(SearchResult result)
 		{
 			resultQueue.TryAdd(result);

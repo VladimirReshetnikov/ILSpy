@@ -25,8 +25,19 @@ using System.Linq;
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Provides helper methods for inheritance.
+	/// Provides member- and attribute-level traversal helpers over type inheritance chains.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The helpers in this class operate on <see cref="IMember.MemberDefinition"/> and reconstruct inheritance relationships
+	/// by matching member signatures in base types. The implementation intentionally does not rely on metadata-level override maps
+	/// alone, because the type system also serves synthesized and specialized members created during decompilation.
+	/// </para>
+	/// <para>
+	/// Most methods return members specialized back into the substitution context of the input symbol, which allows callers to
+	/// reason about inherited members using the same generic arguments that were visible on the original lookup path.
+	/// </para>
+	/// </remarks>
 	public static class InheritanceHelper
 	{
 		// TODO: maybe these should be extension methods?
@@ -34,19 +45,35 @@ namespace ICSharpCode.Decompiler.TypeSystem
 
 		#region GetBaseMember
 		/// <summary>
-		/// Gets the base member that has the same signature.
+		/// Gets the closest inherited member that matches the signature of <paramref name="member"/>.
 		/// </summary>
+		/// <param name="member">The member whose immediate inherited declaration should be resolved.</param>
+		/// <returns>
+		/// The first matching base member when one exists; otherwise <see langword="null"/>.
+		/// Interface implementations are not considered.
+		/// </returns>
+		/// <exception cref="ArgumentNullException">Thrown when <paramref name="member"/> is <see langword="null"/>.</exception>
 		public static IMember? GetBaseMember(IMember member)
 		{
 			return GetBaseMembers(member, false).FirstOrDefault();
 		}
 
 		/// <summary>
-		/// Gets all base members that have the same signature.
+		/// Enumerates inherited members whose signatures match <paramref name="member"/>.
 		/// </summary>
+		/// <param name="member">The member whose inheritance chain should be searched.</param>
+		/// <param name="includeImplementedInterfaces">
+		/// <see langword="true"/> to include interface members (including explicit interface implementation roots);
+		/// <see langword="false"/> to inspect only non-interface base types.
+		/// </param>
 		/// <returns>
-		/// List of base members with the same signature. The member from the derived-most base class is returned first.
+		/// Base members with matching signatures, ordered from the closest base declaration to the furthest one.
 		/// </returns>
+		/// <remarks>
+		/// The returned members are specialized with the substitution of <paramref name="member"/>, so generic type arguments remain
+		/// aligned with the original call site.
+		/// </remarks>
+		/// <exception cref="ArgumentNullException">Thrown when <paramref name="member"/> is <see langword="null"/>.</exception>
 		public static IEnumerable<IMember> GetBaseMembers(IMember member, bool includeImplementedInterfaces)
 		{
 			if (member == null)
@@ -109,8 +136,20 @@ namespace ICSharpCode.Decompiler.TypeSystem
 
 		#region GetDerivedMember
 		/// <summary>
-		/// Finds the member declared in 'derivedType' that has the same signature (could override) 'baseMember'.
+		/// Finds the declaration in <paramref name="derivedType"/> that corresponds to <paramref name="baseMember"/>.
 		/// </summary>
+		/// <param name="baseMember">The inherited member to match.</param>
+		/// <param name="derivedType">The candidate derived type that might introduce an override or matching declaration.</param>
+		/// <returns>
+		/// The member declared on <paramref name="derivedType"/> that maps to <paramref name="baseMember"/>, or
+		/// <see langword="null"/> when no such member exists.
+		/// </returns>
+		/// <exception cref="ArgumentNullException">
+		/// Thrown when <paramref name="baseMember"/> or <paramref name="derivedType"/> is <see langword="null"/>.
+		/// </exception>
+		/// <exception cref="ArgumentException">
+		/// Thrown when <paramref name="baseMember"/> and <paramref name="derivedType"/> belong to different compilations.
+		/// </exception>
 		public static IMember? GetDerivedMember(IMember baseMember, ITypeDefinition derivedType)
 		{
 			if (baseMember == null)

@@ -54,13 +54,33 @@ namespace ICSharpCode.Decompiler.Disassembler
 	}
 
 	/// <summary>
-	/// An IL structure.
+	/// Represents a nested control-flow region discovered while disassembling a single method body.
 	/// </summary>
+	/// <remarks>
+	/// Instances form a tree rooted at a synthetic <see cref="ILStructureType.Root"/> node that spans the whole method.
+	/// Children correspond to exception regions and heuristically detected loops and are used by
+	/// <see cref="MethodBodyDisassembler"/> to emit structured IL blocks.
+	/// </remarks>
 	public class ILStructure
 	{
+		/// <summary>
+		/// Gets the metadata module that owns the method being structured.
+		/// </summary>
 		public readonly MetadataFile Module;
+
+		/// <summary>
+		/// Gets the method definition represented by this structure tree.
+		/// </summary>
 		public readonly MethodDefinitionHandle MethodHandle;
+
+		/// <summary>
+		/// Gets the generic context used when writing tokens that appear inside this structure.
+		/// </summary>
 		public readonly MetadataGenericContext GenericContext;
+
+		/// <summary>
+		/// Gets the kind of region represented by this node.
+		/// </summary>
 		public readonly ILStructureType Type;
 
 		/// <summary>
@@ -88,6 +108,17 @@ namespace ICSharpCode.Decompiler.Disassembler
 		/// </summary>
 		public readonly List<ILStructure> Children = new List<ILStructure>();
 
+		/// <summary>
+		/// Builds the root structure tree for a method body.
+		/// </summary>
+		/// <param name="module">Module containing the method.</param>
+		/// <param name="handle">Method handle whose body is being analyzed.</param>
+		/// <param name="genericContext">Generic context used for later rendering.</param>
+		/// <param name="body">Decoded method body and exception region metadata.</param>
+		/// <remarks>
+		/// Loop detection is intentionally conservative and based on backward branches with a single inferred entry point.
+		/// Complex control flow that cannot be represented as a properly nested tree is ignored rather than emitted incorrectly.
+		/// </remarks>
 		public ILStructure(MetadataFile module, MethodDefinitionHandle handle, MetadataGenericContext genericContext, MethodBodyBlock body)
 			: this(module, handle, genericContext, ILStructureType.Root, 0, body.GetILReader().Length)
 		{
@@ -142,6 +173,9 @@ namespace ICSharpCode.Decompiler.Disassembler
 			SortChildren();
 		}
 
+		/// <summary>
+		/// Initializes an exception-related structure node.
+		/// </summary>
 		public ILStructure(MetadataFile module, MethodDefinitionHandle handle, MetadataGenericContext genericContext, ILStructureType type, int startOffset, int endOffset, ExceptionRegion handler = default)
 		{
 			Debug.Assert(startOffset < endOffset);
@@ -154,6 +188,9 @@ namespace ICSharpCode.Decompiler.Disassembler
 			this.ExceptionHandler = handler;
 		}
 
+		/// <summary>
+		/// Initializes a loop structure node with an inferred entry point.
+		/// </summary>
 		public ILStructure(MetadataFile module, MethodDefinitionHandle handle, MetadataGenericContext genericContext, ILStructureType type, int startOffset, int endOffset, int loopEntryPoint)
 		{
 			Debug.Assert(startOffset < endOffset);
@@ -292,6 +329,12 @@ namespace ICSharpCode.Decompiler.Disassembler
 		/// <summary>
 		/// Gets the innermost structure containing the specified offset.
 		/// </summary>
+
+		/// <summary>
+		/// Returns the deepest descendant that contains <paramref name="offset"/>.
+		/// </summary>
+		/// <param name="offset">Instruction offset that must lie within this node's range.</param>
+		/// <returns>The innermost node whose interval contains <paramref name="offset"/>.</returns>
 		public ILStructure GetInnermost(int offset)
 		{
 			Debug.Assert(StartOffset <= offset && offset < EndOffset);

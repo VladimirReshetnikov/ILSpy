@@ -42,6 +42,11 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 		private readonly IDocumentationProvider docs;
 		private readonly Regex noiseAndPadding;
 
+		/// <summary>
+		/// Initializes a formatter that normalizes and simplifies raw XML documentation text for diagram output.
+		/// </summary>
+		/// <param name="docs">Provider used to fetch XML documentation for discovered entities.</param>
+		/// <param name="strippedNamespaces">Optional namespace prefixes removed from rendered documentation to reduce noise.</param>
 		public XmlDocumentationFormatter(IDocumentationProvider docs, string[]? strippedNamespaces)
 		{
 			this.docs = docs;
@@ -53,6 +58,15 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 			noiseAndPadding = new Regex(regexes.Join("|"), RegexOptions.Multiline); // builds an OR | combined regex
 		}
 
+		/// <summary>
+		/// Collects normalized XML documentation snippets for the supplied type and member groups.
+		/// </summary>
+		/// <param name="type">The root type whose documentation is stored under an empty-string key.</param>
+		/// <param name="memberCollections">Sets of members whose documentation should be added by member name.</param>
+		/// <returns>
+		/// A dictionary containing only entities that actually have documentation text,
+		/// or <see langword="null"/> if neither the type nor any member produced output.
+		/// </returns>
 		internal Dictionary<string, string>? GetXmlDocs(ITypeDefinition type, params IMember[][] memberCollections)
 		{
 			Dictionary<string, string>? docs = new();
@@ -67,6 +81,11 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 			return docs?.Keys.Count != 0 ? docs : default;
 		}
 
+		/// <summary>
+		/// Retrieves and normalizes XML documentation for an entity so it can be displayed in Mermaid tooltips.
+		/// </summary>
+		/// <param name="entity">The entity whose XML documentation should be resolved.</param>
+		/// <returns>A cleaned documentation string, or <see langword="null"/> when no documentation is available.</returns>
 		protected virtual string? GetDoco(IEntity entity)
 		{
 			string? comment = docs.GetDocumentation(entity)?

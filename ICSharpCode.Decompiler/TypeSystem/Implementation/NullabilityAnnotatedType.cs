@@ -22,13 +22,32 @@ using System.Diagnostics;
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
 	/// <summary>
-	/// A decorator that annotates the nullability status for a type.
-	/// Note: ArrayType does not use a decorator, but has direct support for nullability.
+	/// Decorates an <see cref="IType"/> with an explicit C# nullable reference annotation state.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This wrapper exists for types that are represented by reference-like symbols in metadata and therefore
+	/// can carry nullable context information even when the underlying symbol identity is unchanged.
+	/// </para>
+	/// <para>
+	/// Arrays are intentionally excluded from this decorator pattern in ILSpy: <see cref="ArrayType"/> stores
+	/// nullability directly because element and array nullability must both be represented and transformed together.
+	/// </para>
+	/// </remarks>
 	public class NullabilityAnnotatedType : DecoratedType, IType
 	{
 		readonly Nullability nullability;
 
+		/// <summary>
+		/// Creates a nullability-annotated wrapper around an oblivious base type.
+		/// </summary>
+		/// <param name="type">The type being annotated.</param>
+		/// <param name="nullability">The explicit nullability state to project onto <paramref name="type"/>.</param>
+		/// <remarks>
+		/// The constructor is internal because ILSpy only inserts this wrapper in locations where consumers are known
+		/// to handle decorated types correctly. Many code paths still rely on direct casts to concrete type
+		/// implementations and would misbehave if wrappers were introduced indiscriminately.
+		/// </remarks>
 		internal NullabilityAnnotatedType(IType type, Nullability nullability)
 			: base(type)
 		{
@@ -43,8 +62,18 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			this.nullability = nullability;
 		}
 
+		/// <summary>
+		/// Gets the nullability value introduced by this wrapper.
+		/// </summary>
 		public Nullability Nullability => nullability;
 
+		/// <summary>
+		/// Gets the undecorated type that this instance wraps.
+		/// </summary>
+		/// <remarks>
+		/// This is the canonical escape hatch for normalization visitors that intentionally strip nullable annotations,
+		/// such as signature-comparison paths.
+		/// </remarks>
 		public IType TypeWithoutAnnotation => baseType;
 
 		public override IType AcceptVisitor(TypeVisitor visitor)
@@ -94,6 +123,16 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
+		/// <summary>
+		/// Returns a debug-oriented textual form with C# nullable suffixes.
+		/// </summary>
+		/// <returns>
+		/// <list type="bullet">
+		/// <item><description><c>&lt;base&gt;?</c> when <see cref="Nullability"/> is <see cref="TypeSystem.Nullability.Nullable"/>.</description></item>
+		/// <item><description><c>&lt;base&gt;!</c> when <see cref="Nullability"/> is <see cref="TypeSystem.Nullability.NotNullable"/>.</description></item>
+		/// <item><description><c>&lt;base&gt;~</c> for the fallback oblivious representation used by diagnostics.</description></item>
+		/// </list>
+		/// </returns>
 		public override string ToString()
 		{
 			switch (nullability)
@@ -109,16 +148,32 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		}
 	}
 
+	/// <summary>
+	/// Nullability-aware wrapper for an <see cref="ITypeParameter"/>.
+	/// </summary>
+	/// <remarks>
+	/// Type parameters expose additional contract members (<see cref="ITypeParameter.Owner"/>, constraints,
+	/// variance) that must remain reachable after decoration. This type keeps those members forwarded to the
+	/// original parameter while still participating in visitor-based nullability transformations.
+	/// </remarks>
 	public sealed class NullabilityAnnotatedTypeParameter : NullabilityAnnotatedType, ITypeParameter
 	{
 		readonly new ITypeParameter baseType;
 
+		/// <summary>
+		/// Creates a nullability wrapper for a type parameter symbol.
+		/// </summary>
+		/// <param name="type">The original type parameter being annotated.</param>
+		/// <param name="nullability">The explicit nullable state for the wrapped type parameter.</param>
 		internal NullabilityAnnotatedTypeParameter(ITypeParameter type, Nullability nullability)
 			: base(type, nullability)
 		{
 			this.baseType = type;
 		}
 
+		/// <summary>
+		/// Gets the original type parameter before nullability decoration.
+		/// </summary>
 		public ITypeParameter OriginalTypeParameter => baseType;
 
 		SymbolKind ITypeParameter.OwnerType => baseType.OwnerType;

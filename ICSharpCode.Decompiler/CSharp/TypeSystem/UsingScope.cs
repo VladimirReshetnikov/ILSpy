@@ -31,9 +31,12 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.CSharp.TypeSystem
 {
 	/// <summary>
-	/// Represents a scope that contains "using" statements.
-	/// This is either the mo itself, or a namespace declaration.
+	/// Represents the set of namespace imports and aliasing rules active at one point in C# name resolution.
 	/// </summary>
+	/// <remarks>
+	/// Scopes form a parent chain that mirrors namespace nesting; the resolver walks that chain for
+	/// namespace/type lookup and caches identifier results per scope for reuse.
+	/// </remarks>
 	public class UsingScope
 	{
 		readonly CSharpTypeResolveContext parentContext;
@@ -41,6 +44,12 @@ namespace ICSharpCode.Decompiler.CSharp.TypeSystem
 		internal readonly ConcurrentDictionary<string, ResolveResult> ResolveCache = new ConcurrentDictionary<string, ResolveResult>();
 		internal List<List<IMethod>>? AllExtensionMethods;
 
+		/// <summary>
+		/// Initializes a using scope for a namespace declaration (or the compilation root namespace).
+		/// </summary>
+		/// <param name="context">Parent resolve context from which the enclosing scope chain is derived.</param>
+		/// <param name="namespace">Namespace represented by this scope level.</param>
+		/// <param name="usings">Namespaces imported directly into this scope level.</param>
 		public UsingScope(CSharpTypeResolveContext context, INamespace @namespace, ImmutableArray<INamespace> usings)
 		{
 			this.parentContext = context ?? throw new ArgumentNullException(nameof(context));
@@ -48,22 +57,47 @@ namespace ICSharpCode.Decompiler.CSharp.TypeSystem
 			this.Namespace = @namespace ?? throw new ArgumentNullException(nameof(@namespace));
 		}
 
+		/// <summary>
+		/// Gets the namespace represented by this scope level.
+		/// </summary>
 		public INamespace Namespace { get; }
 
+		/// <summary>
+		/// Gets the next outer using scope, or <see langword="null"/> for the outermost scope.
+		/// </summary>
 		public UsingScope Parent {
 			get { return parentContext.CurrentUsingScope; }
 		}
 
+		/// <summary>
+		/// Gets the namespaces imported directly by this scope.
+		/// </summary>
 		public ImmutableArray<INamespace> Usings { get; }
 
+		/// <summary>
+		/// Gets aliases declared in this scope.
+		/// </summary>
+		/// <remarks>
+		/// The decompiler currently models only namespace imports here, so this list is empty.
+		/// </remarks>
 		public IReadOnlyList<KeyValuePair<string, ResolveResult>> UsingAliases => [];
 
+		/// <summary>
+		/// Gets extern aliases declared in this scope.
+		/// </summary>
+		/// <remarks>
+		/// Extern aliases are not represented by this implementation, so this list is empty.
+		/// </remarks>
 		public IReadOnlyList<string> ExternAliases => [];
 
 		/// <summary>
-		/// Gets whether this using scope has an alias (either using or extern)
-		/// with the specified name.
+		/// Gets whether this scope declares an alias with the specified identifier.
 		/// </summary>
+		/// <param name="identifier">Alias name to test.</param>
+		/// <returns><see langword="true"/> if an alias with <paramref name="identifier"/> exists; otherwise, <see langword="false"/>.</returns>
+		/// <remarks>
+		/// This implementation currently has no alias table and therefore always returns <see langword="false"/>.
+		/// </remarks>
 		public bool HasAlias(string identifier) => false;
 
 		internal UsingScope WithNestedNamespace(string simpleName)

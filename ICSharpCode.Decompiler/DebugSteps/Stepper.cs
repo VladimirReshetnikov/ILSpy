@@ -61,8 +61,13 @@ namespace ICSharpCode.Decompiler.DebugSteps
 	}
 
 	/// <summary>
-	/// Helper class that manages recording transform steps.
+	/// Records a hierarchical trace of transform steps for debugging and diagnostics.
 	/// </summary>
+	/// <remarks>
+	/// The step tree is populated only when transform code calls the step APIs. Most built-in transform calls are
+	/// conditionally compiled behind the <c>STEP</c> symbol, so release builds typically produce no entries unless
+	/// a caller invokes <see cref="Step(string, DebugStepNodeInfo?)"/> directly.
+	/// </remarks>
 	public class Stepper
 	{
 		/// <summary>
@@ -79,17 +84,62 @@ namespace ICSharpCode.Decompiler.DebugSteps
 			}
 		}
 
+		/// <summary>
+		/// Gets the top-level step nodes captured for the current run.
+		/// </summary>
+		/// <value>
+		/// A mutable list that contains either atomic steps or group roots in encounter order.
+		/// </value>
 		public IList<Node> Steps => steps;
+
+		/// <summary>
+		/// Gets the step at which <see cref="StepLimit"/> was reached, or <see langword="null"/> while the
+		/// limit is still unspent.
+		/// </summary>
 		public Node? LimitReachedStep { get; private set; }
+
+		/// <summary>
+		/// Gets the step recorded most recently.
+		/// </summary>
 		public Node? LastStep { get; private set; }
 
+		/// <summary>
+		/// Gets or sets the maximum number of steps that can be recorded before stepping stops.
+		/// </summary>
+		/// <value>
+		/// Defaults to <see cref="int.MaxValue"/>.
+		/// </value>
 		public int StepLimit { get; set; } = int.MaxValue;
+
+		/// <summary>
+		/// Gets or sets whether reaching <see cref="StepLimit"/> should break into a debugger.
+		/// </summary>
+		/// <value>
+		/// When <see langword="true"/>, limit exhaustion triggers <see cref="Debugger.Break()"/>; otherwise
+		/// <see cref="StepLimitReachedException"/> is thrown.
+		/// </value>
 		public bool IsDebug { get; set; }
 
+		/// <summary>
+		/// Represents one recorded step or grouped step range.
+		/// </summary>
 		public class Node
 		{
+			/// <summary>
+			/// Gets the display label for this step.
+			/// </summary>
 			public string Description { get; }
+
+			/// <summary>
+			/// Gets or sets the node near which this step occurred. Its type is whatever the language
+			/// that recorded the step uses to identify one.
+			/// </summary>
 			public object? Position { get; set; }
+
+			/// <summary>
+			/// Gets or sets the node this step changed, once one has been resolved from
+			/// <see cref="ModifiedNodeCandidates"/>.
+			/// </summary>
 			public object? ModifiedNode { get; set; }
 			/// <summary>
 			/// Precise identities of the changed node (the node itself, its debug-step marker, and
@@ -116,6 +166,9 @@ namespace ICSharpCode.Decompiler.DebugSteps
 			/// </summary>
 			public int EndStep { get; set; }
 
+			/// <summary>
+			/// Gets the steps recorded inside this one, empty for an atomic step.
+			/// </summary>
 			public IList<Node> Children { get; } = new List<Node>();
 
 			public Node(string description)

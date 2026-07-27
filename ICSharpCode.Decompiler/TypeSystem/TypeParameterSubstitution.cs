@@ -24,12 +24,23 @@ using ICSharpCode.Decompiler.TypeSystem.Implementation;
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Substitutes class and method type parameters.
+	/// Rewrites type-parameter references to concrete type arguments.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The substitution is split into two independent maps: one for type-definition parameters (<c>`0</c>, <c>`1</c>, ...)
+	/// and one for method parameters (<c>``0</c>, <c>``1</c>, ...). A <see langword="null"/> map represents identity for
+	/// that category, while an empty list means the category is explicitly mapped but has no available arguments.
+	/// </para>
+	/// <para>
+	/// This type derives from <see cref="TypeVisitor"/>, so callers typically apply it via
+	/// <see cref="IType.AcceptVisitor(TypeVisitor)"/>.
+	/// </para>
+	/// </remarks>
 	public class TypeParameterSubstitution : TypeVisitor
 	{
 		/// <summary>
-		/// The identity function.
+		/// Identity substitution that leaves all type parameters unchanged.
 		/// </summary>
 		public static readonly TypeParameterSubstitution Identity = new TypeParameterSubstitution(null, null);
 
@@ -54,27 +65,41 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 
 		/// <summary>
-		/// Gets the list of class type arguments.
-		/// Returns <c>null</c> if this substitution keeps class type parameters unmodified.
+		/// Gets replacement type arguments for type-definition parameters.
 		/// </summary>
+		/// <value>
+		/// <see langword="null"/> when class/type parameters should remain unchanged; otherwise an index-aligned list where
+		/// position <c>i</c> replaces parameter <c>`i</c>.
+		/// </value>
 		public IReadOnlyList<IType> ClassTypeArguments {
 			get { return classTypeArguments; }
 		}
 
 		/// <summary>
-		/// Gets the list of method type arguments.
-		/// Returns <c>null</c> if this substitution keeps method type parameters unmodified.
+		/// Gets replacement type arguments for method type parameters.
 		/// </summary>
+		/// <value>
+		/// <see langword="null"/> when method parameters should remain unchanged; otherwise an index-aligned list where
+		/// position <c>i</c> replaces parameter <c>``i</c>.
+		/// </value>
 		public IReadOnlyList<IType> MethodTypeArguments {
 			get { return methodTypeArguments; }
 		}
 
 		#region Compose
 		/// <summary>
-		/// Computes a single TypeParameterSubstitution so that for all types <c>t</c>:
-		/// <c>t.AcceptVisitor(Compose(g, f)) equals t.AcceptVisitor(f).AcceptVisitor(g)</c>
+		/// Composes two substitutions into one pass.
 		/// </summary>
-		/// <remarks>If you consider type parameter substitution to be a function, this is function composition.</remarks>
+		/// <param name="g">Second substitution applied after <paramref name="f"/>.</param>
+		/// <param name="f">First substitution to apply.</param>
+		/// <returns>
+		/// A substitution equivalent to applying <paramref name="f"/> and then <paramref name="g"/> to every type.
+		/// If either argument is effectively identity, the other is returned directly.
+		/// </returns>
+		/// <remarks>
+		/// Functionally, this satisfies <c>t.AcceptVisitor(Compose(g, f)) == t.AcceptVisitor(f).AcceptVisitor(g)</c>
+		/// for all <c>t</c>.
+		/// </remarks>
 		public static TypeParameterSubstitution Compose(TypeParameterSubstitution g, TypeParameterSubstitution f)
 		{
 			if (g == null)
@@ -101,6 +126,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		#endregion
 
 		#region Equals and GetHashCode implementation
+		/// <summary>
+		/// Compares two substitutions after normalizing both argument lists with <paramref name="normalization"/>.
+		/// </summary>
+		/// <param name="other">The substitution to compare with the current instance.</param>
+		/// <param name="normalization">Visitor used to normalize each mapped type before equality checks.</param>
+		/// <returns><see langword="true"/> when both maps are equal after normalization; otherwise <see langword="false"/>.</returns>
 		public bool Equals(TypeParameterSubstitution other, TypeVisitor normalization)
 		{
 			if (other == null)
@@ -177,6 +208,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 		#endregion
 
+		/// <summary>
+		/// Replaces a type parameter with its mapped argument when available.
+		/// </summary>
+		/// <param name="type">Type parameter node to rewrite.</param>
+		/// <returns>
+		/// The mapped argument for the parameter owner/category, <see cref="SpecialType.UnknownType"/> for out-of-range
+		/// indexes in an active map, or the original visitor behavior when no map applies.
+		/// </returns>
 		public override IType VisitTypeParameter(ITypeParameter type)
 		{
 			int index = type.Index;
@@ -200,6 +239,13 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Applies substitution while preserving nullability semantics for annotated type parameters.
+		/// </summary>
+		/// <param name="type">Annotated type to process.</param>
+		/// <returns>
+		/// A substituted type where nullable annotations on type parameters are re-applied to the substituted result.
+		/// </returns>
 		public override IType VisitNullabilityAnnotatedType(NullabilityAnnotatedType type)
 		{
 			if (type is NullabilityAnnotatedTypeParameter tp)

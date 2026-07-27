@@ -23,8 +23,12 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Resolve result representing a 'foreach' loop.
+	/// Represents the resolved enumeration pattern used by a <c>foreach</c> statement.
 	/// </summary>
+	/// <remarks>
+	/// This result records the binder-selected <c>GetEnumerator</c>/<c>MoveNext</c>/<c>Current</c> members and the inferred element type,
+	/// allowing the decompiler to preserve language-level <c>foreach</c> semantics even when the IL pattern is rewritten.
+	/// </remarks>
 	public class ForEachResolveResult : ResolveResult
 	{
 		/// <summary>
@@ -33,12 +37,12 @@ namespace ICSharpCode.Decompiler.Semantics
 		public readonly ResolveResult GetEnumeratorCall;
 
 		/// <summary>
-		/// Gets the collection type.
+		/// Gets the collection type that was analyzed when resolving the enumeration pattern.
 		/// </summary>
 		public readonly IType CollectionType;
 
 		/// <summary>
-		/// Gets the enumerator type.
+		/// Gets the enumerator type returned by the selected <c>GetEnumerator</c> call.
 		/// </summary>
 		public readonly IType EnumeratorType;
 
@@ -61,6 +65,20 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// </summary>
 		public readonly IMethod MoveNextMethod;
 
+		/// <summary>
+		/// Initializes a resolved foreach semantic node.
+		/// </summary>
+		/// <param name="getEnumeratorCall">The semantic tree for the selected <c>GetEnumerator</c> invocation.</param>
+		/// <param name="collectionType">The collection type participating in enumeration.</param>
+		/// <param name="enumeratorType">The enumerator type produced by <paramref name="getEnumeratorCall"/>.</param>
+		/// <param name="elementType">The inferred element type used for implicit iteration variables.</param>
+		/// <param name="currentProperty">The resolved <c>Current</c> property, or <see langword="null"/> when unavailable.</param>
+		/// <param name="moveNextMethod">The resolved <c>MoveNext</c> method, or <see langword="null"/> when unavailable.</param>
+		/// <param name="voidType">The semantic type used for statement-like results (typically the compilation's <c>void</c> type).</param>
+		/// <exception cref="ArgumentNullException">
+		/// <paramref name="getEnumeratorCall"/>, <paramref name="collectionType"/>, <paramref name="enumeratorType"/>, or
+		/// <paramref name="elementType"/> is <see langword="null"/>.
+		/// </exception>
 		public ForEachResolveResult(ResolveResult getEnumeratorCall, IType collectionType, IType enumeratorType, IType elementType, IProperty currentProperty, IMethod moveNextMethod, IType voidType)
 			: base(voidType)
 		{

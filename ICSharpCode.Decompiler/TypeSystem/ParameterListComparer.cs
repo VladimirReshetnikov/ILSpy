@@ -24,16 +24,24 @@ using ICSharpCode.Decompiler.TypeSystem.Implementation;
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Compares parameter lists by comparing the types of all parameters.
+	/// Compares parameter lists using normalized parameter-type semantics instead of strict metadata identity.
 	/// </summary>
 	/// <remarks>
-	/// 'ref int' and 'out int' are considered to be equal - unless <see cref="includeModifiers" /> is set to true.
-	/// 'object' and 'dynamic' are also equal.
-	/// For generic methods, "Method{T}(T a)" and "Method{S}(S b)" are considered equal.
-	/// However, "Method(T a)" and "Method(S b)" are not considered equal when the type parameters T and S belong to classes.
+	/// <para>
+	/// This comparer is used when decompilation logic needs signature compatibility checks that behave like C# method matching.
+	/// It normalizes dynamic/object distinctions and method-level generic parameter identities before comparing types.
+	/// </para>
+	/// <para>
+	/// By default, reference modifiers are ignored, so <c>ref int</c> and <c>out int</c> are treated as equal. Call
+	/// <see cref="WithOptions(bool)"/> with <see langword="true"/> to include <see cref="IParameter.ReferenceKind"/> and
+	/// <see cref="IParameter.IsParams"/> in the comparison.
+	/// </para>
 	/// </remarks>
 	public sealed class ParameterListComparer : IEqualityComparer<IReadOnlyList<IParameter>>
 	{
+		/// <summary>
+		/// Gets a comparer instance that ignores reference modifiers and <c>params</c> markers.
+		/// </summary>
 		public static readonly ParameterListComparer Instance = new ParameterListComparer();
 
 		static readonly NormalizeTypeVisitor normalizationVisitor = new NormalizeTypeVisitor {
@@ -45,6 +53,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 
 		bool includeModifiers;
 
+		/// <summary>
+		/// Creates a comparer with configurable treatment of parameter modifiers.
+		/// </summary>
+		/// <param name="includeModifiers">
+		/// <see langword="true"/> to include <see cref="IParameter.ReferenceKind"/> and <see cref="IParameter.IsParams"/>;
+		/// <see langword="false"/> to compare only normalized parameter types.
+		/// </param>
+		/// <returns>A comparer configured with the requested modifier behavior.</returns>
 		public static ParameterListComparer WithOptions(bool includeModifiers = false)
 		{
 			return new ParameterListComparer() {
@@ -52,6 +68,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			};
 		}
 
+		/// <summary>
+		/// Determines whether two parameter lists are signature-equivalent under this comparer configuration.
+		/// </summary>
+		/// <param name="x">The first parameter list.</param>
+		/// <param name="y">The second parameter list.</param>
+		/// <returns><see langword="true"/> when both lists are equivalent; otherwise <see langword="false"/>.</returns>
 		public bool Equals(IReadOnlyList<IParameter> x, IReadOnlyList<IParameter> y)
 		{
 			if (x == y)
@@ -87,6 +109,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			return true;
 		}
 
+		/// <summary>
+		/// Computes a hash code compatible with <see cref="Equals(IReadOnlyList{IParameter}, IReadOnlyList{IParameter})"/>.
+		/// </summary>
+		/// <param name="obj">The parameter list to hash.</param>
+		/// <returns>A hash code based on normalized parameter types.</returns>
 		public int GetHashCode(IReadOnlyList<IParameter> obj)
 		{
 			int hashCode = obj.Count;
@@ -104,15 +131,22 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	}
 
 	/// <summary>
-	/// Compares member signatures.
+	/// Compares members by callable signature shape.
 	/// </summary>
 	/// <remarks>
-	/// This comparer checks for equal short name, equal type parameter count, and equal parameter types (using ParameterListComparer).
+	/// Signature comparison includes symbol kind, short name (using the configured <see cref="StringComparer"/>), and for
+	/// parameterized members, normalized parameter types via <see cref="ParameterListComparer"/>. For methods, generic arity
+	/// must also match.
 	/// </remarks>
 	public sealed class SignatureComparer : IEqualityComparer<IMember>
 	{
 		StringComparer nameComparer;
 
+		/// <summary>
+		/// Initializes a new comparer with the specified name-comparison semantics.
+		/// </summary>
+		/// <param name="nameComparer">Comparer used for member name matching.</param>
+		/// <exception cref="ArgumentNullException">Thrown when <paramref name="nameComparer"/> is <see langword="null"/>.</exception>
 		public SignatureComparer(StringComparer nameComparer)
 		{
 			if (nameComparer == null)
@@ -125,6 +159,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static readonly SignatureComparer Ordinal = new SignatureComparer(StringComparer.Ordinal);
 
+		/// <summary>
+		/// Determines whether two members have matching signature shape.
+		/// </summary>
+		/// <param name="x">The first member.</param>
+		/// <param name="y">The second member.</param>
+		/// <returns><see langword="true"/> when both members represent the same signature; otherwise <see langword="false"/>.</returns>
 		public bool Equals(IMember x, IMember y)
 		{
 			if (x == y)
@@ -147,6 +187,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
+		/// <summary>
+		/// Computes a hash code compatible with <see cref="Equals(IMember, IMember)"/>.
+		/// </summary>
+		/// <param name="obj">The member to hash.</param>
+		/// <returns>A hash code derived from symbol kind, name, parameter shape, and method arity.</returns>
 		public int GetHashCode(IMember obj)
 		{
 			unchecked

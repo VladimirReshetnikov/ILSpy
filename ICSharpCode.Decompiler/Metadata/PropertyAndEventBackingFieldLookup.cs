@@ -23,6 +23,10 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Provides name-based heuristics for mapping compiler-generated backing fields to
+	/// their source property or event definitions.
+	/// </summary>
 	class PropertyAndEventBackingFieldLookup
 	{
 		private readonly MetadataReader metadata;
@@ -31,6 +35,10 @@ namespace ICSharpCode.Decompiler.Metadata
 		private readonly Dictionary<FieldDefinitionHandle, EventDefinitionHandle> eventLookup
 			= new();
 
+		/// <summary>
+		/// Creates lookup tables for property and event backing fields in the supplied metadata.
+		/// </summary>
+		/// <param name="metadata">Metadata reader used to scan type members and build backing-field maps.</param>
 		public PropertyAndEventBackingFieldLookup(MetadataReader metadata)
 		{
 			this.metadata = metadata;
@@ -113,11 +121,23 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
+		/// <summary>
+		/// Tries to resolve a field as the backing field of a property.
+		/// </summary>
+		/// <param name="field">Field handle that may represent a compiler-generated property backing field.</param>
+		/// <param name="handle">When this method returns <see langword="true"/>, receives the associated property handle.</param>
+		/// <returns><see langword="true"/> if <paramref name="field"/> was mapped to a property; otherwise <see langword="false"/>.</returns>
 		public bool IsPropertyBackingField(FieldDefinitionHandle field, out PropertyDefinitionHandle handle)
 		{
 			return propertyLookup.TryGetValue(field, out handle);
 		}
 
+		/// <summary>
+		/// Tries to resolve a field as the backing field of an event.
+		/// </summary>
+		/// <param name="field">Field handle that may represent a compiler-generated event backing field.</param>
+		/// <param name="handle">When this method returns <see langword="true"/>, receives the associated event handle.</param>
+		/// <returns><see langword="true"/> if <paramref name="field"/> was mapped to an event; otherwise <see langword="false"/>.</returns>
 		public bool IsEventBackingField(FieldDefinitionHandle field, out EventDefinitionHandle handle)
 		{
 			return eventLookup.TryGetValue(field, out handle);

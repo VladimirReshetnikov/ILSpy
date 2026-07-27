@@ -40,6 +40,13 @@ namespace ICSharpCode.ILSpyX.Settings
 			this.root = root ?? new XElement("ILSpy");
 		}
 
+		/// <summary>
+		/// Gets a top-level settings section by name from the in-memory settings document.
+		/// </summary>
+		/// <param name="section">Qualified section name under the root <c>ILSpy</c> element.</param>
+		/// <returns>
+		/// The stored section element when present; otherwise a new empty element with the requested name.
+		/// </returns>
 		public XElement this[XName section] {
 			get {
 				return root.Element(section) ?? new XElement(section);
@@ -77,8 +84,9 @@ namespace ICSharpCode.ILSpyX.Settings
 		}
 
 		/// <summary>
-		/// Saves a setting section.
+		/// Saves or replaces a complete top-level settings section.
 		/// </summary>
+		/// <param name="section">Section element to persist under the root <c>ILSpy</c> node.</param>
 		public void SaveSettings(XElement section)
 		{
 			Update(rootElement => {
@@ -91,10 +99,11 @@ namespace ICSharpCode.ILSpyX.Settings
 		}
 
 		/// <summary>
-		/// Updates the saved settings.
+		/// Updates the persisted settings document under an inter-process mutex.
 		/// We always reload the file on updates to ensure we aren't overwriting unrelated changes performed
 		/// by another ILSpy instance.
 		/// </summary>
+		/// <param name="action">Mutation callback that receives the root <c>ILSpy</c> element before saving.</param>
 		public void Update(Action<XElement> action)
 		{
 			using (new MutexProtector(ConfigFileMutex))

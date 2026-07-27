@@ -7,7 +7,7 @@ using System.Runtime.CompilerServices;
 
 namespace System
 {
-	/// <summary>Represent a type can be used to index a collection either from the start or the end.</summary>
+	/// <summary>Represents an index into a sequence, counted either from the start or from the end.</summary>
 	/// <remarks>
 	/// Index is used by the C# compiler to support the new index syntax
 	/// <code>
@@ -24,12 +24,13 @@ namespace System
 	{
 		private readonly int _value;
 
-		/// <summary>Construct an Index using a value and indicating if the index is from the start or from the end.</summary>
-		/// <param name="value">The index value. it has to be zero or positive number.</param>
-		/// <param name="fromEnd">Indicating if the index is from the start or from the end.</param>
+		/// <summary>Initializes a new <see cref="Index"/> with an explicit origin.</summary>
+		/// <param name="value">Zero-based index value. The value must be non-negative.</param>
+		/// <param name="fromEnd"><see langword="true"/> to count from the end; <see langword="false"/> to count from the start.</param>
 		/// <remarks>
-		/// If the Index constructed from the end, index value 1 means pointing at the last element and index value 0 means pointing at beyond last element.
+		/// When counting from the end, <c>1</c> refers to the last element and <c>0</c> refers to the position just past the last element.
 		/// </remarks>
+		/// <exception cref="ArgumentOutOfRangeException"><paramref name="value"/> is less than zero.</exception>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public Index(int value, bool fromEnd = false)
 		{
@@ -50,14 +51,15 @@ namespace System
 			_value = value;
 		}
 
-		/// <summary>Create an Index pointing at first element.</summary>
+		/// <summary>Gets an index that points at the first element.</summary>
 		public static Index Start => new Index(0);
 
-		/// <summary>Create an Index pointing at beyond last element.</summary>
+		/// <summary>Gets an index that points one position past the last element.</summary>
 		public static Index End => new Index(~0);
 
-		/// <summary>Create an Index from the start at the position indicated by the value.</summary>
-		/// <param name="value">The index value from the start.</param>
+		/// <summary>Creates an index counted from the start.</summary>
+		/// <param name="value">Zero-based offset from the start. Must be non-negative.</param>
+		/// <exception cref="ArgumentOutOfRangeException"><paramref name="value"/> is less than zero.</exception>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static Index FromStart(int value)
 		{
@@ -69,8 +71,9 @@ namespace System
 			return new Index(value);
 		}
 
-		/// <summary>Create an Index from the end at the position indicated by the value.</summary>
-		/// <param name="value">The index value from the end.</param>
+		/// <summary>Creates an index counted from the end.</summary>
+		/// <param name="value">Offset from the end, where <c>1</c> addresses the last element. Must be non-negative.</param>
+		/// <exception cref="ArgumentOutOfRangeException"><paramref name="value"/> is less than zero.</exception>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static Index FromEnd(int value)
 		{
@@ -82,7 +85,7 @@ namespace System
 			return new Index(~value);
 		}
 
-		/// <summary>Returns the index value.</summary>
+		/// <summary>Gets the non-negative index magnitude.</summary>
 		public int Value {
 			get {
 				if (_value < 0)
@@ -92,16 +95,16 @@ namespace System
 			}
 		}
 
-		/// <summary>Indicates whether the index is from the start or the end.</summary>
+		/// <summary>Gets whether this index is interpreted relative to the end of a sequence.</summary>
 		public bool IsFromEnd => _value < 0;
 
-		/// <summary>Calculate the offset from the start using the giving collection length.</summary>
-		/// <param name="length">The length of the collection that the Index will be used with. length has to be a positive value</param>
+		/// <summary>Computes the absolute zero-based offset for a sequence of a specified length.</summary>
+		/// <param name="length">Length of the target sequence.</param>
 		/// <remarks>
-		/// For performance reason, we don't validate the input length parameter and the returned offset value against negative values.
-		/// we don't validate either the returned offset is greater than the input length.
-		/// It is expected Index will be used with collections which always have non negative length/count. If the returned offset is negative and
-		/// then used to index a collection will get out of range exception which will be same affect as the validation.
+		/// For performance reasons, this method does not validate <paramref name="length"/> or the computed offset.
+		/// It also does not check whether the offset is greater than <paramref name="length"/>.
+		/// Callers are expected to pass sensible sequence lengths. If an invalid offset is produced and then
+		/// used for indexing, the consuming collection is expected to throw an out-of-range exception.
 		/// </remarks>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public int GetOffset(int length)
@@ -118,21 +121,21 @@ namespace System
 			return offset;
 		}
 
-		/// <summary>Indicates whether the current Index object is equal to another object of the same type.</summary>
-		/// <param name="value">An object to compare with this object</param>
+		/// <summary>Determines whether this value equals another object.</summary>
+		/// <param name="value">Object to compare.</param>
 		public override bool Equals([NotNullWhen(true)] object? value) => value is Index && _value == ((Index)value)._value;
 
-		/// <summary>Indicates whether the current Index object is equal to another Index object.</summary>
-		/// <param name="other">An object to compare with this object</param>
+		/// <summary>Determines whether this value equals another <see cref="Index"/>.</summary>
+		/// <param name="other">Other index value to compare.</param>
 		public bool Equals(Index other) => _value == other._value;
 
-		/// <summary>Returns the hash code for this instance.</summary>
+		/// <summary>Returns a hash code for this instance.</summary>
 		public override int GetHashCode() => _value;
 
-		/// <summary>Converts integer number to an Index.</summary>
+		/// <summary>Converts a non-negative integer to an index counted from the start.</summary>
 		public static implicit operator Index(int value) => FromStart(value);
 
-		/// <summary>Converts the value of the current Index object to its equivalent string representation.</summary>
+		/// <summary>Converts this index to a string representation.</summary>
 		public override string ToString()
 		{
 			if (IsFromEnd)

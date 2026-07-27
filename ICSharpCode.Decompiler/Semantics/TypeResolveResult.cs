@@ -21,15 +21,22 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// The resolved expression refers to a type name.
+	/// Represents a name lookup that resolved to a type symbol.
 	/// </summary>
 	public class TypeResolveResult : ResolveResult
 	{
+		/// <summary>
+		/// Initializes a type resolve result.
+		/// </summary>
+		/// <param name="type">The resolved type symbol.</param>
 		public TypeResolveResult(IType type)
 			: base(type)
 		{
 		}
 
+		/// <summary>
+		/// Gets whether the resolved type is the unknown-type sentinel.
+		/// </summary>
 		public override bool IsError {
 			get { return this.Type.Kind == TypeKind.Unknown; }
 		}

@@ -21,8 +21,12 @@ using System;
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
 	/// <summary>
-	/// Type reference used to reference nested types.
+	/// Represents a metadata-style reference to a nested type definition.
 	/// </summary>
+	/// <remarks>
+	/// This reference resolves by scanning nested type definitions on the resolved declaring type and matching
+	/// both nested-name and total generic arity (declaring + nested parameters).
+	/// </remarks>
 	[Serializable]
 	public sealed class NestedTypeReference : ITypeReference, ISupportsInterning
 	{
@@ -36,7 +40,8 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		/// </summary>
 		/// <param name="declaringTypeRef">Reference to the declaring type.</param>
 		/// <param name="name">Name of the nested class</param>
-		/// <param name="additionalTypeParameterCount">Number of type parameters on the inner class (without type parameters on baseTypeRef)</param>
+		/// <param name="additionalTypeParameterCount">Number of type parameters declared by the nested type itself (excluding declaring-type parameters).</param>
+		/// <param name="isReferenceType">Optional reference/value-type hint for unresolved fallbacks returned by <see cref="Resolve(ITypeResolveContext)"/>.</param>
 		/// <remarks>
 		/// <paramref name="declaringTypeRef"/> must be exactly the (unbound) declaring type, not a derived type, not a parameterized type.
 		/// NestedTypeReference thus always resolves to a type definition, never to (partially) parameterized types.
@@ -53,18 +58,34 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			this.isReferenceType = isReferenceType;
 		}
 
+		/// <summary>
+		/// Gets the declaring type reference that owns the nested type.
+		/// </summary>
 		public ITypeReference DeclaringTypeReference {
 			get { return declaringTypeRef; }
 		}
 
+		/// <summary>
+		/// Gets the metadata name of the nested type.
+		/// </summary>
 		public string Name {
 			get { return name; }
 		}
 
+		/// <summary>
+		/// Gets the number of type parameters introduced by the nested type itself.
+		/// </summary>
 		public int AdditionalTypeParameterCount {
 			get { return additionalTypeParameterCount; }
 		}
 
+		/// <summary>
+		/// Resolves the nested type against the specified type-resolution context.
+		/// </summary>
+		/// <param name="context">Resolution context that provides the declaring type definition.</param>
+		/// <returns>
+		/// The matching nested type definition when found; otherwise an <see cref="UnknownType"/> placeholder.
+		/// </returns>
 		public IType Resolve(ITypeResolveContext context)
 		{
 			ITypeDefinition declaringType = declaringTypeRef.Resolve(context) as ITypeDefinition;

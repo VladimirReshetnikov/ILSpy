@@ -22,8 +22,19 @@ using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.Util
 {
+	/// <summary>
+	/// Provides factory and comparer helpers for <see cref="LongDict{T}"/>.
+	/// </summary>
 	static class LongDict
 	{
+		/// <summary>
+		/// Builds an immutable lookup from long-key intervals to values.
+		/// </summary>
+		/// <typeparam name="T">Value type stored for each covered interval.</typeparam>
+		/// <param name="entries">
+		/// Sequence of interval sets paired with values. Earlier entries take precedence when intervals overlap.
+		/// </param>
+		/// <returns>A normalized <see cref="LongDict{T}"/> that can be queried by individual keys.</returns>
 		public static LongDict<T> Create<T>(IEnumerable<(LongSet, T)> entries)
 		{
 			return new LongDict<T>(entries);
@@ -33,18 +44,31 @@ namespace ICSharpCode.Decompiler.Util
 	}
 
 	/// <summary>
-	/// An immutable mapping from keys of type long to values of type T.
+	/// Represents an immutable mapping from <see cref="long"/> keys to values.
 	/// </summary>
+	/// <typeparam name="T">Type of values stored in the dictionary.</typeparam>
+	/// <remarks>
+	/// <para>
+	/// Input entries are interpreted as sets of numeric intervals. When multiple entries overlap,
+	/// the first entry wins for all keys in the overlap and later entries only contribute keys that are still uncovered.
+	/// </para>
+	/// <para>
+	/// Internally, intervals are flattened and sorted by start offset, which allows
+	/// <see cref="TryGetValue(long, out T)"/> to resolve keys using binary search.
+	/// </para>
+	/// </remarks>
 	struct LongDict<T> : IEnumerable<KeyValuePair<LongInterval, T>>
 	{
 		readonly LongInterval[] keys;
 		readonly T[] values;
 
 		/// <summary>
-		/// Creates a new LongDict from the given entries.
-		/// If there are multiple entries for the same long key,
-		/// the resulting LongDict will store the value from the first entry.
+		/// Initializes a new immutable dictionary from interval/value entries.
 		/// </summary>
+		/// <param name="entries">
+		/// Sequence of interval sets paired with values. If two sets contain the same key,
+		/// the value from the earliest sequence element is kept.
+		/// </param>
 		public LongDict(IEnumerable<(LongSet, T)> entries)
 		{
 			LongSet available = LongSet.Universe;
@@ -64,6 +88,15 @@ namespace ICSharpCode.Decompiler.Util
 			Array.Sort(this.keys, this.values, LongDict.StartComparer);
 		}
 
+		/// <summary>
+		/// Attempts to resolve the value assigned to <paramref name="key"/>.
+		/// </summary>
+		/// <param name="key">Numeric key to look up.</param>
+		/// <param name="value">Receives the mapped value when a covering interval is found.</param>
+		/// <returns>
+		/// <see langword="true"/> when <paramref name="key"/> is contained in one of the stored intervals;
+		/// otherwise <see langword="false"/>.
+		/// </returns>
 		public bool TryGetValue(long key, out T value)
 		{
 			int pos = Array.BinarySearch(this.keys, new LongInterval(key, key), LongDict.StartComparer);
@@ -80,12 +113,26 @@ namespace ICSharpCode.Decompiler.Util
 			return false;
 		}
 
+		/// <summary>
+		/// Gets the value for <paramref name="key"/> or <c>default</c> when no interval covers the key.
+		/// </summary>
+		/// <param name="key">Numeric key to look up.</param>
+		/// <returns>
+		/// The mapped value if present; otherwise <c>default(T)</c>.
+		/// </returns>
 		public T GetOrDefault(long key)
 		{
 			TryGetValue(key, out T val);
 			return val;
 		}
 
+		/// <summary>
+		/// Returns an enumerator over the flattened interval/value pairs.
+		/// </summary>
+		/// <returns>
+		/// An enumerator that yields each stored <see cref="LongInterval"/> with its associated value,
+		/// ordered by interval start.
+		/// </returns>
 		public IEnumerator<KeyValuePair<LongInterval, T>> GetEnumerator()
 		{
 			for (int i = 0; i < this.keys.Length; ++i)

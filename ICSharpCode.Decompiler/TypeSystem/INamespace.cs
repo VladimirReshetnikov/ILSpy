@@ -23,8 +23,19 @@ using System.Collections.Generic;
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Represents a resolved namespace.
+	/// Represents a resolved namespace node within a compilation-wide namespace tree.
 	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// A single <see cref="INamespace"/> can merge contributions from multiple modules and assemblies. As a consequence,
+	/// namespace lookup APIs on this interface expose the logical namespace shape seen by the compilation rather than a
+	/// one-module metadata view.
+	/// </para>
+	/// <para>
+	/// Name comparisons for child/type lookup are delegated to the owning compilation comparer so the same API can model
+	/// language-specific casing rules.
+	/// </para>
+	/// </remarks>
 	public interface INamespace : ISymbol, ICompilationProvider
 	{
 		// No pointer back to unresolved namespace:
@@ -64,7 +75,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		IEnumerable<ITypeDefinition> Types { get; }
 
 		/// <summary>
-		/// Gets the modules that contribute types to this namespace (or to child namespaces).
+		/// Gets the modules that contribute types to this namespace or any of its descendants.
 		/// </summary>
 		IEnumerable<IModule> ContributingModules { get; }
 

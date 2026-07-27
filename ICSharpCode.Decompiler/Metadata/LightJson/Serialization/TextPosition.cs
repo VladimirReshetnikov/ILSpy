@@ -4,8 +4,12 @@
 namespace LightJson.Serialization
 {
 	/// <summary>
-	/// Represents a position within a plain text resource.
+	/// Represents a 0-based cursor location within JSON source text.
 	/// </summary>
+	/// <remarks>
+	/// The parser updates this structure as characters are consumed. It is embedded in
+	/// <see cref="JsonParseException"/> so callers can report precise diagnostics.
+	/// </remarks>
 	internal struct TextPosition
 	{
 		/// <summary>

@@ -35,13 +35,23 @@ using ICSharpCode.ILSpyX.Instrumentation;
 namespace ICSharpCode.ILSpyX
 {
 	/// <summary>
-	/// NuGet package or .NET bundle:
+	/// Represents an archive-backed logical assembly container (for example a <c>.nupkg</c>/<c>.zip</c>
+	/// or a .NET single-file bundle) and exposes its entries as a browsable folder tree.
 	/// </summary>
 	public class LoadedPackage
 	{
+		/// <summary>
+		/// Describes the underlying package transport used to populate this instance.
+		/// </summary>
 		public enum PackageKind
 		{
+			/// <summary>
+			/// A ZIP-based package such as a NuGet package.
+			/// </summary>
 			Zip,
+			/// <summary>
+			/// A .NET single-file bundle.
+			/// </summary>
 			Bundle,
 		}
 
@@ -50,8 +60,14 @@ namespace ICSharpCode.ILSpyX
 		/// </summary>
 		internal LoadedAssembly? LoadedAssembly { get; set; }
 
+		/// <summary>
+		/// Gets the package transport type.
+		/// </summary>
 		public PackageKind Kind { get; }
 
+		/// <summary>
+		/// Gets or sets parsed bundle header information. This is populated for <see cref="PackageKind.Bundle"/>.
+		/// </summary>
 		public SingleFileBundle.Header BundleHeader { get; set; }
 
 		/// <summary>
@@ -59,8 +75,16 @@ namespace ICSharpCode.ILSpyX
 		/// </summary>
 		public IReadOnlyList<PackageEntry> Entries { get; }
 
+		/// <summary>
+		/// Gets the root folder that indexes all package entries by path segments.
+		/// </summary>
 		public PackageFolder RootFolder { get; }
 
+		/// <summary>
+		/// Initializes a package model and builds a folder hierarchy over <paramref name="entries"/>.
+		/// </summary>
+		/// <param name="kind">The package transport type.</param>
+		/// <param name="entries">All entries discovered in the package.</param>
 		public LoadedPackage(PackageKind kind, IEnumerable<PackageEntry> entries)
 		{
 			this.Kind = kind;
@@ -101,6 +125,11 @@ namespace ICSharpCode.ILSpyX
 			}
 		}
 
+		/// <summary>
+		/// Opens a ZIP archive and projects all archive entries as <see cref="PackageEntry"/> items.
+		/// </summary>
+		/// <param name="file">Path to the ZIP package on disk.</param>
+		/// <returns>A <see cref="LoadedPackage"/> representing <paramref name="file"/>.</returns>
 		public static LoadedPackage FromZipFile(string file)
 		{
 			Debug.WriteLine($"LoadedPackage.FromZipFile({file})");
@@ -112,8 +141,13 @@ namespace ICSharpCode.ILSpyX
 		}
 
 		/// <summary>
-		/// Load a .NET single-file bundle.
+		/// Attempts to open a .NET single-file bundle and expose its manifest entries as package entries.
 		/// </summary>
+		/// <param name="fileName">Path to the candidate bundle executable.</param>
+		/// <returns>
+		/// A populated <see cref="LoadedPackage"/> when <paramref name="fileName"/> is a valid bundle;
+		/// otherwise <see langword="null"/>.
+		/// </returns>
 		public static LoadedPackage? FromBundle(string fileName)
 		{
 			using var memoryMappedFile = MemoryMappedFile.CreateFromFile(fileName, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
@@ -262,6 +296,9 @@ namespace ICSharpCode.ILSpyX
 		}
 	}
 
+	/// <summary>
+	/// Base class for file-like entries contained in a <see cref="LoadedPackage"/>.
+	/// </summary>
 	public abstract class PackageEntry : Resource
 	{
 		/// <summary>
@@ -280,16 +317,25 @@ namespace ICSharpCode.ILSpyX
 		public abstract string FullName { get; }
 	}
 
+	/// <summary>
+	/// Represents a node in the package directory tree and provides contextual assembly-resolution fallback to parent folders.
+	/// </summary>
 	public sealed class PackageFolder : IAssemblyResolver
 	{
 		/// <summary>
-		/// Gets the short name of the folder.
+		/// Gets the folder segment name relative to its parent.
 		/// </summary>
 		public string Name { get; }
 
 		readonly LoadedPackage package;
 		readonly PackageFolder? parent;
 
+		/// <summary>
+		/// Creates a package folder node.
+		/// </summary>
+		/// <param name="package">Owning package model.</param>
+		/// <param name="parent">Parent folder, or <see langword="null"/> for the root.</param>
+		/// <param name="name">Folder segment name.</param>
 		internal PackageFolder(LoadedPackage package, PackageFolder? parent, string name)
 		{
 			this.package = package;
@@ -297,10 +343,24 @@ namespace ICSharpCode.ILSpyX
 			this.Name = name;
 		}
 
+		/// <summary>
+		/// Gets the parent folder, or <see langword="null"/> when this is the root.
+		/// </summary>
 		public PackageFolder? Parent => parent;
+		/// <summary>
+		/// Gets direct child folders.
+		/// </summary>
 		public List<PackageFolder> Folders { get; } = new List<PackageFolder>();
+		/// <summary>
+		/// Gets direct file entries contained in this folder.
+		/// </summary>
 		public List<PackageEntry> Entries { get; } = new List<PackageEntry>();
 
+		/// <summary>
+		/// Resolves an assembly reference by probing this folder for a same-name <c>.dll</c>, then walking parents.
+		/// </summary>
+		/// <param name="reference">Assembly reference to resolve.</param>
+		/// <returns>The resolved metadata module, or <see langword="null"/> if no candidate is found.</returns>
 		public MetadataFile? Resolve(IAssemblyReference reference)
 		{
 			var asm = ResolveFileName(reference.Name + ".dll");
@@ -311,6 +371,11 @@ namespace ICSharpCode.ILSpyX
 			return parent?.Resolve(reference);
 		}
 
+		/// <summary>
+		/// Asynchronously resolves an assembly reference using the same folder-walk strategy as <see cref="Resolve(IAssemblyReference)"/>.
+		/// </summary>
+		/// <param name="reference">Assembly reference to resolve.</param>
+		/// <returns>A task producing the resolved metadata module, or <see langword="null"/>.</returns>
 		public Task<MetadataFile?> ResolveAsync(IAssemblyReference reference)
 		{
 			var asm = ResolveFileName(reference.Name + ".dll");
@@ -325,6 +390,12 @@ namespace ICSharpCode.ILSpyX
 			return Task.FromResult<MetadataFile?>(null);
 		}
 
+		/// <summary>
+		/// Resolves a secondary module reference by module name within this package folder chain.
+		/// </summary>
+		/// <param name="mainModule">The main module requesting the resolution.</param>
+		/// <param name="moduleName">Name of the module to resolve (without extension).</param>
+		/// <returns>The resolved metadata module, or <see langword="null"/>.</returns>
 		public MetadataFile? ResolveModule(MetadataFile mainModule, string moduleName)
 		{
 			var asm = ResolveFileName(moduleName + ".dll");
@@ -335,6 +406,12 @@ namespace ICSharpCode.ILSpyX
 			return parent?.ResolveModule(mainModule, moduleName);
 		}
 
+		/// <summary>
+		/// Asynchronously resolves a secondary module reference by module name within this package folder chain.
+		/// </summary>
+		/// <param name="mainModule">The main module requesting the resolution.</param>
+		/// <param name="moduleName">Name of the module to resolve (without extension).</param>
+		/// <returns>A task producing the resolved metadata module, or <see langword="null"/>.</returns>
 		public Task<MetadataFile?> ResolveModuleAsync(MetadataFile mainModule, string moduleName)
 		{
 			var asm = ResolveFileName(moduleName + ".dll");
@@ -351,6 +428,11 @@ namespace ICSharpCode.ILSpyX
 
 		readonly Dictionary<string, LoadedAssembly?> assemblies = new Dictionary<string, LoadedAssembly?>(StringComparer.OrdinalIgnoreCase);
 
+		/// <summary>
+		/// Resolves or lazily creates a <see cref="LoadedAssembly"/> for a concrete file name in this folder.
+		/// </summary>
+		/// <param name="name">File name relative to this folder.</param>
+		/// <returns>The cached or newly-created <see cref="LoadedAssembly"/>, or <see langword="null"/> if not present.</returns>
 		public LoadedAssembly? ResolveFileName(string name)
 		{
 			if (package.LoadedAssembly == null)

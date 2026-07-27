@@ -370,6 +370,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// string, at any nesting depth, or <c>null</c> if the namespace has no top-level types in
 		/// this assembly. The empty string resolves to the global-namespace node.
 		/// </summary>
+		/// <param name="namespaceName">Namespace name to locate.</param>
+		/// <returns>The matching namespace node, or <see langword="null"/> if unavailable.</returns>
 		public NamespaceTreeNode? FindNamespaceNode(string namespaceName)
 		{
 			ArgumentNullException.ThrowIfNull(namespaceName);
@@ -380,6 +382,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// <summary>
 		/// Finds the <see cref="TypeTreeNode"/> for the given top-level type definition.
 		/// </summary>
+		/// <param name="type">Type definition to locate.</param>
+		/// <returns>The corresponding type node, or <see langword="null"/> if it is not loaded.</returns>
 		public TypeTreeNode? FindTypeNode(ITypeDefinition type)
 		{
 			ArgumentNullException.ThrowIfNull(type);

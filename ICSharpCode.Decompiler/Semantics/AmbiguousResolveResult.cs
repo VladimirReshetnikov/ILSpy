@@ -21,28 +21,46 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents an ambiguous type resolve result.
+	/// Represents a type lookup that produced multiple viable candidates.
 	/// </summary>
+	/// <remarks>
+	/// This result keeps the best-known type payload while signaling failure through <see cref="ResolveResult.IsError"/>.
+	/// It is used when member/type lookup cannot choose a unique declaration.
+	/// </remarks>
 	public class AmbiguousTypeResolveResult : TypeResolveResult
 	{
+		/// <summary>
+		/// Initializes an ambiguous type resolve result.
+		/// </summary>
+		/// <param name="type">A representative candidate type retained for diagnostics and downstream heuristics.</param>
 		public AmbiguousTypeResolveResult(IType type) : base(type)
 		{
 		}
 
+		/// <inheritdoc/>
 		public override bool IsError {
 			get { return true; }
 		}
 	}
 
 	/// <summary>
-	/// Represents an ambiguous field/property/event access.
+	/// Represents an ambiguous non-method member access (field, property, or event).
 	/// </summary>
+	/// <remarks>
+	/// The result preserves both the selected target expression and one candidate member symbol so error reporting can remain contextual.
+	/// </remarks>
 	public class AmbiguousMemberResolveResult : MemberResolveResult
 	{
+		/// <summary>
+		/// Initializes an ambiguous member resolve result.
+		/// </summary>
+		/// <param name="targetResult">The resolved target expression, or <see langword="null"/> for static access.</param>
+		/// <param name="member">A representative candidate member from the ambiguous lookup set.</param>
 		public AmbiguousMemberResolveResult(ResolveResult targetResult, IMember member) : base(targetResult, member)
 		{
 		}
 
+		/// <inheritdoc/>
 		public override bool IsError {
 			get { return true; }
 		}

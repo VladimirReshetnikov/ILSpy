@@ -21,11 +21,18 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Refers to the object that is currently being initialized.
-	/// Used within <see cref="InvocationResolveResult.InitializerStatements"/>.
+	/// Refers to the temporary object currently targeted by an object or collection initializer.
 	/// </summary>
+	/// <remarks>
+	/// Instances of this node appear inside <see cref="InvocationResolveResult.InitializerStatements"/> to model initializer-side member
+	/// assignments against the value produced by the outer invocation.
+	/// </remarks>
 	public class InitializedObjectResolveResult : ResolveResult
 	{
+		/// <summary>
+		/// Initializes an initializer-target semantic node.
+		/// </summary>
+		/// <param name="type">The type of the object being initialized.</param>
 		public InitializedObjectResolveResult(IType type) : base(type)
 		{
 		}

@@ -30,6 +30,9 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 {
 	partial class GenerateHtmlDiagrammer
 	{
+		/// <summary>
+		/// Executes generation using the current option properties.
+		/// </summary>
 		public void Run()
 		{
 			var assemblyPath = Assembly;
@@ -38,6 +41,14 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 			GenerateOutput(assemblyPath, model);
 		}
 
+		/// <summary>
+		/// Creates the XML documentation formatter used to enrich generated type metadata.
+		/// </summary>
+		/// <param name="assemblyPath">Path to the source assembly used to derive the default XML documentation path.</param>
+		/// <returns>
+		/// A formatter initialized from the configured XML documentation file, or <see langword="null"/>
+		/// when no documentation file can be found.
+		/// </returns>
 		protected virtual XmlDocumentationFormatter? CreateXmlDocsFormatter(string assemblyPath)
 		{
 			var xmlDocsPath = XmlDocs == null ? Path.ChangeExtension(assemblyPath, ".xml") : XmlDocs;
@@ -51,6 +62,12 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 			return xmlDocs;
 		}
 
+		/// <summary>
+		/// Builds the in-memory model that is later serialized into JSON and optionally embedded in HTML.
+		/// </summary>
+		/// <param name="assemblyPath">Path to the source assembly that defines the analyzed types.</param>
+		/// <param name="xmlDocs">Optional formatter for attaching XML documentation to model entries.</param>
+		/// <returns>The assembled class diagram model for the target assembly.</returns>
 		protected virtual ClassDiagrammer BuildModel(string assemblyPath, XmlDocumentationFormatter? xmlDocs)
 			=> new ClassDiagrammerFactory(xmlDocs).BuildModel(assemblyPath, Include, Exclude);
 

@@ -43,6 +43,14 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 		private Dictionary<IType, string>? labels;
 		private Dictionary<string, string>? outsideReferences;
 
+		/// <summary>
+		/// Initializes a new factory that can build Mermaid class-diagram models,
+		/// optionally enriching type/member text with XML documentation excerpts.
+		/// </summary>
+		/// <param name="xmlDocs">
+		/// XML documentation formatter used when generating descriptions, or <see langword="null"/>
+		/// to emit models without XML-doc based text.
+		/// </param>
 		public ClassDiagrammerFactory(XmlDocumentationFormatter? xmlDocs)
 		{
 			this.xmlDocs = xmlDocs;
@@ -53,6 +61,14 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 			};
 		}
 
+		/// <summary>
+		/// Decompiles the assembly at <paramref name="assemblyPath"/>, filters its types,
+		/// and builds a Mermaid-friendly model grouped by namespace.
+		/// </summary>
+		/// <param name="assemblyPath">Path to the source assembly that should be analyzed.</param>
+		/// <param name="include">Optional regular expression used as a whitelist against reflection names.</param>
+		/// <param name="exclude">Optional regular expression used as a blacklist against reflection names.</param>
+		/// <returns>A <see cref="CD"/> model containing selected types and tracked outside references.</returns>
 		public CD BuildModel(string assemblyPath, string? include, string? exclude)
 		{
 			CSharpDecompiler decompiler = new(assemblyPath, decompilerSettings);
@@ -85,6 +101,9 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 		/// <summary>The default strategy for pre-filtering the <paramref name="typeDefinitions"/> available in the HTML diagrammer.
 		/// Applies <see cref="IsIncludedByDefault(ITypeDefinition)"/> as well as
 		/// matching by <paramref name="include"/> and not by <paramref name="exclude"/>.</summary>
+		/// <param name="typeDefinitions">All discovered type definitions from the source module.</param>
+		/// <param name="include">Optional whitelist expression evaluated against <see cref="IType.ReflectionName"/>.</param>
+		/// <param name="exclude">Optional blacklist expression evaluated against <see cref="IType.ReflectionName"/>.</param>
 		/// <returns>The types to effectively include in the HTML diagrammer.</returns>
 		protected virtual IEnumerable<ITypeDefinition> FilterTypes(IEnumerable<ITypeDefinition> typeDefinitions, Regex? include, Regex? exclude)
 			=> typeDefinitions.Where(type => IsIncludedByDefault(type)
@@ -93,6 +112,7 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 
 		/// <summary>The strategy for deciding whether a <paramref name="type"/> should be included
 		/// in the HTML diagrammer by default. Excludes compiler-generated and their nested types.</summary>
+		/// <param name="type">Candidate type definition from the source assembly.</param>
 		protected virtual bool IsIncludedByDefault(ITypeDefinition type)
 			=> !type.IsCompilerGeneratedOrIsInCompilerGeneratedClass();
 	}

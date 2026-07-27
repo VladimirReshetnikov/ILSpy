@@ -29,8 +29,24 @@ using SRM = System.Reflection.Metadata;
 
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
+	/// <summary>
+	/// Represents a pinned local/temporary type modifier from IL metadata.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Pinning is an implementation detail for local-variable signatures and is not directly expressible in C# type syntax.
+	/// ILSpy carries it in the type graph so low-level IL analysis can preserve original metadata shape.
+	/// </para>
+	/// <para>
+	/// Consumers that reason about semantic element types commonly strip this wrapper using modifier-skipping helpers.
+	/// </para>
+	/// </remarks>
 	public sealed class PinnedType : TypeWithElementType
 	{
+		/// <summary>
+		/// Creates a pinned wrapper around <paramref name="elementType"/>.
+		/// </summary>
+		/// <param name="elementType">The pinned element type.</param>
 		public PinnedType(IType elementType)
 			: base(elementType)
 		{

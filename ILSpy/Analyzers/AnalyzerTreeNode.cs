@@ -73,10 +73,13 @@ namespace ICSharpCode.ILSpy.Analyzers
 
 		/// <summary>
 		/// Reacts to add / remove events on the active <see cref="AssemblyList"/>. Each
-		/// node decides whether it (and its subtree) is still relevant — typically by
-		/// checking the removed list against its source module — and returns <c>false</c>
+		/// node decides whether it (and its subtree) is still relevant, typically by
+		/// checking the removed list against its source module, and returns <c>false</c>
 		/// to ask its parent to drop it.
 		/// </summary>
+		/// <param name="removedAssemblies">Assemblies removed from the active list.</param>
+		/// <param name="addedAssemblies">Assemblies newly added to the active list.</param>
+		/// <returns><see langword="true"/> if this analyzer should remain visible; otherwise <see langword="false"/>.</returns>
 		public abstract bool HandleAssemblyListChanged(
 			ICollection<LoadedAssembly> removedAssemblies,
 			ICollection<LoadedAssembly> addedAssemblies);

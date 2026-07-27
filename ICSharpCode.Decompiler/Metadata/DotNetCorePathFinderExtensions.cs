@@ -24,6 +24,13 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
+	/// <summary>
+	/// Provides heuristics for inferring target framework metadata from assembly metadata and file layout.
+	/// </summary>
+	/// <remarks>
+	/// These helpers are designed for assembly resolution scenarios where canonical metadata can be missing or malformed,
+	/// so they progressively fall back from explicit attributes to reference analysis and known installation path patterns.
+	/// </remarks>
 	public static class DotNetCorePathFinderExtensions
 	{
 		static readonly string PathPattern =
@@ -39,11 +46,29 @@ namespace ICSharpCode.Decompiler.Metadata
 			@"|(NuGetFallbackFolder[/\\](?<type>[^/\\]+)\\(?<version>[^/\\]+)([/\\].*)?[/\\]ref[/\\])" +
 			@"|(packs[/\\](?<type>[^/\\]+)\\(?<version>[^/\\]+)\\ref([/\\].*)?[/\\])";
 
+		/// <summary>
+		/// Detects a target framework moniker string for the specified assembly.
+		/// </summary>
+		/// <param name="assembly">The assembly whose metadata and file path are inspected.</param>
+		/// <returns>
+		/// A target framework identifier in the format used by <see cref="UniversalAssemblyResolver.ParseTargetFramework(string)"/>,
+		/// or an empty string when no reliable signal is available.
+		/// </returns>
 		public static string DetectTargetFrameworkId(this MetadataFile assembly)
 		{
 			return DetectTargetFrameworkId(assembly.Metadata, assembly.FileName);
 		}
 
+		/// <summary>
+		/// Detects a target framework moniker string from raw metadata, with optional path-based fallback heuristics.
+		/// </summary>
+		/// <param name="metadata">The metadata reader to inspect.</param>
+		/// <param name="assemblyPath">An optional assembly path used for fallback pattern matching when metadata does not identify a target framework.</param>
+		/// <returns>
+		/// A target framework identifier in the format used by <see cref="UniversalAssemblyResolver.ParseTargetFramework(string)"/>,
+		/// or an empty string when no reliable signal is available.
+		/// </returns>
+		/// <exception cref="ArgumentNullException"><paramref name="metadata"/> is <see langword="null"/>.</exception>
 		public static string DetectTargetFrameworkId(this MetadataReader metadata, string assemblyPath = null)
 		{
 			if (metadata == null)
@@ -212,11 +237,29 @@ namespace ICSharpCode.Decompiler.Metadata
 			};
 		}
 
+		/// <summary>
+		/// Determines whether the specified assembly appears to be a reference assembly.
+		/// </summary>
+		/// <param name="assembly">The assembly to inspect.</param>
+		/// <returns>
+		/// <see langword="true"/> if the assembly carries the <c>ReferenceAssemblyAttribute</c> or matches known reference-only path layouts;
+		/// otherwise, <see langword="false"/>.
+		/// </returns>
 		public static bool IsReferenceAssembly(this MetadataFile assembly)
 		{
 			return IsReferenceAssembly(assembly.Metadata, assembly.FileName);
 		}
 
+		/// <summary>
+		/// Determines whether metadata and path information indicate that the assembly is a reference assembly.
+		/// </summary>
+		/// <param name="metadata">The metadata reader to inspect.</param>
+		/// <param name="assemblyPath">The assembly path used for path-pattern fallback detection.</param>
+		/// <returns>
+		/// <see langword="true"/> if the assembly is marked as reference-only or stored in a known reference-assembly path;
+		/// otherwise, <see langword="false"/>.
+		/// </returns>
+		/// <exception cref="ArgumentNullException"><paramref name="metadata"/> is <see langword="null"/>.</exception>
 		public static bool IsReferenceAssembly(this MetadataReader metadata, string assemblyPath)
 		{
 			if (metadata == null)
@@ -230,6 +273,18 @@ namespace ICSharpCode.Decompiler.Metadata
 			return refPathMatch.Success;
 		}
 
+		/// <summary>
+		/// Detects which shared runtime pack should be preferred when resolving dependencies for an assembly.
+		/// </summary>
+		/// <param name="assembly">The assembly whose references are inspected.</param>
+		/// <returns>
+		/// <c>Microsoft.WindowsDesktop.App</c> when WPF/Windows Desktop references are detected; otherwise <c>Microsoft.NETCore.App</c>.
+		/// </returns>
+		/// <remarks>
+		/// ASP.NET Core detection is not implemented yet; assemblies in that ecosystem currently fall back to
+		/// <c>Microsoft.NETCore.App</c>.
+		/// </remarks>
+		/// <exception cref="ArgumentNullException"><paramref name="assembly"/> is <see langword="null"/>.</exception>
 		public static string DetectRuntimePack(this MetadataFile assembly)
 		{
 			if (assembly is null)

@@ -205,6 +205,8 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 		/// <summary>Scrolls the node into view (unless <paramref name="scroll"/> is false) and gives it
 		/// keyboard focus. Pass <c>scroll: false</c> to focus a row that is already visible without
 		/// disturbing the scroll position.</summary>
+		/// <param name="node">The node to reveal and focus.</param>
+		/// <param name="scroll">Whether the node should also be scrolled into view.</param>
 		public void FocusNode(SharpTreeNode node, bool scroll = true)
 		{
 			ArgumentNullException.ThrowIfNull(node);

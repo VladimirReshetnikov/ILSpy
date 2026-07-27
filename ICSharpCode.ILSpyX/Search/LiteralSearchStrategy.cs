@@ -32,11 +32,21 @@ using ILOpCode = System.Reflection.Metadata.ILOpCode;
 
 namespace ICSharpCode.ILSpyX.Search
 {
+	/// <summary>
+	/// Searches entities by literal usage, including constants embedded in method bodies.
+	/// </summary>
 	public class LiteralSearchStrategy : AbstractEntitySearchStrategy
 	{
 		readonly TypeCode searchTermLiteralType = TypeCode.Empty;
 		readonly object? searchTermLiteralValue;
 
+		/// <summary>
+		/// Initializes a literal-based entity search strategy.
+		/// </summary>
+		/// <param name="language">Language service used for language-specific entity naming.</param>
+		/// <param name="apiVisibility">Accessibility filter applied before reporting matches.</param>
+		/// <param name="request">Parsed search request.</param>
+		/// <param name="resultQueue">Queue that receives matched results.</param>
 		public LiteralSearchStrategy(ILanguage language, ApiVisibility apiVisibility, SearchRequest request,
 			IProducerConsumerCollection<SearchResult> resultQueue)
 			: base(language, apiVisibility, request, resultQueue)
@@ -76,6 +86,11 @@ namespace ICSharpCode.ILSpyX.Search
 			// Note: if searchTermLiteralType remains TypeCode.Empty, we'll do a substring search via base.IsMatch
 		}
 
+		/// <summary>
+		/// Executes literal matching for all eligible entities in the specified module.
+		/// </summary>
+		/// <param name="module">Module to inspect.</param>
+		/// <param name="cancellationToken">Cancellation token used to abort scanning.</param>
 		public override void Search(MetadataFile module, CancellationToken cancellationToken)
 		{
 			cancellationToken.ThrowIfCancellationRequested();

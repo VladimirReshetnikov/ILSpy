@@ -61,6 +61,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		Public,
 	}
 
+	/// <summary>
+	/// Provides lattice-style operations for combining and comparing <see cref="Accessibility"/> values.
+	/// </summary>
 	public static class AccessibilityExtensions
 	{
 		// This code depends on the fact that the enum values are sorted similar to the partial order
@@ -74,6 +77,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets whether a &lt;= b in the partial order of accessibilities:
 		/// return true if b is accessible everywhere where a is accessible.
 		/// </summary>
+		/// <param name="a">The accessibility whose visibility set is treated as the left operand.</param>
+		/// <param name="b">The accessibility to compare against <paramref name="a"/>.</param>
+		/// <returns><see langword="true"/> when every location that can access <paramref name="a"/> can also access <paramref name="b"/>.</returns>
 		public static bool LessThanOrEqual(this Accessibility a, Accessibility b)
 		{
 			// Exploit the enum order being similar to the partial order to dramatically simplify the logic here:
@@ -86,6 +92,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// The result is accessible from any given point in the code
 		/// iff both a and b are accessible from that point.
 		/// </summary>
+		/// <param name="a">The first accessibility.</param>
+		/// <param name="b">The second accessibility.</param>
+		/// <returns>The most restrictive accessibility that is still reachable through both operands.</returns>
 		public static Accessibility Intersect(this Accessibility a, Accessibility b)
 		{
 			if (a > b)
@@ -108,6 +117,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// The result is accessible from any given point in the code
 		/// iff at least one of a or b is accessible from that point.
 		/// </summary>
+		/// <param name="a">The first accessibility.</param>
+		/// <param name="b">The second accessibility.</param>
+		/// <returns>The least restrictive accessibility that still includes both operands.</returns>
 		public static Accessibility Union(this Accessibility a, Accessibility b)
 		{
 			if (a > b)
@@ -129,6 +141,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets the effective accessibility of the entity.
 		/// For example, a public method in an internal class returns "internal".
 		/// </summary>
+		/// <param name="entity">The member or type whose declared accessibility should be combined with containing types.</param>
+		/// <returns>The accessibility after intersecting <paramref name="entity"/> with every declaring type.</returns>
 		public static Accessibility EffectiveAccessibility(this IEntity entity)
 		{
 			Accessibility accessibility = entity.Accessibility;

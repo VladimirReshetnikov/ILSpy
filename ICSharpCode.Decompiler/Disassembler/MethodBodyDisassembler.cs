@@ -77,12 +77,23 @@ namespace ICSharpCode.Decompiler.Disassembler
 		MetadataGenericContext genericContext;
 		DisassemblerSignatureTypeProvider signatureDecoder;
 
+		/// <summary>
+		/// Initializes a disassembler that writes IL for a single method body at a time.
+		/// </summary>
+		/// <param name="output">Target sink that receives formatted IL text.</param>
+		/// <param name="cancellationToken">Token observed while walking and decoding method IL.</param>
 		public MethodBodyDisassembler(ITextOutput output, CancellationToken cancellationToken)
 		{
 			this.output = output ?? throw new ArgumentNullException(nameof(output));
 			this.cancellationToken = cancellationToken;
 		}
 
+		/// <summary>
+		/// Decodes and writes the IL body for a specific method definition, including header,
+		/// locals, instructions, and exception handlers.
+		/// </summary>
+		/// <param name="module">PE/metadata container that owns the target method.</param>
+		/// <param name="handle">Handle of the method definition to disassemble.</param>
 		public virtual void Disassemble(MetadataFile module, MethodDefinitionHandle handle)
 		{
 			this.module = module ?? throw new ArgumentNullException(nameof(module));
@@ -324,6 +335,15 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
+		/// <summary>
+		/// Decodes and writes a single IL instruction at the current <paramref name="blob"/> offset,
+		/// advancing the reader past the decoded operand.
+		/// </summary>
+		/// <param name="output">Target sink that receives the formatted instruction.</param>
+		/// <param name="metadataFile">Module metadata used to resolve token operands.</param>
+		/// <param name="methodHandle">Method being decoded, used for context-sensitive formatting.</param>
+		/// <param name="blob">Reader positioned at the instruction to decode; advanced by this method.</param>
+		/// <param name="methodRva">RVA of the method body used to compute absolute instruction addresses.</param>
 		protected virtual void WriteInstruction(ITextOutput output, MetadataFile metadataFile, MethodDefinitionHandle methodHandle, ref BlobReader blob, int methodRva)
 		{
 			var metadata = metadataFile.Metadata;

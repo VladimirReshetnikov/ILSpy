@@ -25,8 +25,20 @@ using ICSharpCode.Decompiler.Metadata;
 
 namespace ICSharpCode.ILSpyX.FileLoaders
 {
+	/// <summary>
+	/// Loads Portable Executable files that contain managed metadata.
+	/// </summary>
 	public sealed class PEFileLoader : IFileLoader
 	{
+		/// <summary>
+		/// Probes for an <c>MZ</c> header and loads the stream as a PE image when it matches.
+		/// </summary>
+		/// <param name="fileName">Display name or source path of the file being loaded.</param>
+		/// <param name="stream">Input stream containing the candidate file bytes.</param>
+		/// <param name="context">Load options that influence metadata reader behavior.</param>
+		/// <returns>
+		/// A successful <see cref="LoadResult"/> for recognized PE files; otherwise <see langword="null"/>.
+		/// </returns>
 		public async Task<LoadResult?> Load(string fileName, Stream stream, FileLoadContext context)
 		{
 			if (stream.Length < 2 || stream.ReadByte() != 'M' || stream.ReadByte() != 'Z')
@@ -37,6 +49,13 @@ namespace ICSharpCode.ILSpyX.FileLoaders
 			return await LoadPEFile(fileName, stream, context).ConfigureAwait(false);
 		}
 
+		/// <summary>
+		/// Loads the supplied stream as a managed PE file.
+		/// </summary>
+		/// <param name="fileName">Display name or source path of the file being loaded.</param>
+		/// <param name="stream">Input stream containing PE bytes.</param>
+		/// <param name="context">Load options that influence metadata reader behavior.</param>
+		/// <returns>A <see cref="LoadResult"/> containing the loaded <see cref="PEFile"/>.</returns>
 		public static Task<LoadResult> LoadPEFile(string fileName, Stream stream, FileLoadContext context)
 		{
 			MetadataReaderOptions options = context.ApplyWinRTProjections

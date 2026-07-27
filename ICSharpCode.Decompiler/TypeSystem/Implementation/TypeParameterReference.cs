@@ -23,6 +23,14 @@ using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
+	/// <summary>
+	/// Deferred reference to a generic type parameter token (<c>!n</c> or <c>!!n</c>).
+	/// </summary>
+	/// <remarks>
+	/// Resolution depends on <see cref="ITypeResolveContext.CurrentTypeDefinition"/> and
+	/// <see cref="ITypeResolveContext.CurrentMember"/>. If the requested index is unavailable, the implementation
+	/// returns a <see cref="DummyTypeParameter"/> placeholder instead of throwing.
+	/// </remarks>
 	[Serializable]
 	public sealed class TypeParameterReference : ITypeReference
 	{
@@ -54,18 +62,34 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		readonly SymbolKind ownerType;
 		readonly int index;
 
+		/// <summary>
+		/// Gets the zero-based generic-parameter index encoded by this reference.
+		/// </summary>
 		public int Index {
 			get {
 				return index;
 			}
 		}
 
+		/// <summary>
+		/// Initializes a reference to a generic parameter on a type or method owner.
+		/// </summary>
+		/// <param name="ownerType">Owner kind that determines whether <c>!n</c> or <c>!!n</c> semantics are used.</param>
+		/// <param name="index">Zero-based generic-parameter index.</param>
 		public TypeParameterReference(SymbolKind ownerType, int index)
 		{
 			this.ownerType = ownerType;
 			this.index = index;
 		}
 
+		/// <summary>
+		/// Resolves this generic-parameter reference in the specified context.
+		/// </summary>
+		/// <param name="context">Context supplying current type and method generic parameter lists.</param>
+		/// <returns>
+		/// The matching <see cref="ITypeParameter"/> when available; otherwise a fallback placeholder or
+		/// <see cref="SpecialType.UnknownType"/> for unsupported owner kinds.
+		/// </returns>
 		public IType Resolve(ITypeResolveContext context)
 		{
 			if (ownerType == SymbolKind.Method)

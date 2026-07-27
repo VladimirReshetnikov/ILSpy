@@ -22,6 +22,13 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.Documentation
 {
+	/// <summary>
+	/// Represents an unresolved member reference parsed from an XML documentation member ID.
+	/// </summary>
+	/// <remarks>
+	/// Resolution is name-based: the declaring type is resolved first, then all matching-kind members are scanned and compared
+	/// against the original full ID via <see cref="IdStringProvider.GetIdString(IEntity)"/>.
+	/// </remarks>
 	[Serializable]
 	class IdStringMemberReference : IMemberReference
 	{
@@ -29,6 +36,12 @@ namespace ICSharpCode.Decompiler.Documentation
 		readonly char memberType;
 		readonly string memberIdString;
 
+		/// <summary>
+		/// Creates a documentation-ID backed member reference.
+		/// </summary>
+		/// <param name="declaringTypeReference">Reference to the type that should declare the target member.</param>
+		/// <param name="memberType">Documentation member-kind prefix character (<c>M</c>, <c>F</c>, <c>P</c>, or <c>E</c>).</param>
+		/// <param name="memberIdString">Complete original member ID string used for final equality matching.</param>
 		public IdStringMemberReference(ITypeReference declaringTypeReference, char memberType, string memberIdString)
 		{
 			this.declaringTypeReference = declaringTypeReference;
@@ -57,10 +70,18 @@ namespace ICSharpCode.Decompiler.Documentation
 			}
 		}
 
+		/// <summary>
+		/// Gets the type reference that identifies the member's declaring type.
+		/// </summary>
 		public ITypeReference DeclaringTypeReference {
 			get { return declaringTypeReference; }
 		}
 
+		/// <summary>
+		/// Resolves the member against the supplied type-system context.
+		/// </summary>
+		/// <param name="context">Context used to resolve <see cref="DeclaringTypeReference"/> and enumerate candidate members.</param>
+		/// <returns>The resolved member when a kind-compatible member with an identical documentation ID is found; otherwise <see langword="null"/>.</returns>
 		public IMember Resolve(ITypeResolveContext context)
 		{
 			IType declaringType = declaringTypeReference.Resolve(context);

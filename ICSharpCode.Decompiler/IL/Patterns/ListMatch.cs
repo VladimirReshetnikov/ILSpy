@@ -63,16 +63,25 @@ namespace ICSharpCode.Decompiler.IL.Patterns
 		}
 
 		/// <summary>
-		/// PerformMatch() for a sequence of patterns.
+		/// Attempts to match a contiguous sequence of patterns starting at the current syntax position.
 		/// </summary>
-		/// <param name="patterns">List of patterns to match.</param>
-		/// <param name="listMatch">Stores state about the current list match.</param>
-		/// <param name="match">The match object, used to store global state during the match (such as the results of capture groups).</param>
-		/// <returns>Returns whether all patterns were matched successfully against a part of the list.
-		/// If the method returns true, it updates listMatch.SyntaxIndex to point to the next node that was not part of the match,
-		/// and adds the capture groups (if any) to the match.
-		/// If the method returns false, the listMatch and match objects remain in a partially-updated state and need to be restored
-		/// before they can be reused.</returns>
+		/// <param name="patterns">Patterns to evaluate in order.</param>
+		/// <param name="listMatch">Mutable list-match state, including syntax index and savepoint stacks.</param>
+		/// <param name="match">Capture state shared across nested pattern evaluations.</param>
+		/// <returns>
+		/// <see langword="true"/> when each pattern succeeds.
+		/// On success, <paramref name="listMatch"/> is advanced to the first unmatched syntax element.
+		/// </returns>
+		/// <remarks>
+		/// <para>
+		/// Nested calls can create backtracking savepoints; this method propagates loop-state data (<c>i</c>) into each new savepoint so restoration
+		/// can resume at the correct pattern index.
+		/// </para>
+		/// <para>
+		/// On failure, both <paramref name="listMatch"/> and <paramref name="match"/> may contain partial state. The caller is expected to invoke
+		/// <see cref="RestoreSavePoint(ref Match)"/> (or abandon the values) before reuse.
+		/// </para>
+		/// </remarks>
 		internal static bool PerformMatchSequence(IReadOnlyList<ILInstruction> patterns, ref ListMatch listMatch, ref Match match)
 		{
 			// The patterns may create savepoints, so we need to save the 'i' variable
@@ -97,6 +106,11 @@ namespace ICSharpCode.Decompiler.IL.Patterns
 			internal readonly int SyntaxIndex;
 			internal readonly Stack<int> stack;
 
+			/// <summary>
+			/// Initializes a savepoint with the current capture checkpoint and syntax index.
+			/// </summary>
+			/// <param name="checkpoint">Capture checkpoint in <see cref="Match"/>.</param>
+			/// <param name="syntaxIndex">Current syntax-list index.</param>
 			public SavePoint(int checkpoint, int syntaxIndex)
 			{
 				this.CheckPoint = checkpoint;
@@ -133,6 +147,11 @@ namespace ICSharpCode.Decompiler.IL.Patterns
 			backtrackingStack.Add(savepoint);
 		}
 
+		/// <summary>
+		/// Adds a savepoint that can restore both syntax position and capture state.
+		/// </summary>
+		/// <param name="match">Current match state used to record a rollback checkpoint.</param>
+		/// <param name="data">First restore-stack value associated with the savepoint.</param>
 		internal void AddSavePoint(ref Match match, int data)
 		{
 			var savepoint = new SavePoint(match.CheckPoint(), this.SyntaxIndex);
@@ -140,11 +159,20 @@ namespace ICSharpCode.Decompiler.IL.Patterns
 			AddSavePoint(savepoint);
 		}
 
+		/// <summary>
+		/// Returns a marker that identifies the current savepoint list length.
+		/// </summary>
+		/// <returns>Current number of savepoints, or <c>0</c> when no savepoints exist.</returns>
 		internal int GetSavePointStartMarker()
 		{
 			return backtrackingStack != null ? backtrackingStack.Count : 0;
 		}
 
+		/// <summary>
+		/// Pushes restore metadata to savepoints created after a start marker.
+		/// </summary>
+		/// <param name="startMarker">Start index previously returned by <see cref="GetSavePointStartMarker"/>.</param>
+		/// <param name="data">Restore payload value to append.</param>
 		internal void PushToSavePoints(int startMarker, int data)
 		{
 			if (backtrackingStack == null)
@@ -155,6 +183,10 @@ namespace ICSharpCode.Decompiler.IL.Patterns
 			}
 		}
 
+		/// <summary>
+		/// Pops the next restore value from the currently active restored savepoint.
+		/// </summary>
+		/// <returns>The next restore value, or <see langword="null"/> when no restored data remains.</returns>
 		internal int? PopFromSavePoint()
 		{
 			if (restoreStack == null || restoreStack.Count == 0)
