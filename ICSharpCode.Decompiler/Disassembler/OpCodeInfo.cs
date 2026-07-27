@@ -120,7 +120,7 @@ namespace ICSharpCode.Decompiler.Disassembler
 						encodedName = "No";
 						return encodedName;
 					case "readonly.":
-						encodedName = "Reaonly";
+						encodedName = "Readonly";
 						return encodedName;
 					case "tail.":
 						encodedName = "Tailcall";
