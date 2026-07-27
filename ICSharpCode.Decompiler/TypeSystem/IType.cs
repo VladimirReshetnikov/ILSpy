@@ -334,7 +334,6 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		IEnumerable<IMethod> GetAccessors(Predicate<IMethod>? filter = null, GetMemberOptions options = GetMemberOptions.None);
 	}
 
-	[Flags]
 	/// <summary>
 	/// Controls specialization and inheritance behavior for member-enumeration APIs on <see cref="IType"/>.
 	/// </summary>
@@ -342,6 +341,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	/// These flags are consumed by all <c>Get*</c> member-list methods (for example <see cref="IType.GetMethods(Predicate{IMethod}, GetMemberOptions)"/>)
 	/// and may be combined to tune whether callers receive inherited members and/or specialized wrappers.
 	/// </remarks>
+	[Flags]
 	public enum GetMemberOptions
 	{
 		/// <summary>

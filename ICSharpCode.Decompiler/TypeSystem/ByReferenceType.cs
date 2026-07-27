@@ -88,7 +88,6 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 	}
 
-	[Serializable]
 	/// <summary>
 	/// Represents an unresolved type reference for a managed by-reference type.
 	/// </summary>
@@ -96,6 +95,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	/// This type preserves unresolved metadata shape and constructs the concrete <see cref="ByReferenceType"/>
 	/// only when <see cref="Resolve"/> is invoked against a resolution context.
 	/// </remarks>
+	[Serializable]
 	public sealed class ByReferenceTypeReference : ITypeReference, ISupportsInterning
 	{
 		readonly ITypeReference elementType;

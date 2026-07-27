@@ -81,10 +81,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 	}
 
-	[Serializable]
 	/// <summary>
 	/// Represents an unresolved type reference for an unmanaged pointer type.
 	/// </summary>
+	[Serializable]
 	public sealed class PointerTypeReference : ITypeReference, ISupportsInterning
 	{
 		readonly ITypeReference elementType;

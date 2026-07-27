@@ -238,7 +238,6 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 	}
 
-	[Serializable]
 	/// <summary>
 	/// Represents an unresolved reference to an array type.
 	/// </summary>
@@ -246,6 +245,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	/// Use this type while decoding metadata signatures before an <see cref="ITypeResolveContext"/> is available.
 	/// <see cref="Resolve"/> materializes the corresponding <see cref="ArrayType"/>.
 	/// </remarks>
+	[Serializable]
 	public sealed class ArrayTypeReference : ITypeReference, ISupportsInterning
 	{
 		readonly ITypeReference elementType;
