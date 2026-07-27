@@ -200,6 +200,19 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		public string ReflectionName => $"{DeclaringType?.ReflectionName}.{Name}";
 		public string Namespace => DeclaringType?.Namespace ?? string.Empty;
 
+		volatile IReadOnlyList<string> erasedModifiers;
+
+		/// <summary>
+		/// The custom modifiers on this field's type that C# has no syntax for. Empty when there are
+		/// none; reading it decodes the signature if that has not happened yet.
+		/// </summary>
+		public IReadOnlyList<string> ErasedModifiers {
+			get {
+				_ = this.Type;
+				return erasedModifiers ?? Empty<string>.Array;
+			}
+		}
+
 		public bool IsVolatile {
 			get {
 				if (LazyInit.VolatileRead(ref this.type) == null)
@@ -233,9 +246,16 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				{
 					Volatile.Write(ref this.isVolatile, true);
 				}
+				var erased = new List<string>();
 				ty = ApplyAttributeTypeVisitor.ApplyAttributesToType(ty, Compilation,
 					fieldDef.GetCustomAttributes(), metadata, module.OptionsForEntity(this),
-					DeclaringTypeDefinition?.NullableContext ?? Nullability.Oblivious);
+					DeclaringTypeDefinition?.NullableContext ?? Nullability.Oblivious,
+					erasedModifiers: erased);
+				// 'volatile' is the one custom modifier C# can say; the rest have no syntax at all, so
+				// keep them for whoever writes the declaration.
+				erased.RemoveAll(m => m.EndsWith("(System.Runtime.CompilerServices.IsVolatile)", StringComparison.Ordinal));
+				if (erased.Count > 0)
+					this.erasedModifiers = erased;
 			}
 			catch (BadImageFormatException)
 			{

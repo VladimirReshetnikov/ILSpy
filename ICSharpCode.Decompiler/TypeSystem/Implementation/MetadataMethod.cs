@@ -204,11 +204,12 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			IType returnType;
 			IParameter[] parameters;
 			ModifiedType mod;
+			IReadOnlyList<string> erasedReturn;
 			try
 			{
 				var nullableContext = methodDef.GetCustomAttributes().GetNullableContext(module.metadata) ?? DeclaringTypeDefinition.NullableContext;
 				var signature = methodDef.DecodeSignature(module.TypeProvider, genericContext);
-				(returnType, parameters, mod) = DecodeSignature(module, this, signature,
+				(returnType, parameters, mod, erasedReturn) = DecodeSignature(module, this, signature,
 					methodDef.GetParameters(), nullableContext, module.OptionsForEntity(this));
 			}
 			catch (BadImageFormatException)
@@ -216,13 +217,27 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				returnType = SpecialType.UnknownType;
 				parameters = Empty<IParameter>.Array;
 				mod = null;
+				erasedReturn = Empty<string>.Array;
 			}
+			this.erasedReturnModifiers = erasedReturn;
 			this.isInitOnly = mod is { Modifier: { Name: "IsExternalInit", Namespace: "System.Runtime.CompilerServices" } };
 			LazyInit.GetOrSet(ref this.returnType, returnType);
 			LazyInit.GetOrSet(ref this.parameters, parameters);
 		}
 
-		internal static (IType returnType, IParameter[] parameters, ModifiedType returnTypeModifier) DecodeSignature(
+		/// <summary>
+		/// Keeps only the custom modifiers C# has no syntax for. The rest of them it does say -- an
+		/// 'in' parameter, an init-only setter, a volatile field -- and saying so twice would be noise.
+		/// </summary>
+		static IReadOnlyList<string> FilterRepresentableModifiers(List<string> modifiers)
+		{
+			modifiers.RemoveAll(m => m.EndsWith("(System.Runtime.InteropServices.InAttribute)", StringComparison.Ordinal)
+				|| m.EndsWith("(System.Runtime.CompilerServices.IsExternalInit)", StringComparison.Ordinal)
+				|| m.EndsWith("(System.Runtime.CompilerServices.IsVolatile)", StringComparison.Ordinal));
+			return modifiers.Count == 0 ? Empty<string>.Array : modifiers;
+		}
+
+		internal static (IType returnType, IParameter[] parameters, ModifiedType returnTypeModifier, IReadOnlyList<string> erasedReturnModifiers) DecodeSignature(
 			MetadataModule module, IParameterizedMember owner,
 			MethodSignature<IType> signature, ParameterHandleCollection? parameterHandles,
 			Nullability nullableContext, TypeSystemOptions typeSystemOptions,
@@ -265,10 +280,14 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 								referenceKind: parameterType.Kind == TypeKind.ByReference ? ReferenceKind.Ref : ReferenceKind.None);
 							i++;
 						}
+						var erasedForParameter = new List<string>();
 						parameterType = ApplyAttributeTypeVisitor.ApplyAttributesToType(
 							signature.ParameterTypes[i], module.Compilation,
-							par.GetCustomAttributes(), metadata, typeSystemOptions, nullableContext);
-						parameters[i] = new MetadataParameter(module, owner, parameterType, parameterHandle);
+							par.GetCustomAttributes(), metadata, typeSystemOptions, nullableContext,
+							erasedModifiers: erasedForParameter);
+						parameters[i] = new MetadataParameter(module, owner, parameterType, parameterHandle) {
+							ErasedModifiers = FilterRepresentableModifiers(erasedForParameter)
+						};
 						i++;
 					}
 				}
@@ -287,12 +306,27 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				i++;
 			}
 			Debug.Assert(i == parameters.Length);
+			var erasedForReturn = new List<string>();
 			var returnType = ApplyAttributeTypeVisitor.ApplyAttributesToType(signature.ReturnType,
 				module.Compilation, returnTypeAttributes, metadata, typeSystemOptions, nullableContext,
-				additionalAttributes: additionalReturnTypeAttributes);
-			return (returnType, parameters, signature.ReturnType as ModifiedType);
+				additionalAttributes: additionalReturnTypeAttributes,
+				erasedModifiers: erasedForReturn);
+			return (returnType, parameters, signature.ReturnType as ModifiedType,
+				FilterRepresentableModifiers(erasedForReturn));
 		}
 		#endregion
+
+		volatile IReadOnlyList<string> erasedReturnModifiers;
+
+		/// <summary>
+		/// The custom modifiers on this method's return type that C# has no syntax for.
+		/// </summary>
+		public IReadOnlyList<string> ErasedReturnModifiers {
+			get {
+				_ = this.ReturnType;
+				return erasedReturnModifiers ?? Empty<string>.Array;
+			}
+		}
 
 		public bool IsExplicitInterfaceImplementation {
 			get {

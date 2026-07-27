@@ -34,6 +34,11 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		readonly ParameterAttributes attributes;
 
 		public IType Type { get; }
+
+		/// <summary>
+		/// The custom modifiers on this parameter's type that C# has no syntax for.
+		/// </summary>
+		public IReadOnlyList<string> ErasedModifiers { get; set; } = Empty<string>.Array;
 		public IParameterizedMember Owner { get; }
 
 		// lazy-loaded:

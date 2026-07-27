@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
@@ -42,7 +43,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			TypeSystemOptions options,
 			Nullability nullableContext,
 			bool typeChildrenOnly = false,
-			SRM.CustomAttributeHandleCollection? additionalAttributes = null)
+			SRM.CustomAttributeHandleCollection? additionalAttributes = null,
+			ICollection<string> erasedModifiers = null)
 		{
 			bool hasDynamicAttribute = false;
 			bool[] dynamicAttributeData = null;
@@ -141,13 +143,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				}
 			}
 			if (hasDynamicAttribute || hasNativeIntegersAttribute || nullability != Nullability.Oblivious || nullableAttributeData != null
+				|| erasedModifiers != null
 				|| (options & (TypeSystemOptions.Tuple | TypeSystemOptions.KeepModifiers)) != TypeSystemOptions.KeepModifiers)
 			{
 				var visitor = new ApplyAttributeTypeVisitor(
 					compilation, hasDynamicAttribute, dynamicAttributeData,
 					hasNativeIntegersAttribute, nativeIntegersAttributeData,
 					options, tupleElementNames,
-					nullability, nullableAttributeData
+					nullability, nullableAttributeData, erasedModifiers
 				);
 				if (typeChildrenOnly)
 				{
@@ -177,6 +180,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		readonly bool hasNativeIntegersAttribute;
 		readonly bool[] nativeIntegersAttributeData;
 		readonly TypeSystemOptions options;
+		/// <summary>
+		/// Collects the custom modifiers this visitor erases. C# has no syntax for one, so a caller
+		/// that wants to say what the metadata held has to be told what went missing.
+		/// </summary>
+		readonly ICollection<string> erasedModifiers;
 		readonly string[] tupleElementNames;
 		readonly Nullability defaultNullability;
 		readonly Nullability[] nullableAttributeData;
@@ -189,7 +197,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			bool hasDynamicAttribute, bool[] dynamicAttributeData,
 			bool hasNativeIntegersAttribute, bool[] nativeIntegersAttributeData,
 			TypeSystemOptions options, string[] tupleElementNames,
-			Nullability defaultNullability, Nullability[] nullableAttributeData)
+			Nullability defaultNullability, Nullability[] nullableAttributeData,
+			ICollection<string> erasedModifiers = null)
 		{
 			this.compilation = compilation ?? throw new ArgumentNullException(nameof(compilation));
 			this.hasDynamicAttribute = hasDynamicAttribute;
@@ -197,6 +206,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.hasNativeIntegersAttribute = hasNativeIntegersAttribute;
 			this.nativeIntegersAttributeData = nativeIntegersAttributeData;
 			this.options = options;
+			this.erasedModifiers = erasedModifiers;
 			this.tupleElementNames = tupleElementNames;
 			this.defaultNullability = defaultNullability;
 			this.nullableAttributeData = nullableAttributeData;
@@ -207,8 +217,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			dynamicTypeIndex++;
 			if ((options & TypeSystemOptions.KeepModifiers) != 0)
 				return base.VisitModOpt(type);
-			else
-				return type.ElementType.AcceptVisitor(this);
+			erasedModifiers?.Add("modopt(" + type.Modifier.FullName + ")");
+			return type.ElementType.AcceptVisitor(this);
 		}
 
 		public override IType VisitModReq(ModifiedType type)
@@ -216,8 +226,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			dynamicTypeIndex++;
 			if ((options & TypeSystemOptions.KeepModifiers) != 0)
 				return base.VisitModReq(type);
-			else
-				return type.ElementType.AcceptVisitor(this);
+			erasedModifiers?.Add("modreq(" + type.Modifier.FullName + ")");
+			return type.ElementType.AcceptVisitor(this);
 		}
 
 		public override IType VisitPointerType(PointerType type)

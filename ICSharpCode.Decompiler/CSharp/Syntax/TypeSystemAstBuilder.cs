@@ -782,7 +782,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			if (CommentOutUnrepresentableMetadata
 				&& attribute is global::ICSharpCode.Decompiler.TypeSystem.Implementation.AttributeWithUnrepresentableFields { Unrepresentable: { Length: > 0 } unrepresentable })
 			{
-				attr.AddTrailingTrivia(new Comment(" " + unrepresentable + ", which C# cannot declare",
+				attr.AddTrailingTrivia(new Comment(" " + unrepresentable,
 					CommentType.MultiLine));
 			}
 			attr.Type = ConvertAttributeType(attribute.AttributeType);
@@ -2043,6 +2043,15 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			if (parameter == null)
 				throw new ArgumentNullException(nameof(parameter));
 			ParameterDeclaration decl = new ParameterDeclaration();
+			// A custom modifier is part of the parameter's type in metadata and C# has no syntax for
+			// one, so say what was there.
+			if (CommentOutUnrepresentableMetadata
+				&& parameter is global::ICSharpCode.Decompiler.TypeSystem.Implementation.MetadataParameter { ErasedModifiers.Count: > 0 } metadataParameter)
+			{
+				decl.AddLeadingTrivia(new Comment(
+					" " + string.Join(", ", metadataParameter.ErasedModifiers) + " on the type",
+					CommentType.MultiLine));
+			}
 			decl.ParameterModifier = parameter.ReferenceKind;
 			decl.IsParams = parameter.IsParams;
 			decl.IsScopedRef = parameter.Lifetime.ScopedRef;
@@ -2263,7 +2272,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					foreach (var attribute in notRepresentable)
 					{
 						decl.AddLeadingTrivia(new Comment(
-							" attribute not valid on this declaration, which C# cannot declare: ["
+							" attribute not valid on this declaration: ["
 							+ DescribeAttribute(attribute) + "]"));
 					}
 				}
@@ -2356,13 +2365,13 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 						{
 							decl.AddLeadingTrivia(new Comment(
 								" attribute on " + d.Name + "." + method.Name
-								+ ", which C# cannot declare: [" + DescribeAttribute(attribute) + "]"));
+								+ ": [" + DescribeAttribute(attribute) + "]"));
 						}
 					}
 					foreach (var attribute in notRepresentable)
 					{
 						decl.AddLeadingTrivia(new Comment(
-							" attribute not valid on this declaration, which C# cannot declare: ["
+							" attribute not valid on this declaration: ["
 							+ DescribeAttribute(attribute) + "]"));
 					}
 				}
@@ -2408,6 +2417,15 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		FieldDeclaration ConvertField(IField field)
 		{
 			FieldDeclaration decl = new FieldDeclaration();
+			// A custom modifier is part of the field's type in metadata and C# has no syntax for one,
+			// so say what was there rather than let the type read as though it never carried it.
+			if (CommentOutUnrepresentableMetadata
+				&& field is global::ICSharpCode.Decompiler.TypeSystem.Implementation.MetadataField metadataField
+				&& metadataField.ErasedModifiers.Count > 0)
+			{
+				decl.AddLeadingTrivia(new Comment(
+					" " + string.Join(", ", metadataField.ErasedModifiers) + " on the type"));
+			}
 			if (ShowModifiers)
 			{
 				Modifiers m = GetMemberModifiers(field);
@@ -2712,6 +2730,13 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		MethodDeclaration ConvertMethod(IMethod method)
 		{
 			MethodDeclaration decl = new MethodDeclaration();
+			if (CommentOutUnrepresentableMetadata
+				&& method is global::ICSharpCode.Decompiler.TypeSystem.Implementation.MetadataMethod { ErasedReturnModifiers.Count: > 0 } metadataMethod)
+			{
+				decl.AddLeadingTrivia(new Comment(
+					" " + string.Join(", ", metadataMethod.ErasedReturnModifiers)
+					+ " on the return type"));
+			}
 			decl.Modifiers = GetMemberModifiers(method);
 			if (ShowAttributes)
 			{
