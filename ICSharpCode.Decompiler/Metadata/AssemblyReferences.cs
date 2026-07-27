@@ -427,8 +427,8 @@ namespace ICSharpCode.Decompiler.Metadata
 		/// The token bytes, or <see langword="null"/> when the reference has no public-key or token blob.
 		/// </returns>
 		/// <remarks>
-		/// If metadata stores a full public key (<see cref="AssemblyFlags.PublicKey"/>), the token is computed by
-		/// taking the SHA-1 hash and returning its final 8 bytes in hash byte order.
+		/// If metadata stores a full public key (<see cref="AssemblyFlags.PublicKey"/>), the token is the last
+		/// 8 bytes of its SHA-1 hash in reverse order, which is the form the runtime and the GAC layout use.
 		/// </remarks>
 		public byte[]? GetPublicKeyToken()
 		{
@@ -442,7 +442,7 @@ namespace ICSharpCode.Decompiler.Metadata
 				{
 					byte[] hash = new byte[20];
 					Sha1ForNonSecretPurposes.HashData(bytes, hash);
-					bytes = hash.Skip(12).ToArray();
+					bytes = hash.Skip(12).Reverse().ToArray();
 				}
 
 				publicKeyToken = bytes;
