@@ -325,10 +325,10 @@ namespace ICSharpCode.Decompiler
 		/// </summary>
 		/// <param name="collapsedText">Collapsed placeholder text.</param>
 		/// <param name="defaultCollapsed">Whether viewers should collapse the region by default.</param>
-		/// <param name="isDefinition">Not forwarded to the target output when the buffer is committed.</param>
+		/// <param name="isDefinition">Whether the region encloses a definition.</param>
 		public void MarkFoldStart(string collapsedText = "...", bool defaultCollapsed = false, bool isDefinition = false)
 		{
-			actions.Add(target => target.MarkFoldStart(collapsedText, defaultCollapsed));
+			actions.Add(target => target.MarkFoldStart(collapsedText, defaultCollapsed, isDefinition));
 		}
 
 		/// <summary>
@@ -371,20 +371,23 @@ namespace ICSharpCode.Decompiler
 		/// <param name="text">The text to emit when committed.</param>
 		/// <param name="reference">Identity object connecting the local's definition and uses.</param>
 		/// <param name="isDefinition">Whether this token introduces the local reference.</param>
-		/// <param name="isHoverOnly">Not forwarded to the target output when the buffer is committed.</param>
+		/// <param name="isHoverOnly">
+		/// Whether the reference should only carry a hover tooltip and take no part in highlighting the
+		/// local's definition and uses.
+		/// </param>
 		public void WriteLocalReference(string text, object reference, bool isDefinition = false, bool isHoverOnly = false)
 		{
-			actions.Add(target => target.WriteLocalReference(text, reference, isDefinition));
+			actions.Add(target => target.WriteLocalReference(text, reference, isDefinition, isHoverOnly));
 		}
 
 		/// <summary>
 		/// Buffers an opcode reference write.
 		/// </summary>
 		/// <param name="opCode">The opcode to emit when committed.</param>
-		/// <param name="omitSuffix">Not forwarded to the target output when the buffer is committed.</param>
+		/// <param name="omitSuffix">Whether the trailing opcode suffix should be omitted.</param>
 		public void WriteReference(OpCodeInfo opCode, bool omitSuffix = false)
 		{
-			actions.Add(target => target.WriteReference(opCode));
+			actions.Add(target => target.WriteReference(opCode, omitSuffix));
 		}
 
 		/// <summary>
