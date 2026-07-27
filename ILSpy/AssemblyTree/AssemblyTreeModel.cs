@@ -604,12 +604,26 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 		/// Walks down from <see cref="Root"/> matching each path segment against
 		/// <see cref="object.ToString"/>, expanding lazy children along the way.
 		/// </summary>
+		/// <param name="path">Path segments previously produced by <see cref="GetPathForNode"/>.</param>
+		/// <param name="returnBestMatch">
+		/// <see langword="true"/> to return the deepest existing ancestor when an exact match is unavailable;
+		/// otherwise return <see langword="null"/> for incomplete matches.
+		/// </param>
+		/// <returns>
+		/// The matching node, the best match, or <see langword="null"/>, depending on
+		/// <paramref name="returnBestMatch"/>.
+		/// </returns>
 		public SharpTreeNode? FindNodeByPath(string[]? path, bool returnBestMatch)
 			=> TreeNodeLocator.FindNodeByPath(Root, path, returnBestMatch);
 
 		/// <summary>
 		/// The path of <paramref name="node"/>'s ancestors (root excluded), in root-first order.
 		/// </summary>
+		/// <param name="node">The node for which to produce a stable selection path.</param>
+		/// <returns>
+		/// A root-to-node path excluding the synthetic root, or <see langword="null"/> when
+		/// <paramref name="node"/> is <see langword="null"/>.
+		/// </returns>
 		public static string[]? GetPathForNode(SharpTreeNode? node)
 			=> TreeNodeLocator.GetPathForNode(node);
 

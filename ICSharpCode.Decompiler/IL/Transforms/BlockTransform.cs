@@ -113,7 +113,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 	}
 
 	/// <summary>
-	/// Runs configured <see cref="IBlockTransform"/> passes over every block in a function.
+	/// Runs configured <see cref="IBlockTransform"/> passes over the reachable blocks of a function.
 	/// </summary>
 	/// <remarks>
 	/// The transform walks each <see cref="BlockContainer"/> along its dominator tree, executing

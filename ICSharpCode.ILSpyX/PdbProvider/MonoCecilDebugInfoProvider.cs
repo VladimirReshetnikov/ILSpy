@@ -150,7 +150,14 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 			return name != null;
 		}
 
-		/// <inheritdoc />
+		/// <summary>
+		/// Always fails: Mono.Cecil's Windows PDB reader exposes neither tuple element names nor dynamic
+		/// flags, so no extra type information can be recovered from this symbol format.
+		/// </summary>
+		/// <param name="method">Ignored.</param>
+		/// <param name="index">Ignored.</param>
+		/// <param name="extraTypeInfo">Always set to <see langword="default"/>.</param>
+		/// <returns>Always <see langword="false"/>.</returns>
 		public bool TryGetExtraTypeInfo(SRM.MethodDefinitionHandle method, int index, out PdbExtraTypeInfo extraTypeInfo)
 		{
 			// Mono.Cecil's WindowsPDB reader is unable to read tuple element names

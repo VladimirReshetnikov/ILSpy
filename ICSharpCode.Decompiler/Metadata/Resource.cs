@@ -100,13 +100,19 @@ namespace ICSharpCode.Decompiler.Metadata
 			this.data = data ?? throw new ArgumentNullException(nameof(data));
 		}
 
-		/// <inheritdoc />
+		/// <summary>
+		/// Opens the in-memory payload for reading. Always succeeds.
+		/// </summary>
+		/// <returns>A readable stream over the backing array.</returns>
 		public override Stream TryOpenStream()
 		{
 			return new MemoryStream(data);
 		}
 
-		/// <inheritdoc />
+		/// <summary>
+		/// Gets the payload length. Always succeeds.
+		/// </summary>
+		/// <returns>The length of the backing array in bytes.</returns>
 		public override long? TryGetLength()
 		{
 			return data.Length;

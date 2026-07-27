@@ -59,7 +59,8 @@ namespace ICSharpCode.ILSpyX.Search
 	}
 
 	/// <summary>
-	/// Captures immutable options and collaborators used to execute a search pass.
+	/// Captures the options and collaborators used to execute a search pass. The fields are plain and
+	/// writable; callers populate them once and then treat the value as read-only by convention.
 	/// </summary>
 	public struct SearchRequest
 	{

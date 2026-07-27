@@ -60,7 +60,7 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// <param name="parameter">The bound parameter.</param>
 		/// <param name="argument">The resolved argument expression.</param>
 		/// <param name="member">The resolved callable member that owns <paramref name="parameter"/>.</param>
-		/// <exception cref="ArgumentNullException"><paramref name="parameter"/> or <paramref name="argument"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentNullException"><paramref name="parameter"/> is <see langword="null"/>.</exception>
 		public NamedArgumentResolveResult(IParameter parameter, ResolveResult argument, IParameterizedMember member = null)
 			: base(argument.Type)
 		{
@@ -79,7 +79,7 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// </summary>
 		/// <param name="parameterName">The argument name written in source.</param>
 		/// <param name="argument">The resolved argument expression.</param>
-		/// <exception cref="ArgumentNullException"><paramref name="parameterName"/> or <paramref name="argument"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentNullException"><paramref name="parameterName"/> is <see langword="null"/>.</exception>
 		public NamedArgumentResolveResult(string parameterName, ResolveResult argument)
 			: base(argument.Type)
 		{

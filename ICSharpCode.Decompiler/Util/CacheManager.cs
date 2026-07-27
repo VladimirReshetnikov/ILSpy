@@ -76,7 +76,7 @@ namespace ICSharpCode.Decompiler.Util
 		/// <param name="key">Identity key used for lookup.</param>
 		/// <param name="value">Value to publish if no entry exists yet.</param>
 		/// <returns>The existing or newly stored value associated with <paramref name="key"/>.</returns>
-		/// <exception cref="ArgumentNullException"><paramref name="key"/> or <paramref name="value"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentNullException"><paramref name="key"/> is <see langword="null"/>.</exception>
 		public object GetOrAddShared(object key, object value)
 		{
 			return sharedDict.GetOrAdd(key, value);
@@ -87,7 +87,7 @@ namespace ICSharpCode.Decompiler.Util
 		/// </summary>
 		/// <param name="key">Identity key used for lookup.</param>
 		/// <param name="value">Value to store.</param>
-		/// <exception cref="ArgumentNullException"><paramref name="key"/> or <paramref name="value"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentNullException"><paramref name="key"/> is <see langword="null"/>.</exception>
 		public void SetShared(object key, object value)
 		{
 			sharedDict[key] = value;

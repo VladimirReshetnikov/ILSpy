@@ -73,8 +73,14 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	}
 
 	/// <summary>
+	/// Represents one interpolation hole inside an interpolated string body.
 	/// <c>interpolation ::= '{' expression ( ',' alignment )? ( ':' format )? '}'</c> (C# grammar section 12.8.3)
 	/// </summary>
+	/// <remarks>
+	/// <see cref="Alignment"/> and <see cref="Suffix"/> are values carried over from the IL string-format
+	/// pattern rather than child nodes. Only <see cref="Expression"/> occupies a slot, so pattern matching
+	/// compares the embedded expression subtree and ignores the alignment and format suffix.
+	/// </remarks>
 	[DecompilerAstNode]
 	public sealed partial class Interpolation : InterpolatedStringContent
 	{

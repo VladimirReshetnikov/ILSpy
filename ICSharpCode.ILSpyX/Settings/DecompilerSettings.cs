@@ -29,8 +29,9 @@ namespace ICSharpCode.ILSpyX.Settings
 	/// </summary>
 	/// <remarks>
 	/// <para>
-	/// Only options marked as browsable in the base decompiler settings type are serialized.
-	/// This keeps the persisted payload focused on UI-exposed toggles and avoids storing internal or unsupported switches.
+	/// Options of the base decompiler settings type are serialized unless they are explicitly marked
+	/// non-browsable. This keeps the persisted payload focused on UI-exposed toggles and avoids storing
+	/// switches that were deliberately hidden.
 	/// </para>
 	/// <para>
 	/// The persisted values are represented as XML attributes whose names match the corresponding setting property names.

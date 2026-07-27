@@ -61,7 +61,11 @@ namespace ICSharpCode.Decompiler.Util
 		/// </summary>
 		/// <param name="input1">First source sequence.</param>
 		/// <param name="input2">Second source sequence.</param>
-		/// <returns>A lazy sequence of <c>(index, first, second)</c> tuples.</returns>
+		/// <returns>
+		/// A lazy sequence of <c>(index, first, second)</c> tuples. The index counter lives outside the deferred
+		/// query, so the result is single-use: enumerating it a second time continues numbering where the first
+		/// enumeration stopped.
+		/// </returns>
 		public static IEnumerable<(int, A, B)> ZipWithIndex<A, B>(this IEnumerable<A> input1, IEnumerable<B> input2)
 		{
 			int index = 0;

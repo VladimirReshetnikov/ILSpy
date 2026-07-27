@@ -94,7 +94,8 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 		/// <summary>
-		/// Gets a point-in-time snapshot of all tracked reference diagnostics.
+		/// Gets a point-in-time list of all tracked reference diagnostics. The list itself is a copy, but the
+		/// entries in it are the live objects this instance keeps appending messages to.
 		/// </summary>
 		public IReadOnlyList<UnresolvedAssemblyNameReference> Entries {
 			get {

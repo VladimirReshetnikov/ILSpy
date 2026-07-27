@@ -188,7 +188,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		/// <param name="index">Zero-based generic parameter index.</param>
 		/// <returns>The bound type argument at <paramref name="index"/>.</returns>
-		/// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is outside the valid range.</exception>
+		/// <exception cref="IndexOutOfRangeException">
+		/// <paramref name="index"/> is negative or not less than <see cref="TypeArguments"/>.Count.
+		/// </exception>
 		public IType GetTypeArgument(int index)
 		{
 			return typeArguments[index];

@@ -37,7 +37,7 @@ namespace ICSharpCode.Decompiler.Util
 	/// Mutating APIs follow the usual read-only collection behavior:
 	/// <list type="bullet">
 	/// <item><description>indexers throw <see cref="ArgumentOutOfRangeException"/> because no valid position exists,</description></item>
-	/// <item><description>insertion and addition members throw <see cref="NotSupportedException"/>, while removal returns <see langword="false"/>,</description></item>
+	/// <item><description>members that would add or remove by position throw <see cref="NotSupportedException"/>, while <see cref="ICollection{T}.Remove"/> simply returns <see langword="false"/>,</description></item>
 	/// <item><description><see cref="ICollection{T}.Clear"/> is a no-op because the collection is already empty.</description></item>
 	/// </list>
 	/// </para>

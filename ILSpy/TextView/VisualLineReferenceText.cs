@@ -53,9 +53,18 @@ namespace ICSharpCode.ILSpy.TextView
 			this.referenceSegment = referenceSegment;
 		}
 
+		/// <summary>
+		/// Creates another reference-aware text run for split visual lines.
+		/// </summary>
+		/// <param name="length">Length of the new visual text run.</param>
+		/// <returns>A new <see cref="VisualLineReferenceText"/> bound to the same reference.</returns>
 		protected override VisualLineText CreateInstance(int length)
 			=> new VisualLineReferenceText(ParentVisualLine, length, parent, referenceSegment);
 
+		/// <summary>
+		/// Sets the mouse cursor to indicate whether the reference navigates elsewhere.
+		/// </summary>
+		/// <param name="e">Pointer event data carrying the element under the cursor.</param>
 		protected override void OnQueryCursor(PointerEventArgs e)
 		{
 			if (e.Source is InputElement inputElement)

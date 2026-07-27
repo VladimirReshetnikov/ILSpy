@@ -503,9 +503,12 @@ namespace ICSharpCode.ILSpyX.TreeView
 		}
 
 		/// <summary>
-		/// Enumerates visible descendants in pre-order.
+		/// Enumerates this node and its visible descendants in pre-order.
 		/// </summary>
-		/// <returns>A pre-order sequence of currently visible descendants.</returns>
+		/// <returns>
+		/// A pre-order sequence beginning with this node, followed by the descendants reachable through
+		/// visible children.
+		/// </returns>
 		public IEnumerable<SharpTreeNode> VisibleDescendantsAndSelf()
 		{
 			return TreeTraversal.PreOrder(this, n => n.Children.Where(c => c.isVisible));

@@ -320,7 +320,10 @@ namespace ICSharpCode.Decompiler.Disassembler
 		/// <param name="handle">Type definition token to format.</param>
 		/// <param name="rawTypeKind">Raw signature kind byte (class/valuetype qualifier) from the blob.</param>
 		/// <returns>A writer that emits optional <c>class</c>/<c>valuetype</c> prefix and the referenced type.</returns>
-		/// <exception cref="BadImageFormatException"><paramref name="rawTypeKind"/> contains an unknown discriminator value.</exception>
+		/// <remarks>
+		/// The returned action throws <see cref="BadImageFormatException"/> when it is invoked, if
+		/// <paramref name="rawTypeKind"/> holds an unknown discriminator value. The call itself never throws.
+		/// </remarks>
 		public Action<ILNameSyntax> GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind)
 		{
 			return syntax => {
@@ -348,7 +351,10 @@ namespace ICSharpCode.Decompiler.Disassembler
 		/// <param name="handle">Type reference token to format.</param>
 		/// <param name="rawTypeKind">Raw signature kind byte (class/valuetype qualifier) from the blob.</param>
 		/// <returns>A writer that emits optional <c>class</c>/<c>valuetype</c> prefix and the referenced type.</returns>
-		/// <exception cref="BadImageFormatException"><paramref name="rawTypeKind"/> contains an unknown discriminator value.</exception>
+		/// <remarks>
+		/// The returned action throws <see cref="BadImageFormatException"/> when it is invoked, if
+		/// <paramref name="rawTypeKind"/> holds an unknown discriminator value. The call itself never throws.
+		/// </remarks>
 		public Action<ILNameSyntax> GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind)
 		{
 			return syntax => {
