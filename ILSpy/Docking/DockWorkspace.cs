@@ -438,7 +438,7 @@ namespace ICSharpCode.ILSpy.Docking
 		/// Every decompiler tab model across all document docks, including docks in floating
 		/// windows: the preview tab, frozen tabs, and static-content pages alike. Callers
 		/// that must skip static content (e.g. output refreshes) filter on
-		/// <see cref="TextView.DecompilerTabPageModel.IsStaticContent"/> themselves.
+		/// <see cref="ViewModels.ContentPageModel.IsStaticContent"/> themselves.
 		/// </summary>
 		IEnumerable<TextView.DecompilerTabPageModel> AllDecompilerTabs()
 		{
@@ -519,7 +519,7 @@ namespace ICSharpCode.ILSpy.Docking
 		/// <summary>
 		/// Records a static-page entry (e.g. About) into the navigation history. The caller
 		/// has already opened <paramref name="tab"/> via <see cref="OpenNewTab"/>. The tab
-		/// should have <see cref="DecompilerTabPageModel.IsStaticContent"/> set so that
+		/// should have <see cref="ContentPageModel.IsStaticContent"/> set so that
 		/// subsequent tree-node selections route to a different tab and leave it intact.
 		/// </summary>
 		public void RecordStaticPage(TabPageModel tab, Uri uri)

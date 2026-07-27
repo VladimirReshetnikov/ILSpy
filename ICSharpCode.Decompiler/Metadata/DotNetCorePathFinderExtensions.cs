@@ -259,7 +259,9 @@ namespace ICSharpCode.Decompiler.Metadata
 		/// <see langword="true"/> if the assembly is marked as reference-only or stored in a known reference-assembly path;
 		/// otherwise, <see langword="false"/>.
 		/// </returns>
-		/// <exception cref="ArgumentNullException"><paramref name="metadata"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentNullException">
+		/// <paramref name="metadata"/> or <paramref name="assemblyPath"/> is <see langword="null"/>.
+		/// </exception>
 		public static bool IsReferenceAssembly(this MetadataReader metadata, string assemblyPath)
 		{
 			if (metadata == null)

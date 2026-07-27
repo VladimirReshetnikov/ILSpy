@@ -33,8 +33,8 @@ namespace ICSharpCode.ILSpyX.TreeView
 	/// </summary>
 	/// <remarks>
 	/// <para>
-	/// The node is UI-agnostic and surfaces state used by both WPF and cross-platform hosts
-	/// (selection, expansion, drag/drop, and lazy-loading semantics).
+	/// The node is UI-agnostic and surfaces the state a host tree control binds to: selection, expansion,
+	/// drag/drop, and lazy-loading semantics.
 	/// </para>
 	/// <para>
 	/// Visible-node indexing is maintained by an internal flat-list structure implemented in another
@@ -45,11 +45,12 @@ namespace ICSharpCode.ILSpyX.TreeView
 	public partial class SharpTreeNode : INotifyPropertyChanged
 	{
 		/// <summary>
-		/// Installs the image provider used by tree nodes to resolve icon keys.
+		/// Gets the image provider that tree nodes use to resolve icon keys, or <see langword="null"/>
+		/// until <see cref="SetImagesProvider"/> has installed one.
 		/// </summary>
-		/// <param name="provider">The provider instance used by subsequent icon lookups.</param>
 		[AllowNull]
 		protected static ITreeNodeImagesProvider ImagesProvider { get; private set; }
+
 		/// <summary>
 		/// Sets the global image provider used by all <see cref="SharpTreeNode"/> instances.
 		/// </summary>
@@ -161,7 +162,7 @@ namespace ICSharpCode.ILSpyX.TreeView
 		}
 
 		/// <summary>
-		/// Gets navigation text used by keyboard search and accessibility fallbacks.
+		/// Gets the label used for this node in navigation history; defaults to <see cref="Text"/>.
 		/// </summary>
 		public virtual object? NavigationText {
 			get { return Text; }
@@ -426,7 +427,8 @@ namespace ICSharpCode.ILSpyX.TreeView
 		bool canExpandRecursively = true;
 
 		/// <summary>
-		/// Gets whether this node can participate in recursive expand operations.
+		/// Gets whether this node can participate in recursive expand operations. Unless overridden, this is
+		/// <see langword="true"/> until the node uses lazy loading, and <see langword="false"/> from then on.
 		/// </summary>
 		public virtual bool CanExpandRecursively {
 			get { return canExpandRecursively; }
@@ -654,7 +656,7 @@ namespace ICSharpCode.ILSpyX.TreeView
 		#region Cut / Copy / Paste / Delete
 
 		/// <summary>
-		/// Gets whether the node is in a cut state.
+		/// Always returns <see langword="false"/>; cut and paste support is not implemented.
 		/// </summary>
 		public bool IsCut { get { return false; } }
 		/*

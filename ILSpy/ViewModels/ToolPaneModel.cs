@@ -34,7 +34,7 @@ namespace ICSharpCode.ILSpy.ViewModels
 	/// trees + search results are cheap to materialise (lazy loading handles deeper levels)
 	/// so eager realisation is the right tradeoff — same as <c>ContentTabPage</c>.
 	///
-	/// The ctor also pre-populates <see cref="Tool.DockCapabilityOverrides"/> with a
+	/// The ctor also pre-populates <see cref="IDockable.DockCapabilityOverrides"/> with a
 	/// default instance because the Dock theme template binds against
 	/// <c>ActiveDockable.DockCapabilityOverrides.CanPin</c> / <c>CanClose</c> (and similar)
 	/// the moment the pane chrome is realised. Without a non-null instance every pane

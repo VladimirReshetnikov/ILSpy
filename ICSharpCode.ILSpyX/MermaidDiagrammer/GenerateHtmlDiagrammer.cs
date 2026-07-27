@@ -39,13 +39,15 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 		public string? OutputFolder { get; set; }
 
 		/// <summary>
-		/// Gets or sets a regular expression that must match <c>Type.FullName</c> for a type
+		/// Gets or sets a regular expression that must match a type's
+		/// <see cref="ICSharpCode.Decompiler.TypeSystem.INamedElement.ReflectionName"/> for that type
 		/// to be included in the diagrammer model.
 		/// </summary>
 		public string? Include { get; set; }
 
 		/// <summary>
-		/// Gets or sets a regular expression that excludes matching <c>Type.FullName</c> values
+		/// Gets or sets a regular expression that excludes types whose
+		/// <see cref="ICSharpCode.Decompiler.TypeSystem.INamedElement.ReflectionName"/> it matches
 		/// from the diagrammer model after include filtering.
 		/// </summary>
 		public string? Exclude { get; set; }
@@ -63,7 +65,7 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 		public bool ReportExcludedTypes { get; set; }
 
 		/// <summary>
-		/// Gets or sets the path (or <c>file://</c> URI) to the XML documentation file used to
+		/// Gets or sets the path to the XML documentation file used to
 		/// annotate generated type and member entries.
 		/// When not set, the generator probes for a sibling <c>.xml</c> file next to <see cref="Assembly"/>.
 		/// </summary>

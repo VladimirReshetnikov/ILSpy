@@ -73,7 +73,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// The returned members are specialized with the substitution of <paramref name="member"/>, so generic type arguments remain
 		/// aligned with the original call site.
 		/// </remarks>
-		/// <exception cref="ArgumentNullException">Thrown when <paramref name="member"/> is <see langword="null"/>.</exception>
+		/// <exception cref="ArgumentNullException">
+		/// Thrown when the returned sequence is first enumerated and <paramref name="member"/> is <see langword="null"/>.
+		/// </exception>
 		public static IEnumerable<IMember> GetBaseMembers(IMember member, bool includeImplementedInterfaces)
 		{
 			if (member == null)

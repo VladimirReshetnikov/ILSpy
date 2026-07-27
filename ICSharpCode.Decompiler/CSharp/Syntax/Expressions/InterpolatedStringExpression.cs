@@ -73,7 +73,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	}
 
 	/// <summary>
-	/// <c>interpolation ::= '{' expression ( ',' alignment )? ( ':' format )? '}'</c> (C# grammar §12.8.3)
+	/// <c>interpolation ::= '{' expression ( ',' alignment )? ( ':' format )? '}'</c> (C# grammar section 12.8.3)
 	/// </summary>
 	[DecompilerAstNode]
 	public sealed partial class Interpolation : InterpolatedStringContent

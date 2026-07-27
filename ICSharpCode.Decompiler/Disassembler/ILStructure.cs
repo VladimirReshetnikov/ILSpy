@@ -327,10 +327,6 @@ namespace ICSharpCode.Decompiler.Disassembler
 		}
 
 		/// <summary>
-		/// Gets the innermost structure containing the specified offset.
-		/// </summary>
-
-		/// <summary>
 		/// Returns the deepest descendant that contains <paramref name="offset"/>.
 		/// </summary>
 		/// <param name="offset">Instruction offset that must lie within this node's range.</param>

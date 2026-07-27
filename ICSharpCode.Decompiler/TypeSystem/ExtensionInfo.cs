@@ -292,7 +292,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <param name="extensionGroup">
 		/// On success, the marker method and extension-block type parameters declared by <paramref name="td"/>.
 		/// </param>
-		/// <returns><see langword="true"/> when the type participates in this extension map; otherwise <see langword="false"/>.</returns>
+		/// <returns>
+		/// <see langword="true"/> when <paramref name="td"/> declares one of the compiler-generated
+		/// <c>&lt;Extension&gt;$</c> marker methods tracked by this map; otherwise <see langword="false"/>.
+		/// </returns>
 		public bool IsExtensionMarkerType(ITypeDefinition td, out (IMethod Marker, IReadOnlyList<ITypeParameter> TypeParameters) extensionGroup)
 		{
 			extensionGroup = default;
@@ -366,6 +369,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 
 		/// <summary>
 		/// Gets the compiler-generated nested type that contains metadata-only extension member signatures.
+		/// It declares the extension block's type parameters with minimal constraints; see
+		/// <see cref="ExtensionMarkerType"/> for the full-fidelity constraint set.
 		/// </summary>
 		public ITypeDefinition ExtensionGroupingType => ExtensionMember.DeclaringTypeDefinition!;
 

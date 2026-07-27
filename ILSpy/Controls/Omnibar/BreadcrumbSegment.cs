@@ -23,7 +23,7 @@ namespace ICSharpCode.ILSpy.Controls.Omnibar
 	/// <summary>
 	/// One crumb in the omnibar breadcrumb: a tree node rendered as icon + label. The
 	/// <see cref="Node"/> is the live <see cref="SharpTreeNode"/> the crumb stands for, so clicking
-	/// the crumb (or one of its <see cref="Children"/> from the chevron dropdown) navigates the
+	/// the crumb (or one of its <see cref="SharpTreeNode.Children"/> from the chevron dropdown) navigates the
 	/// assembly tree straight there. Used both for the trail itself and for the sibling entries the
 	/// chevron lists.
 	/// </summary>

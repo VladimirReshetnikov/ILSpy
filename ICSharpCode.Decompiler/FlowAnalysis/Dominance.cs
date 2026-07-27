@@ -34,8 +34,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 	/// higher-level flow analyses in the decompiler pipeline.
 	/// </para>
 	/// <para>
-	/// The APIs mutate dominance-related fields on <see cref="ControlFlowNode"/> instances in-place. Callers are expected to provide
-	/// a graph whose dominance bookkeeping fields are not already populated.
+	/// <see cref="ComputeDominance"/> mutates dominance-related fields on <see cref="ControlFlowNode"/> instances
+	/// in-place and expects a graph whose dominance bookkeeping fields are not already populated.
+	/// <see cref="FindCommonDominator"/> and <see cref="MarkNodesWithReachableExits"/> mutate nothing and require
+	/// dominance to have been computed already.
 	/// </para>
 	/// </remarks>
 	public static class Dominance
@@ -57,7 +59,7 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 		/// Postconditions:
 		/// </para>
 		/// <list type="bullet">
-		/// <item><description>Reachable nodes have populated <see cref="ControlFlowNode.ImmediateDominator"/>, <see cref="ControlFlowNode.DominatorTreeChildren"/>, and <see cref="ControlFlowNode.PostOrderNumber"/> values.</description></item>
+		/// <item><description>Every reachable node has populated <see cref="ControlFlowNode.DominatorTreeChildren"/> and <see cref="ControlFlowNode.PostOrderNumber"/> values, and every reachable node except <paramref name="entryPoint"/> has a non-null <see cref="ControlFlowNode.ImmediateDominator"/>; the entry point's stays <see langword="null"/>.</description></item>
 		/// <item><description>The synthetic self-dominator assigned to the entry during computation is cleared before returning.</description></item>
 		/// <item><description><see cref="ControlFlowNode.Visited"/> is reset to <see langword="false"/> on processed nodes.</description></item>
 		/// </list>

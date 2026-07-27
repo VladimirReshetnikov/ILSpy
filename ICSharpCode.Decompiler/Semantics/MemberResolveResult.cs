@@ -29,7 +29,8 @@ namespace ICSharpCode.Decompiler.Semantics
 	/// </summary>
 	/// <remarks>
 	/// <para>
-	/// This result shape is used for field, property, event, and constructor member semantics. Method-like calls are represented by
+	/// This result shape is used for field, property, event, method, and constructor member references. Invocations
+	/// additionally carry their arguments through
 	/// <see cref="InvocationResolveResult"/>, which extends this type with argument and initializer data.
 	/// </para>
 	/// <para>
@@ -165,7 +166,7 @@ namespace ICSharpCode.Decompiler.Semantics
 		}
 
 		/// <summary>
-		/// Gets the referenced member metadata.
+		/// Gets the referenced member metadata. This property never returns <see langword="null"/>.
 		/// </summary>
 		public IMember Member {
 			get { return member; }

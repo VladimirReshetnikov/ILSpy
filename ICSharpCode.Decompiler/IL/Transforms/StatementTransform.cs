@@ -69,7 +69,6 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		/// Initializes statement-transform context state for one block pass.
 		/// </summary>
 		/// <param name="blockContext">The parent block context for this pass.</param>
-		/// <exception cref="ArgumentNullException"><paramref name="blockContext"/> is <see langword="null"/>.</exception>
 		public StatementTransformContext(BlockTransformContext blockContext) : base(blockContext)
 		{
 			this.BlockContext = blockContext ?? throw new ArgumentNullException(nameof(blockContext));
@@ -85,7 +84,9 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		internal int? rerunPosition;
 
 		/// <summary>
-		/// Requests a restart of the statement-transform loop at a specific instruction index.
+		/// Requests that, once the current statement transform returns, the remaining transforms at the current
+		/// position are skipped and every statement transform, including the current one, runs again starting at
+		/// the specified instruction index.
 		/// </summary>
 		/// <param name="pos">
 		/// Instruction index at which the pipeline should restart. If multiple transforms request a rerun, the

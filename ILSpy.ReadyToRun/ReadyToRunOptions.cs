@@ -83,7 +83,8 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 		public XName SectionName { get; } = ns + "ReadyToRunOptions";
 
 		/// <summary>
-		/// Populates the option values from a serialized settings section.
+		/// Populates the option values from a serialized settings section. Attributes that are absent fall back
+		/// to defaults: Intel syntax, unwind and GC info off, debug info on.
 		/// </summary>
 		/// <param name="e">The XML element containing persisted ReadyToRun option attributes.</param>
 		public void LoadFromXml(XElement e)

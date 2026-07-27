@@ -37,7 +37,10 @@ namespace ICSharpCode.Decompiler.Semantics
 		{
 		}
 
-		/// <inheritdoc/>
+		/// <summary>
+		/// Always <see langword="true"/>: an ambiguous lookup is an error regardless of the
+		/// representative candidate.
+		/// </summary>
 		public override bool IsError {
 			get { return true; }
 		}
@@ -60,7 +63,10 @@ namespace ICSharpCode.Decompiler.Semantics
 		{
 		}
 
-		/// <inheritdoc/>
+		/// <summary>
+		/// Always <see langword="true"/>: an ambiguous lookup is an error regardless of the
+		/// representative candidate.
+		/// </summary>
 		public override bool IsError {
 			get { return true; }
 		}

@@ -8,7 +8,7 @@ namespace LightJson
 	using System.Diagnostics.CodeAnalysis;
 
 	/// <summary>
-	/// Represents a JSON object as an ordered-by-insertion key/value map.
+	/// Represents a JSON object as a key/value map. Enumeration order is unspecified.
 	/// </summary>
 	/// <remarks>
 	/// Missing keys are intentionally read as <see cref="JsonValue.Null"/> instead of raising exceptions,

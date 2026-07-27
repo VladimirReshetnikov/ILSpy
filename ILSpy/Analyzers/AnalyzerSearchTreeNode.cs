@@ -36,7 +36,7 @@ namespace ICSharpCode.ILSpy.Analyzers
 {
 	/// <summary>
 	/// Row that runs a single <see cref="IAnalyzer"/> against an analysed symbol and shows
-	/// its results as its lazy-loaded children. On expansion a <see cref="Task.Run"/> calls
+	/// its results as its lazy-loaded children. On expansion a <see cref="Task.Run(System.Action)"/> calls
 	/// <see cref="IAnalyzer.Analyze"/> off the UI thread and posts each result back through
 	/// <see cref="Dispatcher.UIThread"/> so the tree updates incrementally. Collapsing the
 	/// row cancels the in-flight task and re-arms <see cref="SharpTreeNode.LazyLoading"/>

@@ -94,7 +94,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		/// <param name="a">The first accessibility.</param>
 		/// <param name="b">The second accessibility.</param>
-		/// <returns>The most restrictive accessibility that is still reachable through both operands.</returns>
+		/// <returns>
+		/// The more restrictive of the two operands, or <see cref="Accessibility.ProtectedAndInternal"/> when
+		/// combining <c>protected</c> and <c>internal</c>.
+		/// </returns>
 		public static Accessibility Intersect(this Accessibility a, Accessibility b)
 		{
 			if (a > b)

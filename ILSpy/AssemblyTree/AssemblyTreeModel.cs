@@ -79,8 +79,8 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 		/// Primary (last) selection. Get returns the most recently selected entry of
 		/// <see cref="SelectedItems"/>, or <c>null</c>; set replaces the entire selection
 		/// with the supplied node (clears the collection then adds it). All
-		/// <c>PropertyChanged(SelectedItem)</c> notifications are fired by
-		/// <see cref="SelectedItems.CollectionChanged"/>.
+		/// <c>PropertyChanged(SelectedItem)</c> notifications are fired from
+		/// <see cref="SelectedItems"/> via <see cref="INotifyCollectionChanged.CollectionChanged"/>.
 		/// </summary>
 		[IgnoreDataMember]
 		public SharpTreeNode? SelectedItem {

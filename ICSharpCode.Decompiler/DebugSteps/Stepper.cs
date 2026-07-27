@@ -137,8 +137,9 @@ namespace ICSharpCode.Decompiler.DebugSteps
 			public object? Position { get; set; }
 
 			/// <summary>
-			/// Gets or sets the node this step changed, once one has been resolved from
-			/// <see cref="ModifiedNodeCandidates"/>.
+			/// Gets or sets the node this step changed: the node passed to the step call, or the node the
+			/// mutation produced when a transform reports one at the end of the step. Used as a fallback
+			/// when no entry in <see cref="ModifiedNodeCandidates"/> has a rendered range.
 			/// </summary>
 			public object? ModifiedNode { get; set; }
 			/// <summary>

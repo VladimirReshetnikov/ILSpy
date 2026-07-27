@@ -29,7 +29,7 @@ namespace ICSharpCode.ILSpy.Metadata
 	/// <summary>
 	/// View of #Strings — the heap that holds every UTF-8 type/member/namespace name
 	/// referenced by the metadata tables. Lazy materialisation: handles are walked on
-	/// demand via <see cref="MetadataReader.GetNextHandle(StringHandle)"/> the first time a
+	/// demand via <see cref="MetadataReaderExtensions.GetNextHandle(MetadataReader, StringHandle)"/> the first time a
 	/// caller asks for the count or a preview row.
 	/// </summary>
 	public sealed class StringHeapTreeNode : MetadataHeapTreeNode<StringHeapTreeNode.StringHeapEntry>

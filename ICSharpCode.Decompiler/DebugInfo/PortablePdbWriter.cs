@@ -126,6 +126,11 @@ namespace ICSharpCode.Decompiler.DebugInfo
 		/// <param name="decompiler">Decompiler instance used to generate source text and sequence points.</param>
 		/// <param name="settings">Decompiler settings that control emitted source shape and file layout.</param>
 		/// <param name="targetStream">Destination stream that receives the Portable PDB payload.</param>
+		/// <exception cref="ArgumentException">
+		/// Thrown when <see cref="PdbId"/> is <see langword="null"/> and <paramref name="file"/> has no CodeView
+		/// debug-directory entry to derive the PDB id from. Check
+		/// <see cref="HasCodeViewDebugDirectoryEntry(PEFile)"/> first, or set <see cref="PdbId"/> explicitly.
+		/// </exception>
 		/// <remarks>
 		/// The banner comment, the stamped PDB id, progress reporting, and whether source text is embedded
 		/// are configured through <see cref="NoLogo"/>, <see cref="PdbId"/>, <see cref="Progress"/>,

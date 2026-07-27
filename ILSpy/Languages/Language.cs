@@ -102,12 +102,7 @@ namespace ICSharpCode.ILSpy.Languages
 		/// <param name="handle">Entity handle to format.</param>
 		/// <param name="fullName">Whether namespace and declaring type names should be included.</param>
 		/// <param name="omitGenerics">Whether generic arity/arguments should be omitted from the result.</param>
-		/// <returns>Search-oriented text for the entity.</returns>
-		/// <param name="module">Metadata module that owns <paramref name="handle"/>.</param>
-		/// <param name="handle">Entity handle to format.</param>
-		/// <param name="fullName">Whether namespace and declaring type names should be included.</param>
-		/// <param name="omitGenerics">Whether generic arity/arguments should be omitted from the result.</param>
-		/// <returns>Search-oriented text for the entity.</returns>
+		/// <returns>Search-oriented text for the entity, or <see langword="null"/> for an unrecognized handle kind.</returns>
 		public virtual string GetEntityName(MetadataFile module, EntityHandle handle, bool fullName, bool omitGenerics)
 		{
 			ArgumentNullException.ThrowIfNull(module);

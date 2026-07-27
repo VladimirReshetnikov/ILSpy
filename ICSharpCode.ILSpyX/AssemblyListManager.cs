@@ -90,7 +90,10 @@ namespace ICSharpCode.ILSpyX
 		/// If no list with the specified name is found, the default list is loaded instead.
 		/// </summary>
 		/// <param name="listName">Name of the list to load.</param>
-		/// <returns>The requested list, or a new default list when the name does not exist in settings.</returns>
+		/// <returns>
+		/// The persisted list with that name, or a new empty list carrying the requested name when settings
+		/// contain no such entry.
+		/// </returns>
 		public AssemblyList LoadList(string listName)
 		{
 			AssemblyList list = DoLoadList(listName);
@@ -272,7 +275,10 @@ namespace ICSharpCode.ILSpyX
 		/// Creates one of ILSpy's predefined framework assembly lists.
 		/// </summary>
 		/// <param name="name">Preconfigured list identifier (for example <see cref="DotNet4List"/>).</param>
-		/// <param name="path">Optional framework installation path used by some list templates.</param>
+		/// <param name="path">
+		/// Directory of framework assemblies used to populate the list when <paramref name="name"/> is not one of
+		/// the built-in template names; ignored for the built-in templates.
+		/// </param>
 		/// <param name="newName">Optional display name override for the resulting list.</param>
 		/// <returns>A populated list that may be empty when none of the expected assemblies are found.</returns>
 		public AssemblyList CreateDefaultList(string name, string? path = null, string? newName = null)

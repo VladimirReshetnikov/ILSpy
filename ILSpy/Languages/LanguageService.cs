@@ -75,7 +75,10 @@ namespace ICSharpCode.ILSpy.Languages
 		/// order, so typically C#) when the name isn't recognised.
 		/// </summary>
 		/// <param name="name">Display name of the language to locate.</param>
-		/// <returns>The matching language, or the default language when no match exists.</returns>
+		/// <returns>
+		/// The language whose name equals <paramref name="name"/>, or the first registered language when there
+		/// is no match.
+		/// </returns>
 		public Language GetLanguage(string? name)
 			=> Languages.FirstOrDefault(l => l.Name == name) ?? Languages.First();
 

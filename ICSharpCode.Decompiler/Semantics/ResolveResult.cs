@@ -78,7 +78,8 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// Gets the compile-time constant value when <see cref="IsCompileTimeConstant"/> is <see langword="true"/>.
 		/// </summary>
 		/// <value>
-		/// The constant value, or <see langword="null"/> when this instance does not represent a constant expression.
+		/// The constant value when <see cref="IsCompileTimeConstant"/> is <see langword="true"/>, which may itself
+		/// be <see langword="null"/>; otherwise <see langword="null"/>.
 		/// </value>
 		public virtual object ConstantValue {
 			get { return null; }

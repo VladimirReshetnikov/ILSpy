@@ -116,7 +116,8 @@ namespace ICSharpCode.Decompiler
 		}
 
 		/// <summary>
-		/// Gets a normalized stack trace string for this exception and nested inner exceptions.
+		/// Gets a normalized stack trace string for this exception. Frames from inner exceptions are not
+		/// included; use <see cref="ToString()"/> for the full chain.
 		/// </summary>
 		public override string StackTrace => GetStackTrace(this);
 

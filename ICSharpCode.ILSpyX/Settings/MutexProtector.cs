@@ -34,7 +34,7 @@ namespace ICSharpCode.ILSpyX.Settings
 		/// <summary>
 		/// Acquires (or waits for) the named system mutex.
 		/// </summary>
-		/// <param name="name">Global mutex name used to serialize access.</param>
+		/// <param name="name">Name of the system mutex that serializes access to the protected resource.</param>
 		public MutexProtector(string name)
 		{
 			this.mutex = new Mutex(true, name, out bool createdNew);

@@ -73,7 +73,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// <summary>
 		/// Writes one line per child node so container resources (.resources, !AvaloniaResources)
 		/// show their inventory in the text view without the tree having to be expanded. Call
-		/// after <see cref="SharpTreeNode.EnsureLazyChildren"/>.
+		/// after <see cref="ICSharpCode.ILSpyX.TreeView.SharpTreeNode.EnsureLazyChildren"/>.
 		/// </summary>
 		private protected void WriteEntryList(ITextOutput output)
 		{

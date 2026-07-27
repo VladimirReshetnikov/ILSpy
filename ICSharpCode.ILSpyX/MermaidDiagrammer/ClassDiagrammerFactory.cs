@@ -102,8 +102,8 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 		/// Applies <see cref="IsIncludedByDefault(ITypeDefinition)"/> as well as
 		/// matching by <paramref name="include"/> and not by <paramref name="exclude"/>.</summary>
 		/// <param name="typeDefinitions">All discovered type definitions from the source module.</param>
-		/// <param name="include">Optional whitelist expression evaluated against <see cref="IType.ReflectionName"/>.</param>
-		/// <param name="exclude">Optional blacklist expression evaluated against <see cref="IType.ReflectionName"/>.</param>
+		/// <param name="include">Optional whitelist expression evaluated against <see cref="INamedElement.ReflectionName"/>.</param>
+		/// <param name="exclude">Optional blacklist expression evaluated against <see cref="INamedElement.ReflectionName"/>.</param>
 		/// <returns>The types to effectively include in the HTML diagrammer.</returns>
 		protected virtual IEnumerable<ITypeDefinition> FilterTypes(IEnumerable<ITypeDefinition> typeDefinitions, Regex? include, Regex? exclude)
 			=> typeDefinitions.Where(type => IsIncludedByDefault(type)

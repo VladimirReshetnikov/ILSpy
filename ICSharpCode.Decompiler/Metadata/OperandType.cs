@@ -56,8 +56,9 @@ namespace ICSharpCode.Decompiler.Metadata
 		/// </summary>
 		/// <param name="opCode">The opcode to inspect.</param>
 		/// <returns>
-		/// The corresponding <see cref="OperandType"/> value, or <c>(OperandType)255</c> when the opcode is outside
-		/// the generated lookup table.
+		/// The corresponding <see cref="OperandType"/> value, or <c>(OperandType)255</c> when the opcode is
+		/// undefined, either because it falls outside the generated lookup table or because it is marked
+		/// reserved within it.
 		/// </returns>
 		public static OperandType GetOperandType(this ILOpCode opCode)
 		{

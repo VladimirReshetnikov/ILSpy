@@ -383,7 +383,10 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// Finds the <see cref="TypeTreeNode"/> for the given top-level type definition.
 		/// </summary>
 		/// <param name="type">Type definition to locate.</param>
-		/// <returns>The corresponding type node, or <see langword="null"/> if it is not loaded.</returns>
+		/// <returns>
+		/// The node for <paramref name="type"/>, or <see langword="null"/> when it is not a top-level type of
+		/// this assembly. Forces the assembly's children to be loaded.
+		/// </returns>
 		public TypeTreeNode? FindTypeNode(ITypeDefinition type)
 		{
 			ArgumentNullException.ThrowIfNull(type);

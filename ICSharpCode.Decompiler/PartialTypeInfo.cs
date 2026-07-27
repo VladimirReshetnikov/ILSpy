@@ -28,7 +28,7 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler
 {
 	/// <summary>
-	/// Tracks which members of a top-level type were already emitted in another source fragment
+	/// Tracks which members of a type were already emitted in another source fragment
 	/// when exporting a project. This is used to merge partial type contributions without duplicating
 	/// metadata members in generated code files.
 	/// </summary>

@@ -56,7 +56,8 @@ namespace ICSharpCode.ILSpy
 		/// Stop the IL-transform pipeline after this many steps. <see cref="int.MaxValue"/>
 		/// means "run all transforms". The Debug Steps pane sets this to the index of a
 		/// chosen step so it can show the partial state at that point. Honoured by
-		/// <see cref="Languages.BlockILLanguage"/>; ignored by every other language.
+		/// <see cref="Languages.CSharpLanguage"/> and, in debug builds, by the ILAst language;
+		/// ignored by every other language.
 		/// </summary>
 		public int StepLimit { get; set; } = int.MaxValue;
 

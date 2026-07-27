@@ -41,8 +41,8 @@ namespace ICSharpCode.Decompiler.PowerShell
 		public CSharpDecompiler Decompiler { get; set; }
 
 		/// <summary>
-		/// Gets or sets the full type name to decompile. Leave this value as <see langword="null"/>
-		/// to decompile the whole module instead of a single type.
+		/// Gets or sets the full type name to decompile. The default is <see cref="string.Empty"/>; the whole
+		/// module is decompiled only when this value is explicitly set to <see langword="null"/>.
 		/// </summary>
 		[Parameter]
 		public string TypeName { get; set; } = string.Empty;

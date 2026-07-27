@@ -97,9 +97,12 @@ namespace ICSharpCode.Decompiler
 		}
 
 		/// <summary>
-		/// Returns the underlying writer content.
+		/// Returns the text written so far when this instance owns an in-memory writer.
 		/// </summary>
-		/// <returns>The current text emitted into the wrapped writer.</returns>
+		/// <returns>
+		/// The buffered text for an instance created with the parameterless constructor; otherwise whatever the
+		/// wrapped <see cref="TextWriter"/> returns from <see cref="object.ToString"/>, which is normally its type name.
+		/// </returns>
 		public override string ToString()
 		{
 			return writer.ToString();
@@ -322,7 +325,7 @@ namespace ICSharpCode.Decompiler
 		/// </summary>
 		/// <param name="collapsedText">Collapsed placeholder text.</param>
 		/// <param name="defaultCollapsed">Whether viewers should collapse the region by default.</param>
-		/// <param name="isDefinition">Whether the fold corresponds to a definition region.</param>
+		/// <param name="isDefinition">Not forwarded to the target output when the buffer is committed.</param>
 		public void MarkFoldStart(string collapsedText = "...", bool defaultCollapsed = false, bool isDefinition = false)
 		{
 			actions.Add(target => target.MarkFoldStart(collapsedText, defaultCollapsed));
@@ -365,6 +368,10 @@ namespace ICSharpCode.Decompiler
 		/// <summary>
 		/// Buffers a local-reference write.
 		/// </summary>
+		/// <param name="text">The text to emit when committed.</param>
+		/// <param name="reference">Identity object connecting the local's definition and uses.</param>
+		/// <param name="isDefinition">Whether this token introduces the local reference.</param>
+		/// <param name="isHoverOnly">Not forwarded to the target output when the buffer is committed.</param>
 		public void WriteLocalReference(string text, object reference, bool isDefinition = false, bool isHoverOnly = false)
 		{
 			actions.Add(target => target.WriteLocalReference(text, reference, isDefinition));
@@ -373,6 +380,8 @@ namespace ICSharpCode.Decompiler
 		/// <summary>
 		/// Buffers an opcode reference write.
 		/// </summary>
+		/// <param name="opCode">The opcode to emit when committed.</param>
+		/// <param name="omitSuffix">Not forwarded to the target output when the buffer is committed.</param>
 		public void WriteReference(OpCodeInfo opCode, bool omitSuffix = false)
 		{
 			actions.Add(target => target.WriteReference(opCode));

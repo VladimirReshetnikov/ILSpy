@@ -42,7 +42,7 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 		internal Dictionary<string, string> OutsideReferences { get; set; } = null!;
 
 		/// <summary>Types excluded from the <see cref="ClassDiagrammer"/>;
-		/// used to support <see cref="GenerateHtmlDiagrammer.ReportExludedTypes"/>.</summary>
+		/// used to support <see cref="GenerateHtmlDiagrammer.ReportExcludedTypes"/>.</summary>
 		internal string[] Excluded { get; set; } = null!;
 
 		/// <summary>A <see cref="Type"/>-like structure with collections

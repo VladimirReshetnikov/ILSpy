@@ -148,7 +148,10 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 		/// <param name="assembly">Loaded assembly selected for decompilation.</param>
 		/// <param name="output">Destination for decompiled text.</param>
 		/// <param name="options">Current decompilation options and cancellation state.</param>
-		/// <returns>The project identifier returned by the base decompilation pipeline.</returns>
+		/// <returns>
+		/// The value from the base implementation: a project identifier for a project export, otherwise
+		/// <see langword="null"/>.
+		/// </returns>
 		public override ProjectId DecompileAssembly(LoadedAssembly assembly, ITextOutput output, DecompilationOptions options)
 		{
 			PEFile module = assembly.GetMetadataFileAsync().GetAwaiter().GetResult() as PEFile;

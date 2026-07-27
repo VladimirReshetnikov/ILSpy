@@ -36,7 +36,8 @@ namespace ICSharpCode.Decompiler
 	public static partial class SRMExtensions
 	{
 		/// <summary>
-		/// Backported flag value for generic parameters constrained to byref-like types.
+		/// Backported flag value for generic parameters that allow byref-like type arguments
+		/// (C# <c>allows ref struct</c>, IL <c>byreflike</c>).
 		/// </summary>
 		/// <remarks>
 		/// Some target frameworks do not expose this enum member directly, so ILSpy carries the raw bit value.

@@ -130,7 +130,7 @@ namespace ICSharpCode.ILSpyX.Analyzers
 		}
 
 		/// <summary>
-		/// Enumerates all non-metadata-only modules currently loaded in the assembly list.
+		/// Enumerates every non-metadata-only module in the assembly-list snapshot this scope was created from.
 		/// </summary>
 		/// <returns>
 		/// Every concrete module available to analyzers, regardless of the current scope restrictions.
@@ -157,8 +157,8 @@ namespace ICSharpCode.ILSpyX.Analyzers
 		/// </summary>
 		/// <param name="ct">Cancellation token checked while traversing modules.</param>
 		/// <returns>
-		/// Nested types within <see cref="TypeScope"/> for local scopes;
-		/// otherwise all top-level type definitions from each module returned by <see cref="GetModulesInScope"/>.
+		/// <see cref="TypeScope"/> and all of its nested types for local scopes; otherwise every type definition,
+		/// nested ones included, from each module returned by <see cref="GetModulesInScope"/>.
 		/// </returns>
 		public IEnumerable<ITypeDefinition> GetTypesInScope(CancellationToken ct)
 		{

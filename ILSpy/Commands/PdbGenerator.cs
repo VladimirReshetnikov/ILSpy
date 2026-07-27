@@ -45,7 +45,7 @@ namespace ICSharpCode.ILSpy.Commands
 	/// assembly-node context-menu entry: pick an output folder, then run
 	/// <see cref="PortablePdbWriter"/> for every selected assembly that carries a CodeView
 	/// debug-directory entry. The per-file report (success / fail / total elapsed time) lands
-	/// in a dedicated frozen tab via <see cref="DockWorkspace.RunInNewTabAsync"/>.
+	/// in a dedicated frozen tab via <see cref="DockWorkspace.RunInNewTabAsync(string, System.Func{System.Threading.CancellationToken, System.Threading.Tasks.Task{TextView.AvaloniaEditTextOutput}})"/>.
 	/// </summary>
 	internal static class PdbGenerator
 	{

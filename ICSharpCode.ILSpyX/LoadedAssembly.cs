@@ -97,7 +97,8 @@ namespace ICSharpCode.ILSpyX
 		public LoadedAssembly? ParentBundle { get; }
 
 		/// <summary>
-		/// Initializes a load handle for a top-level file and starts background loading immediately.
+		/// Initializes a load handle for a top-level file. Loading is deferred: the first call that awaits the
+		/// load result starts the background work.
 		/// </summary>
 		/// <param name="assemblyList">Assembly list that owns this instance and receives on-demand dependencies.</param>
 		/// <param name="fileName">Path or display name of the file to load.</param>

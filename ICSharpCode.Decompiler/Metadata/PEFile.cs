@@ -137,7 +137,10 @@ namespace ICSharpCode.Decompiler.Metadata
 		/// Returns the PE section data that contains the specified RVA.
 		/// </summary>
 		/// <param name="rva">Relative virtual address to locate.</param>
-		/// <returns>A <see cref="SectionData"/> view over the containing section.</returns>
+		/// <returns>
+		/// A view over the section bytes starting at <paramref name="rva"/> and running to the end of the
+		/// containing section, or an empty view when no section contains it.
+		/// </returns>
 		public override SectionData GetSectionData(int rva)
 		{
 			return new SectionData(Reader.GetSectionData(rva));

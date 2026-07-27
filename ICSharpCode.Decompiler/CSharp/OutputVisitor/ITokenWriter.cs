@@ -130,7 +130,8 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 		/// <param name="writer">The destination text writer.</param>
 		/// <param name="indentation">The indentation token used for each indentation level.</param>
 		/// <returns>
-		/// A writer chain that emits tokens, inserts required spacing, and preserves trivia (comments/directives) from the syntax tree.
+		/// A writer chain that writes tokens to <paramref name="writer"/> through a decorator that inserts the
+		/// spaces required to keep adjacent tokens separate.
 		/// </returns>
 		public static TokenWriter Create(TextWriter writer, string indentation = "\t")
 		{

@@ -471,7 +471,7 @@ namespace ICSharpCode.ILSpy.Metadata
 
 	/// <summary>
 	/// Applies a numeric format spec ("X8", "X4", …) at bind-time. Wraps enum values to their
-	/// underlying integer first so digit-bearing hex specs don't trip <see cref="Enum.ToString"/>'s
+	/// underlying integer first so digit-bearing hex specs don't trip <see cref="Enum.ToString()"/>'s
 	/// strict format-character whitelist.
 	/// </summary>
 	internal sealed class HexFormatConverter : IValueConverter

@@ -87,6 +87,10 @@ namespace ICSharpCode.Decompiler.Metadata
 		/// </summary>
 		/// <param name="metadata">Metadata reader used to enumerate property and event accessor records.</param>
 		/// <param name="filter">Semantics flags that should be indexed.</param>
+		/// <exception cref="NotSupportedException">
+		/// <paramref name="filter"/> includes <see cref="MethodSemanticsAttributes.Other"/>, which
+		/// System.Reflection.Metadata does not expose.
+		/// </exception>
 		public MethodSemanticsLookup(MetadataReader metadata, MethodSemanticsAttributes filter = csharpAccessors)
 		{
 			if ((filter & MethodSemanticsAttributes.Other) != 0)

@@ -53,7 +53,7 @@ namespace ICSharpCode.ILSpyX.Analyzers
 	public interface IAnalyzerMetadata
 	{
 		/// <summary>
-		/// Gets the localized header shown in the analyzer root node.
+		/// Gets the header shown in the analyzer root node.
 		/// </summary>
 		string Header { get; }
 

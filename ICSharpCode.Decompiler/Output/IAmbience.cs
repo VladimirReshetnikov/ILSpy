@@ -147,7 +147,9 @@ namespace ICSharpCode.Decompiler.Output
 			ShowBody,
 
 		/// <summary>
-		/// Enables every currently defined conversion option.
+		/// Enables the conversion options defined up to and including <see cref="SupportOperatorChecked"/>.
+		/// Later additions such as <see cref="UsePrivateProtectedAccessibility"/> and
+		/// <see cref="SupportExtensionDeclarations"/> are not included.
 		/// </summary>
 		All = 0x1fffff,
 	}

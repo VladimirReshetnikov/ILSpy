@@ -95,9 +95,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		/// Gets or sets the first instruction index that has already been processed by statement transforms.
 		/// </summary>
 		/// <value>
-		/// Initially <c>Block.Instructions.Count</c> for each visited block. When transforms merge in already-processed
-		/// instructions (for example <see cref="ConditionDetection"/>), they update this value so
-		/// <see cref="StatementTransform"/> can skip the preserved prefix.
+		/// Initially <c>Block.Instructions.Count</c> for each visited block, meaning nothing in the block has been
+		/// transformed yet. When already-transformed instructions are merged in (for example by
+		/// <see cref="ConditionDetection"/>), this marks the index where they begin: statement transforms process
+		/// only lower indices, starting at <c>IndexOfFirstAlreadyTransformedInstruction - 1</c> and working
+		/// downwards. Transforms that modify the block afterwards must update the value.
 		/// </value>
 		public int IndexOfFirstAlreadyTransformedInstruction { get; set; }
 

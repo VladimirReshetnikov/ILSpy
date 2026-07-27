@@ -30,7 +30,7 @@ namespace ICSharpCode.Decompiler
 	/// <remarks>
 	/// <para>
 	/// Implementations receive both plain text and rich reference writes. Rich writes carry symbol handles that callers such as
-	/// the WPF frontend can map to navigation targets, while plain writes are used for punctuation and text fragments that do not
+	/// the ILSpy UI can map to navigation targets, while plain writes are used for punctuation and text fragments that do not
 	/// represent a navigable symbol.
 	/// </para>
 	/// <para>

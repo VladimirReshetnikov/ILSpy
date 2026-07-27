@@ -64,7 +64,8 @@ namespace ICSharpCode.Decompiler.Documentation
 	/// Lookups are cached in a small ring buffer for hot keys. If file contents change after index creation, the provider retries once with a rebuilt index.
 	/// </para>
 	/// <para>
-	/// The provider is thread-compatible for concurrent readers: lookup and cache mutation paths synchronize on the cache instance.
+	/// The provider is thread-safe for concurrent lookups: the index array is published through a volatile field,
+	/// and cache reads and writes are serialized by a lock on the cache instance.
 	/// </para>
 	/// </remarks>
 	[Serializable]

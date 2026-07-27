@@ -114,8 +114,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets explicit type constraints declared for this type parameter.
 		/// </summary>
 		/// <value>
-		/// A list that contains one entry for each type constraint from the declaration's <c>where</c> clause.
-		/// The list is empty when no type constraints are declared.
+		/// A list containing the declared type constraints, plus a synthesized <c>System.Object</c> (or
+		/// <c>System.ValueType</c> for a value-type-constrained parameter) anchor when metadata declares no
+		/// non-interface constraint. Only placeholder implementations such as
+		/// <see cref="Implementation.DummyTypeParameter"/> return an empty list.
 		/// </value>
 		IReadOnlyList<TypeConstraint> TypeConstraints { get; }
 	}
@@ -130,8 +132,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	/// dedicated boolean properties on <see cref="ITypeParameter"/>).
 	/// </para>
 	/// <para>
-	/// Constraint attributes preserve required/optional custom modifiers attached to the constraint type so emit and
-	/// round-tripping scenarios can recover full signature fidelity.
+	/// Constraint attributes carry the custom attributes attached to the constraint row in metadata (for example
+	/// nullability annotations), so language-level constraint details survive decompilation.
 	/// </para>
 	/// </remarks>
 	public readonly struct TypeConstraint

@@ -793,7 +793,9 @@ namespace ICSharpCode.Decompiler.Metadata
 		/// <summary>
 		/// Returns candidate Global Assembly Cache roots for the current runtime and operating system.
 		/// </summary>
-		/// <returns>List of existing GAC root directories that should be probed.</returns>
+		/// <returns>
+		/// The candidate GAC root directories for the current runtime. Entries are not verified to exist.
+		/// </returns>
 		public static List<string> GetGacPaths()
 		{
 			if (decompilerRuntime == DecompilerRuntime.Mono)

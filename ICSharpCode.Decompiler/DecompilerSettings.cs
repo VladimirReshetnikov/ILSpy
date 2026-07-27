@@ -187,7 +187,8 @@ namespace ICSharpCode.Decompiler
 		/// Computes the minimum C# language version that can represent all features currently enabled in this settings instance.
 		/// </summary>
 		/// <remarks>
-		/// This is used by project decompilation to avoid selecting a language version that would make the generated code invalid.
+		/// Project decompilation uses this to pick the LangVersion written to the generated project, and several
+		/// transforms use it as a feature gate when deciding whether a newer C# construct may be emitted.
 		/// </remarks>
 		/// <returns>
 		/// The lowest <see cref="CSharp.LanguageVersion"/> that supports all currently enabled decompiler output features.
@@ -2491,6 +2492,7 @@ namespace ICSharpCode.Decompiler
 		/// <remarks>
 		/// The value is lazily initialized with an Allman-style configuration that is tuned for decompiler output.
 		/// </remarks>
+		/// <exception cref="ArgumentNullException">The assigned value is <see langword="null"/>.</exception>
 		[Browsable(false)]
 		public CSharpFormattingOptions CSharpFormattingOptions {
 			get {
@@ -2536,7 +2538,8 @@ namespace ICSharpCode.Decompiler
 		/// </summary>
 		/// <returns>
 		/// A new <see cref="DecompilerSettings"/> instance with the same option values, including a cloned
-		/// <see cref="CSharpFormattingOptions"/> object when formatting options were initialized.
+		/// <see cref="CSharpFormattingOptions"/> object when formatting options were initialized. The copy
+		/// starts with no <see cref="PropertyChanged"/> subscribers.
 		/// </returns>
 		public virtual DecompilerSettings Clone()
 		{

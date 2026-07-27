@@ -142,7 +142,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// * any enums that have a small integer type as underlying type
 		/// </summary>
 		/// <param name="type">The type to inspect.</param>
-		/// <returns><c>true</c> if <paramref name="type"/> occupies fewer than 4 bytes; otherwise <c>false</c>.</returns>
+		/// <returns>
+		/// <c>true</c> when the type has a known size of 1 or 2 bytes; <c>false</c> for larger types and for
+		/// types whose size is unknown.
+		/// </returns>
 		public static bool IsSmallIntegerType(this IType type)
 		{
 			int size = GetSize(type);

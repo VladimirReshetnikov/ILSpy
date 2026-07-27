@@ -83,6 +83,12 @@ namespace ICSharpCode.Decompiler.Documentation
 		/// The method first checks a side-by-side XML next to <see cref="MetadataFile.FileName"/> (including culture folders), and only then
 		/// falls back to framework/reference-assembly locations inferred from <see cref="MetadataFile.GetRuntime"/>.
 		/// </para>
+		/// <para>
+		/// Failing both, it derives a modern .NET reference-pack folder from the assembly path and returns a
+		/// provider that aggregates every XML file found there. For .NET 5 and later runtime assemblies this is
+		/// usually the only stage that succeeds, which is why the result can answer ids that are absent from the
+		/// module's own XML file.
+		/// </para>
 		/// </remarks>
 		public static XmlDocumentationProvider LoadDocumentation(MetadataFile module)
 		{

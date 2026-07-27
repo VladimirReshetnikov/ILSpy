@@ -211,7 +211,7 @@ namespace ICSharpCode.Decompiler.Metadata
 	}
 
 	/// <summary>
-	/// Mutable implementation of <see cref="IAssemblyReference"/> based on assembly display-name text.
+	/// Implementation of <see cref="IAssemblyReference"/> based on assembly display-name text.
 	/// </summary>
 	public class AssemblyNameReference : IAssemblyReference
 	{
@@ -428,7 +428,7 @@ namespace ICSharpCode.Decompiler.Metadata
 		/// </returns>
 		/// <remarks>
 		/// If metadata stores a full public key (<see cref="AssemblyFlags.PublicKey"/>), the token is computed by
-		/// taking the SHA-1 hash and returning the final 8 bytes, which matches CLR strong-name token derivation.
+		/// taking the SHA-1 hash and returning its final 8 bytes in hash byte order.
 		/// </remarks>
 		public byte[]? GetPublicKeyToken()
 		{

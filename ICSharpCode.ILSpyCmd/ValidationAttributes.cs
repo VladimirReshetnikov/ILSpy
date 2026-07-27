@@ -39,7 +39,7 @@ namespace ICSharpCode.ILSpyCmd
 		}
 
 		/// <summary>
-		/// Validates that project decompilation mode has a writable output target.
+		/// Validates that project decompilation mode was given an output directory.
 		/// </summary>
 		/// <param name="value">The object currently being validated.</param>
 		/// <param name="context">Validation services and metadata for the current command invocation.</param>
@@ -102,7 +102,7 @@ namespace ICSharpCode.ILSpyCmd
 		/// <summary>
 		/// Validates either a single path or a collection of paths.
 		/// </summary>
-		/// <param name="value">The value being validated (expected to be a <see cref="string"/> or <see cref="string[]"/>).</param>
+		/// <param name="value">The value being validated (expected to be a <see cref="string"/> or <c>string[]</c>).</param>
 		/// <param name="validationContext">Validation context containing the command-line runtime services.</param>
 		/// <returns><see cref="ValidationResult.Success"/> when every path exists; otherwise the first encountered error.</returns>
 		protected override ValidationResult IsValid(object value, ValidationContext validationContext)

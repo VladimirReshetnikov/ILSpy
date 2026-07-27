@@ -71,8 +71,10 @@ namespace ICSharpCode.Decompiler.IL
 	/// Base class for IL instructions that model compound assignments and increment/decrement updates.
 	/// </summary>
 	/// <remarks>
-	/// Instances are produced by assignment transforms after proving that the load/compute/store sequence can be collapsed
-	/// without changing side effects, conversion behavior, or target evaluation ordering.
+	/// Instances are produced by the transforms that recognize compound-assignment shapes: one collapses a
+	/// load/compute/store sequence after proving that doing so changes neither side effects, conversion behavior,
+	/// nor target evaluation ordering; others fold dynamic binary operations, or rewrite user-defined
+	/// increment/decrement calls that no store sequence covered.
 	/// </remarks>
 	public abstract partial class CompoundAssignmentInstruction : ILInstruction
 	{
@@ -218,7 +220,10 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		/// <param name="binary">The binary instruction candidate.</param>
 		/// <param name="type">The assignment target type that would receive the result.</param>
-		/// <param name="settings">Decompiler settings that influence language-level legality checks.</param>
+		/// <param name="settings">
+		/// Decompiler settings used for the language-level legality checks, or <see langword="null"/> to assume
+		/// every relevant language feature (native integers, unsigned right shift) is available.
+		/// </param>
 		/// <returns>
 		/// <see langword="true"/> if the operation can be represented as a C# compound assignment without semantic changes;
 		/// otherwise <see langword="false"/>.

@@ -80,7 +80,8 @@ namespace ICSharpCode.Decompiler.Metadata
 	}
 
 	/// <summary>
-	/// Represents an in-memory resource backed by an immutable byte buffer.
+	/// Represents an in-memory resource backed by a caller-supplied byte array. The array is stored by
+	/// reference rather than copied.
 	/// </summary>
 	public class ByteArrayResource : Resource
 	{

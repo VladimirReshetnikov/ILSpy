@@ -48,7 +48,7 @@ namespace ICSharpCode.ILSpy.TextView
 	}
 
 	/// <summary>No-op searcher used by languages that don't have a richer implementation
-	/// (every <see cref="Language"/> defaults to this; only C# overrides today).</summary>
+	/// (every <see cref="Languages.Language"/> defaults to this; only C# overrides today).</summary>
 	public sealed class DefaultBracketSearcher : IBracketSearcher
 	{
 		public static readonly DefaultBracketSearcher DefaultInstance = new();

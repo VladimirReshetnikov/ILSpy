@@ -29,7 +29,9 @@ namespace ICSharpCode.Decompiler.Util
 	/// <typeparam name="TOutput">Reference type produced by the projection.</typeparam>
 	/// <remarks>
 	/// This type is used in the type-system layer to expose resolved objects as an <see cref="IReadOnlyList{T}"/>
-	/// without eagerly materializing every projection result. Each index is computed at most once and then retained.
+	/// without eagerly materializing every projection result. Each index is computed on first access and the
+	/// published result is reused; under concurrent first access the projection may run more than once, but only
+	/// one result is published.
 	/// </remarks>
 	public sealed class ProjectedList<TInput, TOutput> : IReadOnlyList<TOutput> where TOutput : class
 	{

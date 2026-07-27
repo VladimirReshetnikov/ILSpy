@@ -208,7 +208,7 @@ namespace ICSharpCode.ILSpyX.Search
 		}
 
 		/// <summary>
-		/// The current Token. <seealso cref="ICSharpCode.NRefactory.Parser.Token"/>
+		/// The current Token.
 		/// </summary>
 		public Literal Token {
 			get {
@@ -217,7 +217,7 @@ namespace ICSharpCode.ILSpyX.Search
 		}
 
 		/// <summary>
-		/// The next Token (The <see cref="Token"/> after <see cref="NextToken"/> call) . <seealso cref="ICSharpCode.NRefactory.Parser.Token"/>
+		/// The next Token (the <see cref="Token"/> after a <see cref="NextToken"/> call).
 		/// </summary>
 		public Literal LookAhead {
 			get {

@@ -35,7 +35,8 @@ namespace ICSharpCode.Decompiler.Semantics
 		}
 
 		/// <summary>
-		/// Gets whether the resolved type is the unknown-type sentinel.
+		/// Gets whether the resolved type could not be resolved, that is, whether its
+		/// <see cref="IType.Kind"/> is <see cref="TypeKind.Unknown"/>.
 		/// </summary>
 		public override bool IsError {
 			get { return this.Type.Kind == TypeKind.Unknown; }

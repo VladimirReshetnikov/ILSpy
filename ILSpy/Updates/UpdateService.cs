@@ -40,7 +40,7 @@ namespace ICSharpCode.ILSpy.Updates
 			DecompilerVersionInfo.Build + "." + DecompilerVersionInfo.Revision);
 	}
 
-	/// <summary>Result of a successful <see cref="UpdateService.GetLatestVersionAsync"/> poll.</summary>
+	/// <summary>Result of a successful <see cref="UpdateService.GetLatestVersionAsync()"/> poll.</summary>
 	public sealed class AvailableVersionInfo
 	{
 		public required Version Version { get; init; }
@@ -127,8 +127,14 @@ namespace ICSharpCode.ILSpy.Updates
 		/// download URL of a newer version, or <c>null</c> when no update is available /
 		/// no check was performed.
 		/// </summary>
-		/// <param name="settings">Persisted update settings controlling cadence and opt-in state.</param>
-		/// <returns>The update download URL, or <see langword="null"/> when no action is needed.</returns>
+		/// <param name="settings">
+		/// Update settings supplying the automatic-check opt-in flag and the last-successful-check timestamp,
+		/// which this call updates when a check actually runs.
+		/// </param>
+		/// <returns>
+		/// The download URL of the newer version, or <see langword="null"/> when checks are disabled, still
+		/// throttled, failed, or found nothing newer.
+		/// </returns>
 		public static async Task<string?> CheckForUpdatesIfEnabledAsync(UpdateSettings settings)
 		{
 			if (!settings.AutomaticUpdateCheckEnabled)

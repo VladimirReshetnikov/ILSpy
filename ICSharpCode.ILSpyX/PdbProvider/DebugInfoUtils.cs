@@ -74,7 +74,11 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 		/// </summary>
 		/// <param name="module">Module whose metadata is paired with the supplied symbol file.</param>
 		/// <param name="pdbFileName">Path to the symbol file to read.</param>
-		/// <returns>A debug-info provider for the file, or <see langword="null"/> if the file is missing or unreadable.</returns>
+		/// <returns>
+		/// A debug-info provider for the file, or <see langword="null"/> when <paramref name="pdbFileName"/> is
+		/// empty or the file does not exist. Malformed symbol data is not detected here; it surfaces when the
+		/// provider is first read.
+		/// </returns>
 		public static IDebugInfoProvider? FromFile(PEFile module, string pdbFileName)
 		{
 			if (string.IsNullOrEmpty(pdbFileName))

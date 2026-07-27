@@ -262,8 +262,8 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 		/// Records a debug snapshot of the current input state for <paramref name="inst"/>.
 		/// </summary>
 		/// <remarks>
-		/// The method is compiled only in debug builds. In release builds it is omitted entirely,
-		/// so callers can invoke it unconditionally without affecting runtime behavior.
+		/// Calls to this method are removed by the compiler unless <c>DEBUG</c> is defined, so callers can
+		/// invoke it unconditionally without affecting runtime behavior.
 		/// </remarks>
 		/// <param name="inst">The instruction that is about to be analyzed.</param>
 		[Conditional("DEBUG")]

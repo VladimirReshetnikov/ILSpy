@@ -31,7 +31,7 @@ namespace ICSharpCode.ILSpy.Commands
 	/// <summary>
 	/// Right-click → "Copy fully qualified name". Visible whenever the selection is exactly
 	/// one tree node that wraps a TypeSystem entity (Type/Method/Field/Property/Event).
-	/// Copies the entity's <see cref="ICSharpCode.Decompiler.TypeSystem.IEntity.ReflectionName"/>
+	/// Copies the entity's <see cref="ICSharpCode.Decompiler.TypeSystem.INamedElement.ReflectionName"/>
 	/// — the language-independent identifier used by FindNodeByPath etc. — to the clipboard.
 	/// </summary>
 	[ExportContextMenuEntry(Header = nameof(Resources.CopyName), Category = "Edit", Icon = "Images/Copy", Order = 600)]

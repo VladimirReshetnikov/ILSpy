@@ -253,7 +253,7 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 
 		/// <summary>
 		/// Reveals <paramref name="node"/> centred in the viewport so the user's eye lands on a
-		/// newly selected row, rather than at the nearest edge (where <see cref="ListBox.ScrollIntoView"/>
+		/// newly selected row, rather than at the nearest edge (where <see cref="ItemsControl.ScrollIntoView(object)"/>
 		/// leaves it). Skips the move when the row is already fully visible, so clicking a visible
 		/// row -- or selecting a freshly-loaded top-level entry that's already on screen -- never
 		/// yanks the viewport.

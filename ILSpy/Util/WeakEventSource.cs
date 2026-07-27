@@ -30,7 +30,7 @@ namespace ICSharpCode.ILSpy.Util
 	/// </summary>
 	/// <remarks>
 	/// Each subscription stores the handler's <see cref="MethodInfo"/> plus a weak ref to its
-	/// target. Invocation reflects through <see cref="MethodInfo.Invoke"/> after checking that
+	/// target. Invocation reflects through <see cref="MethodBase.Invoke(object, object[])"/> after checking that
 	/// the target is still alive. The overhead is fine for the MessageBus use case (a handful
 	/// of subscribers, fired on settings / navigation / lifecycle events), and pays for itself
 	/// by letting subscribers skip the boilerplate of explicit unsubscription.

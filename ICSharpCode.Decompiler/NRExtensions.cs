@@ -74,7 +74,10 @@ namespace ICSharpCode.Decompiler
 		/// Checks whether a type name follows compiler-generated naming conventions.
 		/// </summary>
 		/// <param name="type">Type to inspect.</param>
-		/// <returns><see langword="true"/> if the type name is mangled in a compiler-generated style.</returns>
+		/// <returns>
+		/// <see langword="true"/> if the type name contains <c>&lt;</c>. Unlike the <see cref="IMember"/> overload,
+		/// the character need not be a prefix.
+		/// </returns>
 		public static bool HasGeneratedName(this IType type)
 		{
 			return type.Name.StartsWith("<", StringComparison.Ordinal) || type.Name.Contains("<");

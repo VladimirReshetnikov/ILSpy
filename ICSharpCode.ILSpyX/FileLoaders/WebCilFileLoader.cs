@@ -37,6 +37,7 @@ namespace ICSharpCode.ILSpyX.FileLoaders
 		/// <param name="settings">Load options and parent-bundle context for the current operation.</param>
 		/// <returns>
 		/// A metadata result for valid WebCIL files; otherwise <see langword="null"/>.
+		/// Always <see langword="null"/> when the file is being loaded from inside a bundle.
 		/// </returns>
 		public Task<LoadResult?> Load(string fileName, Stream stream, FileLoadContext settings)
 		{

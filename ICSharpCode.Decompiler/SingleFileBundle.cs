@@ -173,7 +173,10 @@ namespace ICSharpCode.Decompiler
 		/// </summary>
 		/// <param name="stream">Stream positioned at the beginning of a bundle manifest header.</param>
 		/// <returns>The parsed bundle manifest header.</returns>
-		/// <exception cref="InvalidDataException">Thrown when the manifest version is outside the supported range.</exception>
+		/// <exception cref="InvalidDataException">
+		/// Thrown when the manifest version is outside the supported range, or when the declared file count is
+		/// negative or exceeds the data remaining in the stream.
+		/// </exception>
 		public static Header ReadManifest(Stream stream)
 		{
 			var header = new Header();

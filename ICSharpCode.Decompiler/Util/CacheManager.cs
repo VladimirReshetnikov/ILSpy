@@ -24,7 +24,7 @@ using System.Collections.Concurrent;
 namespace ICSharpCode.Decompiler.Util
 {
 	/// <summary>
-	/// Provides process-local shared caches keyed by object identity.
+	/// Caches values for a single compilation, shared among all threads working with it, keyed by object identity.
 	/// </summary>
 	/// <remarks>
 	/// <para>
@@ -32,7 +32,7 @@ namespace ICSharpCode.Decompiler.Util
 	/// This allows individual compilation components to use private sentinel objects as collision-free cache keys.
 	/// </para>
 	/// <para>
-	/// This type is thread-safe. A prior thread-local cache layer was intentionally removed to avoid long-lived thread-local retention.
+	/// This type is thread-safe.
 	/// </para>
 	/// </remarks>
 	public sealed class CacheManager
@@ -55,7 +55,7 @@ namespace ICSharpCode.Decompiler.Util
 		}
 
 		/// <summary>
-		/// Gets the value associated with <paramref name="key"/>, or atomically computes and stores one.
+		/// Gets the value associated with <paramref name="key"/>, or computes a value and atomically publishes it.
 		/// </summary>
 		/// <param name="key">Identity key used for lookup.</param>
 		/// <param name="valueFactory">Factory invoked when the key is not yet present.</param>

@@ -215,7 +215,9 @@ namespace ICSharpCode.ILSpyX
 		/// Reorders one or more assemblies within the list.
 		/// </summary>
 		/// <param name="assembliesToMove">Assemblies to move as a block.</param>
-		/// <param name="index">Target insertion index in the remaining list after removal.</param>
+		/// <param name="index">
+		/// Insertion index in the list's current order; the method adjusts it for entries removed ahead of that position.
+		/// </param>
 		public void Move(LoadedAssembly[] assembliesToMove, int index)
 		{
 			VerifyAccess();
@@ -336,7 +338,9 @@ namespace ICSharpCode.ILSpyX
 		/// Opens an assembly from a stream.
 		/// </summary>
 		/// <param name="file">Logical assembly file name used as the identity key within the list.</param>
-		/// <param name="stream">Stream providing assembly bytes. May be <see langword="null"/> to defer loading.</param>
+		/// <param name="stream">
+		/// Stream providing the assembly bytes, or <see langword="null"/> to read them from <paramref name="file"/> on disk.
+		/// </param>
 		/// <param name="isAutoLoaded"><see langword="true"/> when this entry originates from automatic dependency loading.</param>
 		/// <returns>The existing or newly loaded assembly entry.</returns>
 		public LoadedAssembly OpenAssembly(string file, Stream? stream, bool isAutoLoaded = false)

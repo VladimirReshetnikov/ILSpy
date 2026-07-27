@@ -42,7 +42,7 @@ namespace ICSharpCode.ILSpy.TextView
 		/// <summary>
 		/// A frozen snapshot of which foldings were expanded at a point in time. The
 		/// <see cref="Expanded"/> list is the user-actionable subset; <see cref="Checksum"/>
-		/// is the layout fingerprint used by <see cref="Restore"/> to refuse mismatched
+		/// is the layout fingerprint used by <see cref="Restore(System.Collections.Generic.IList{AvaloniaEdit.Folding.NewFolding}, FoldingsViewState.Snapshot)"/> to refuse mismatched
 		/// restorations.
 		/// </summary>
 		public readonly record struct Snapshot(IReadOnlyList<(int Start, int End)> Expanded, int Checksum);

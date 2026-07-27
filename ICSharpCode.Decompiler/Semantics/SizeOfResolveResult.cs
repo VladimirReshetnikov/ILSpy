@@ -77,7 +77,8 @@ namespace ICSharpCode.Decompiler.Semantics
 		}
 
 		/// <summary>
-		/// Gets whether the operand type is known to be a reference type, which is invalid for unmanaged-size evaluation.
+		/// Gets whether the operand type is not known to be a value type, which is invalid for unmanaged-size
+		/// evaluation. A type whose reference/value classification is unknown is also reported as an error.
 		/// </summary>
 		public override bool IsError {
 			get {

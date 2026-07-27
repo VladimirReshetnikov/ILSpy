@@ -85,7 +85,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	public sealed partial class PragmaWarningPreprocessorDirective : PreProcessorDirective
 	{
 		/// <summary>
-		/// Gets the warning IDs declared by the directive.
+		/// Gets the expressions holding the warning IDs listed by the directive.
 		/// </summary>
 		[Slot("Warning")]
 		public partial AstNodeCollection<PrimitiveExpression> Warnings { get; }

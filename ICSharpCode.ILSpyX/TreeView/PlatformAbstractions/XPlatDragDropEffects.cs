@@ -24,7 +24,9 @@ namespace ICSharpCode.ILSpyX.TreeView.PlatformAbstractions
 	/// Platform-neutral drag/drop effect flags mirrored from desktop UI frameworks.
 	/// </summary>
 	/// <remarks>
-	/// Numeric values intentionally match WPF <c>DragDropEffects</c> so hosts can cast between the two enums.
+	/// The <see cref="Copy"/>, <see cref="Move"/>, <see cref="Link"/>, and <see cref="None"/> values match the
+	/// classic desktop drag-drop effect flags; a host maps them onto its own effect enum rather than casting,
+	/// since not every value has a counterpart there.
 	/// </remarks>
 	[Flags]
 	public enum XPlatDragDropEffects

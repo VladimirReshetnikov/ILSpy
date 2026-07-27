@@ -27,7 +27,7 @@ namespace ICSharpCode.ILSpy.Metadata.CorTables
 {
 	/// <summary>
 	/// View of the MethodSemantics table — links accessor methods (get/set/add/remove/raise)
-	/// to the property or event they implement. <see cref="MetadataReader.GetMethodSemantics"/>
+	/// to the property or event they implement. <see cref="MetadataExtensions.GetMethodSemantics(MetadataReader)"/>
 	/// returns a typed enumeration so byte-level reading isn't required.
 	/// </summary>
 	public sealed class MethodSemanticsTableTreeNode : MetadataTableTreeNode<MethodSemanticsTableTreeNode.MethodSemanticsEntry>

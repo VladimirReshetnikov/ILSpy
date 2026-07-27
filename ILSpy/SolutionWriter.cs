@@ -34,9 +34,8 @@ using ICSharpCode.ILSpy.Languages;
 namespace ICSharpCode.ILSpy
 {
 	/// <summary>
-	/// The outcome of a <see cref="SolutionWriter.CreateSolutionAsync"/> run: whether a complete
-	/// solution was produced and the human-readable status report (the same breadcrumb the WPF
-	/// version printed into the decompiler text view).
+	/// The outcome of a <see cref="SolutionWriter"/> solution export run: whether a complete
+	/// solution was produced, and the human-readable status report shown in the decompiler text view.
 	/// </summary>
 	public sealed record SolutionExportResult(bool Success, string StatusText);
 
@@ -114,7 +113,7 @@ namespace ICSharpCode.ILSpy
 		}
 
 		/// <summary>
-		/// Feeds one project's file counts into the shared total. <see cref="WholeProjectDecompiler"/>
+		/// Feeds one project's file counts into the shared total. <see cref="ICSharpCode.Decompiler.CSharp.ProjectDecompiler.WholeProjectDecompiler"/>
 		/// reports its whole file count with every report, so the solution bar knows a project's size from
 		/// its first written file rather than only once the project is done.
 		/// </summary>

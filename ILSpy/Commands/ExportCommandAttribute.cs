@@ -27,7 +27,7 @@ namespace ICSharpCode.ILSpy.Commands
 	/// requires metadata views to be a concrete class with a parameterless or
 	/// IDictionary-typed constructor — interfaces aren't supported as views like they are in
 	/// the full <c>System.ComponentModel.Composition</c>. The runtime auto-populates these
-	/// properties from the matching properties on the export's <see cref="MetadataAttribute"/>.
+	/// properties from the matching properties on the export's <see cref="MetadataAttributeAttribute"/>.
 	/// </summary>
 	public class MainMenuCommandMetadata
 	{

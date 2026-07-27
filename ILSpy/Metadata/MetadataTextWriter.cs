@@ -32,7 +32,7 @@ namespace ICSharpCode.ILSpy.Metadata
 	/// <summary>
 	/// Renders a list of row objects to <see cref="ITextOutput"/> as a fixed-width table —
 	/// the Phase 1 stand-in for the DataGrid view. Column names come from
-	/// <see cref="PropertyInfo.Name"/>; cell formatting respects
+	/// <see cref="MemberInfo.Name"/>; cell formatting respects
 	/// <see cref="ColumnInfoAttribute.Format"/> and, for <see cref="Entry"/> rows, the
 	/// per-row hex-width implied by <see cref="Entry.Size"/>. Each emitted line goes through
 	/// <see cref="Language.WriteCommentLine"/> so the output sits cleanly inside the

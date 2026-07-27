@@ -54,8 +54,8 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 
 		/// <summary>
-		/// Appends a diagnostic message unless the most recently stored message for the same
-		/// assembly has the same severity and text.
+		/// Appends a diagnostic message only when both the severity and the text differ from the most
+		/// recently stored message for the same assembly.
 		/// </summary>
 		/// <param name="fullName">Assembly full name used as the aggregation key.</param>
 		/// <param name="kind">Severity of the diagnostic message.</param>

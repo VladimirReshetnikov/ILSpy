@@ -139,7 +139,7 @@ namespace ICSharpCode.ILSpy.TextView
 
 		/// <summary>
 		/// Applies a <see cref="DecompilationProgress"/> report from a long-running operation (wired
-		/// via <see cref="Docking.DockWorkspace.RunInNewTabAsync"/>). Marshaled to the UI thread by the
+		/// via <see cref="Docking.DockWorkspace.RunInNewTabAsync(string, System.Func{System.Threading.CancellationToken, System.Threading.Tasks.Task{TextView.AvaloniaEditTextOutput}})"/>). Marshaled to the UI thread by the
 		/// <see cref="System.Progress{T}"/> that produced it.
 		/// </summary>
 		public void ReportProgress(DecompilationProgress progress)

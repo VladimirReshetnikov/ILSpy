@@ -169,7 +169,10 @@ namespace ICSharpCode.Decompiler.Documentation
 		/// <summary>
 		/// Gets child documentation nodes after applying inheritance expansion and boundary whitespace normalization.
 		/// </summary>
-		/// <value>An immutable-like list of child nodes. The list is empty for text nodes.</value>
+		/// <value>
+		/// The cached list of child nodes; empty for a text node. The same instance is returned on every
+		/// access rather than a defensive copy, so callers must not modify it.
+		/// </value>
 		public IList<XmlDocumentationElement> Children {
 			get {
 				if (element == null)

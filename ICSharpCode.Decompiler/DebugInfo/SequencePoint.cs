@@ -31,7 +31,8 @@ namespace ICSharpCode.Decompiler.DebugInfo
 	/// </para>
 	/// <para>
 	/// The IL range follows half-open semantics: <see cref="Offset"/> is inclusive and
-	/// <see cref="EndOffset"/> is exclusive.
+	/// <see cref="EndOffset"/> is exclusive. Only points produced by the decompiler carry an end offset;
+	/// instances read from existing symbols leave <see cref="EndOffset"/> at zero.
 	/// </para>
 	/// </remarks>
 	[DebuggerDisplay("SequencePoint IL_{Offset,h}-IL_{EndOffset,h}, {StartLine}:{StartColumn}-{EndLine}:{EndColumn}, IsHidden={IsHidden}")]

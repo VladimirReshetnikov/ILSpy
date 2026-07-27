@@ -38,7 +38,7 @@ namespace ICSharpCode.Decompiler
 	/// <remarks>
 	/// <para>
 	/// This writer is used by decompilation frontends that want navigable output (for example symbol hyperlinks, local-definition linkage,
-	/// and fold regions) instead of plain text only. It inspects AST annotations and roles to decide whether a token should be written with
+	/// and fold regions) instead of plain text only. It inspects AST annotations and child slots to decide whether a token should be written with
 	/// one of the <c>ITextOutput.WriteReference</c> overloads or as ordinary text.
 	/// </para>
 	/// <para>

@@ -94,7 +94,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <param name="f">First substitution to apply.</param>
 		/// <returns>
 		/// A substitution equivalent to applying <paramref name="f"/> and then <paramref name="g"/> to every type.
-		/// If either argument is effectively identity, the other is returned directly.
+		/// If <paramref name="f"/> is <see langword="null"/> or an identity substitution, <paramref name="g"/> is
+		/// returned directly; if <paramref name="g"/> is <see langword="null"/>, <paramref name="f"/> is returned directly.
 		/// </returns>
 		/// <remarks>
 		/// Functionally, this satisfies <c>t.AcceptVisitor(Compose(g, f)) == t.AcceptVisitor(f).AcceptVisitor(g)</c>

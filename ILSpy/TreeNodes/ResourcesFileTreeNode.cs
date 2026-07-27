@@ -115,7 +115,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// <summary>
 		/// Walks <see cref="ILSpyTreeNode.ResourceNodeFactories"/> for a specialised tree
 		/// node that claims this serialized-object entry (e.g. an <c>ImageListStreamer</c>
-		/// blob). Returns true and adds the node to <see cref="Children"/> when claimed;
+		/// blob). Returns true and adds the node to <see cref="ICSharpCode.ILSpyX.TreeView.SharpTreeNode.Children"/> when claimed;
 		/// returns false to let the caller fall back to the generic "&lt;serialized&gt;"
 		/// representation.
 		/// </summary>

@@ -33,7 +33,7 @@ namespace ICSharpCode.Decompiler.PowerShell
 		public static readonly string AssemblyLoadFailed = "1";
 
 		/// <summary>
-		/// Error identifier used when decompilation of the loaded assembly fails.
+		/// Error identifier used when a cmdlet fails while working with an already-loaded decompiler session.
 		/// </summary>
 		public static readonly string DecompilationFailed = "2";
 	}

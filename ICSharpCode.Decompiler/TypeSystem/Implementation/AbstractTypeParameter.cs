@@ -353,7 +353,8 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		public abstract IReadOnlyList<TypeConstraint> TypeConstraints { get; }
 
 		/// <summary>
-		/// Gets the raw declared name of the type parameter.
+		/// Gets the declared name of the type parameter, or the synthesized metadata-style fallback
+		/// (<c>!0</c> for a type parameter, <c>!!0</c> for a method one) when metadata carries no name.
 		/// </summary>
 		public string Name {
 			get { return name; }

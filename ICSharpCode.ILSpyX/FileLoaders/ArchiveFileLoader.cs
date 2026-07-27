@@ -34,6 +34,7 @@ namespace ICSharpCode.ILSpyX.FileLoaders
 		/// <param name="settings">Load options and parent-bundle context for the current operation.</param>
 		/// <returns>
 		/// A package result when the input is a supported archive; otherwise <see langword="null"/>.
+		/// Always <see langword="null"/> when the file is being loaded from inside a bundle.
 		/// </returns>
 		public Task<LoadResult?> Load(string fileName, Stream stream, FileLoadContext settings)
 		{

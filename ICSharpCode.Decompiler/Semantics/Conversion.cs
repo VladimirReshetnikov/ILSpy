@@ -99,7 +99,7 @@ namespace ICSharpCode.Decompiler.Semantics
 		public static readonly Conversion ImplicitConstantExpressionConversion = new BuiltinConversion(true, 2);
 
 		/// <summary>
-		/// Represents implicit or explicit reference conversions.
+		/// Represents an implicit reference conversion.
 		/// </summary>
 		public static readonly Conversion ImplicitReferenceConversion = new BuiltinConversion(true, 3);
 

@@ -193,12 +193,18 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 		}
 
 		/// <summary>
-		/// Gets whether <paramref name="v"/> is observed as potentially read before assignment.
+		/// Gets whether <paramref name="v"/> is observed as potentially used before assignment, either by being
+		/// read or by having its address taken.
 		/// </summary>
 		/// <param name="v">A variable declared in the analyzed function.</param>
 		/// <returns>
-		/// <see langword="true"/> if at least one read can happen on a path where <paramref name="v"/> was not definitely assigned.
+		/// <see langword="true"/> if at least one such use can happen on a path where <paramref name="v"/> was
+		/// not definitely assigned.
 		/// </returns>
+		/// <remarks>
+		/// Meaningful only after the visitor has walked the analyzed function; a fresh visitor reports
+		/// <see langword="false"/> for every variable.
+		/// </remarks>
 		public bool IsPotentiallyUsedUninitialized(ILVariable v)
 		{
 			Debug.Assert(v.Function == scope);
@@ -280,7 +286,9 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 		}
 
 		/// <summary>
-		/// Visits an address-of-local instruction and enforces initialization unless special-cased by call handling.
+		/// Visits an address-of-local instruction and records a potential use before assignment, since a variable
+		/// must be initialized before its address is taken. Address loads used as out arguments are handled by the
+		/// call logic and never reach this method.
 		/// </summary>
 		/// <param name="inst">The address load instruction.</param>
 		protected internal override void VisitLdLoca(LdLoca inst)

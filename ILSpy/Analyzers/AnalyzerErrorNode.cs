@@ -25,8 +25,8 @@ namespace ICSharpCode.ILSpy.Analyzers
 {
 	/// <summary>
 	/// Sentinel row shown under an <see cref="AnalyzerSearchTreeNode"/> when the analyser
-	/// threw. The user-facing <see cref="SharpTreeNode.Text"/> is a one-line summary, the
-	/// <see cref="SharpTreeNode.ToolTip"/> shows the full exception (stack trace included),
+	/// threw. The user-facing <see cref="Text"/> is a one-line summary, the
+	/// <see cref="ToolTip"/> shows the full exception (stack trace included),
 	/// and <see cref="Details"/> is the same payload that
 	/// <see cref="CopyAnalyzerErrorContextMenuEntry"/> writes to the clipboard.
 	/// </summary>
@@ -55,7 +55,7 @@ namespace ICSharpCode.ILSpy.Analyzers
 
 		/// <summary>
 		/// Full exception text — typically <see cref="Exception.ToString"/> — for the copy
-		/// entry to put on the clipboard. Plain <see cref="SharpTreeNode.Text"/> is kept
+		/// entry to put on the clipboard. Plain <see cref="Text"/> is kept
 		/// short so the row stays compact in the tree.
 		/// </summary>
 		public string Details { get; }

@@ -149,7 +149,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// <summary>
 		/// True for nodes whose member is part of the assembly's public surface
 		/// (Public / Protected / ProtectedOrInternal). Consulted by <see cref="Filter"/>
-		/// to honour the <see cref="ApiVisibility.PublicOnly"/> setting.
+		/// to honour the <see cref="ICSharpCode.ILSpyX.ApiVisibility.PublicOnly"/> setting.
 		/// </summary>
 		public virtual bool IsPublicAPI => true;
 

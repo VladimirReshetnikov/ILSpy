@@ -199,7 +199,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Gets the type definition behind <see cref="GenericType"/>.
 		/// </summary>
-		/// <returns>The non-null generic type definition for this constructed instance.</returns>
+		/// <returns>
+		/// The generic type definition, or <see langword="null"/> when the generic type is unresolved (for
+		/// example an <see cref="Implementation.UnknownType"/>). Use <see cref="GetDefinitionOrUnknown"/> to
+		/// get a non-null result in that case.
+		/// </returns>
 		public ITypeDefinition GetDefinition()
 		{
 			return genericType.GetDefinition();

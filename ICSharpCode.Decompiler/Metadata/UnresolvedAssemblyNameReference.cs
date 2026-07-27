@@ -22,7 +22,8 @@ using System.Linq;
 namespace ICSharpCode.Decompiler.Metadata
 {
 	/// <summary>
-	/// Stores accumulated diagnostics for a single unresolved assembly reference.
+	/// Stores the diagnostic messages accumulated while resolving one assembly reference, whether or not
+	/// resolution succeeded.
 	/// </summary>
 	public sealed class UnresolvedAssemblyNameReference
 	{

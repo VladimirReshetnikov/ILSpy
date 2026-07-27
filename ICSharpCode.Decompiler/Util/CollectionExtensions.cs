@@ -185,12 +185,12 @@ namespace ICSharpCode.Decompiler.Util
 		}
 
 		/// <summary>
-		/// Computes the maximum projected value, or a fallback for empty sequences.
+		/// Computes the maximum projected value, clamped from below by <paramref name="defaultValue"/>.
 		/// </summary>
 		/// <param name="input">Source sequence.</param>
 		/// <param name="selector">Projection that maps each element to an <see cref="int"/> key.</param>
-		/// <param name="defaultValue">Value returned when <paramref name="input"/> is empty.</param>
-		/// <returns>The largest projected value or <paramref name="defaultValue"/>.</returns>
+		/// <param name="defaultValue">Lower bound for the result; also the result for an empty sequence.</param>
+		/// <returns>The largest projected value, or <paramref name="defaultValue"/> when no projection exceeds it.</returns>
 		public static int MaxOrDefault<T>(this IEnumerable<T> input, Func<T, int> selector, int defaultValue = 0)
 		{
 			int max = defaultValue;
@@ -450,7 +450,7 @@ namespace ICSharpCode.Decompiler.Util
 		/// </summary>
 		/// <param name="source">Sequence to scan.</param>
 		/// <param name="keySelector">Selector that produces the key used for ordering elements.</param>
-		/// <param name="keyComparer">Comparer used to compare keys. If <see langword="null"/>, <see cref="Comparer{T}.Default"/> is used.</param>
+		/// <param name="keyComparer">Comparer used to compare keys. If <see langword="null"/>, <see cref="Comparer{K}.Default"/> is used.</param>
 		/// <returns>The element whose key is smallest according to <paramref name="keyComparer"/>.</returns>
 		/// <exception cref="InvalidOperationException">The input sequence is empty</exception>
 		public static T MinBy<T, K>(this IEnumerable<T> source, Func<T, K> keySelector, IComparer<K>? keyComparer)
@@ -499,7 +499,7 @@ namespace ICSharpCode.Decompiler.Util
 		/// </summary>
 		/// <param name="source">Sequence to scan.</param>
 		/// <param name="keySelector">Selector that produces the key used for ordering elements.</param>
-		/// <param name="keyComparer">Comparer used to compare keys. If <see langword="null"/>, <see cref="Comparer{T}.Default"/> is used.</param>
+		/// <param name="keyComparer">Comparer used to compare keys. If <see langword="null"/>, <see cref="Comparer{K}.Default"/> is used.</param>
 		/// <returns>The element whose key is largest according to <paramref name="keyComparer"/>.</returns>
 		/// <exception cref="InvalidOperationException">The input sequence is empty</exception>
 		public static T MaxBy<T, K>(this IEnumerable<T> source, Func<T, K> keySelector, IComparer<K>? keyComparer)

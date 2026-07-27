@@ -52,7 +52,8 @@ namespace ICSharpCode.ILSpyCmd
 	/// <remarks>
 	/// <para>
 	/// Mode dispatch is intentionally precedence-based rather than fully combinatorial. The execution order is:
-	/// project generation, Mermaid diagram generation, then per-file actions (list, IL, PDB, package dump, C# decompilation).
+	/// project generation, Mermaid diagram generation, then per-file actions (list, IL, PDB, package dump,
+	/// resource listing, resource extraction, C# decompilation).
 	/// </para>
 	/// <para>
 	/// This makes automation behavior predictable when callers accidentally combine mutually overshadowing flags.
@@ -129,7 +130,9 @@ Examples:
 		public bool CreateCompilableProjectFlag { get; }
 
 		/// <summary>
-		/// Restricts decompilation to a single fully-qualified type name.
+		/// Restricts decompilation to a single type. Accepts the full reflection name, a namespace-qualified
+		/// name, a bare simple name, or a trailing '.'-separated name path; the value must resolve to exactly
+		/// one type or the run fails.
 		/// </summary>
 		[Option("-t|--type <type-name>", "The fully qualified name of the type to decompile.", CommandOptionType.SingleValue)]
 		public string TypeName { get; }
@@ -191,7 +194,9 @@ Examples:
 		public LanguageVersion LanguageVersion { get; } = LanguageVersion.Latest;
 
 		/// <summary>
-		/// Optional ILSpy settings file to load decompiler preferences from.
+		/// Optional ILSpy settings file. When it loads successfully its decompiler settings replace the
+		/// defaults wholesale, so -lv, --no-dead-code, --no-dead-stores and --nested-directories are ignored;
+		/// only -ds overrides are still applied on top.
 		/// </summary>
 		[FileExists]
 		[Option("--ilspy-settingsfile <path>", "Path to an ILSpy settings file.", CommandOptionType.SingleValue)]
