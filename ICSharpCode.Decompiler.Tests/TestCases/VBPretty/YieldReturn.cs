@@ -200,6 +200,63 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.VBPretty
 			}
 		}
 
+		public static IEnumerable<int> YieldReturnInTryCatch()
+		{
+			try
+			{
+				yield return 0;
+				yield return 1;
+			}
+			catch (Exception projectError)
+			{
+				ProjectData.SetProjectError(projectError);
+				Console.WriteLine("Catch");
+				ProjectData.ClearProjectError();
+			}
+		}
+
+		public static IEnumerable<int> YieldReturnInTryCatchInTryFinally()
+		{
+#if OPT && ROSLYN2
+			int num = -1;
+			try
+			{
+				_ = num - 1;
+				try
+				{
+					yield return 0;
+					yield return 1;
+				}
+				catch (Exception projectError)
+				{
+					ProjectData.SetProjectError(projectError);
+					Console.WriteLine("Catch");
+					ProjectData.ClearProjectError();
+				}
+			}
+			finally
+			{
+				Console.WriteLine("Finally");
+			}
+#else
+			try
+			{
+				yield return 0;
+				yield return 1;
+			}
+			catch (Exception projectError)
+			{
+				ProjectData.SetProjectError(projectError);
+				Console.WriteLine("Catch");
+				ProjectData.ClearProjectError();
+			}
+			finally
+			{
+				Console.WriteLine("Finally");
+			}
+#endif
+		}
+
 		public static IEnumerable<int> YieldBreakInCatch()
 		{
 			yield return 0;

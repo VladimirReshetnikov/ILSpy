@@ -912,6 +912,15 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 						sra.AssignStateRanges(oldTryBlock, LongSet.Universe);
 						tryFinally.TryBlock = ConvertBody(oldTryBlock, sra);
 					}
+					else if (oldInst is TryCatch tryCatch && isCompiledWithVisualBasic)
+					{
+						// Visual Basic, unlike C#, permits Yield inside the Try block of a Try...Catch,
+						// so the yield returns to convert can be nested in one.
+						var oldTryBlock = (BlockContainer)tryCatch.TryBlock;
+						var sra = rangeAnalysis.CreateNestedAnalysis();
+						sra.AssignStateRanges(oldTryBlock, LongSet.Universe);
+						tryCatch.TryBlock = ConvertBody(oldTryBlock, sra);
+					}
 					else if (isCompiledWithLegacyVisualBasic && oldInst is IfInstruction ifInstruction &&
 								ifInstruction.FalseInst.MatchNop() &&
 								ifInstruction.Condition.MatchCompEquals(out var left, out var right) &&

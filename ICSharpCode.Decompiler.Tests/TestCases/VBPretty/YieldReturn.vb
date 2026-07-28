@@ -150,6 +150,29 @@ Namespace ICSharpCode.Decompiler.Tests.TestCases.VBPretty
 	        End Try
 	    End Function
 
+	    Public Shared Iterator Function YieldReturnInTryCatch() As IEnumerable(Of Integer)
+	        ' Unlike C#, VB allows Yield inside the Try block of a Try...Catch.
+	        Try
+	            Yield 0
+	            Yield 1
+	        Catch
+	            Console.WriteLine("Catch")
+	        End Try
+	    End Function
+
+	    Public Shared Iterator Function YieldReturnInTryCatchInTryFinally() As IEnumerable(Of Integer)
+	        Try
+	            Try
+	                Yield 0
+	                Yield 1
+	            Catch
+	                Console.WriteLine("Catch")
+	            End Try
+	        Finally
+	            Console.WriteLine("Finally")
+	        End Try
+	    End Function
+
 	    Public Shared Iterator Function YieldBreakInCatch() As IEnumerable(Of Integer)
 	        Yield 0
 	        Try
