@@ -20,6 +20,7 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 
+using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
 
@@ -276,6 +277,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						inst = target;
 					}
 				}
+				else if (inst is Call conversionCall && IsImplicitSpanConversion(conversionCall, context))
+				{
+					// An implicit span conversion has no spelling of its own: the receiver keeps the
+					// type it is written with and C# re-applies the conversion at the call site. Step
+					// through it so the chain continues to the expression that is actually written.
+					inst = conversionCall.Arguments[0];
+				}
 				else if (inst is CallInstruction call && call.OpCode != OpCode.NewObj)
 				{
 					if (call.Arguments.Count == 0)
@@ -423,6 +431,25 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		static bool IsGetter(IMethod method)
 		{
 			return method.AccessorKind == System.Reflection.MethodSemanticsAttributes.Getter;
+		}
+
+		/// <summary>
+		/// Whether the call is the conversion operator behind an implicit span conversion, such as
+		/// the one from an array to a <c>ReadOnlySpan</c>. Those are standard conversions C# applies
+		/// on its own - including to the receiver of an extension method - so they are never written
+		/// out. Ordinary user-defined conversion operators are not covered: those the language does
+		/// not re-apply, so dropping one would change which member the call binds to.
+		/// </summary>
+		static bool IsImplicitSpanConversion(Call call, ILTransformContext context)
+		{
+			if (call.Arguments.Count != 1 || !call.Method.IsStatic || call.Method.Name != "op_Implicit")
+				return false;
+			// Classify the operator by what it declares, not by the type of the argument
+			// expression: the receiver of the chain is still a stack slot here, so its load
+			// reports no usable static type.
+			return CSharpConversions.Get(context.TypeSystem)
+				.ImplicitConversion(call.Method.Parameters[0].Type, call.Method.ReturnType)
+				.IsImplicitSpanConversion;
 		}
 
 		/// <summary>
