@@ -14,4 +14,17 @@ public static class RefLocalUninitialized
 		}
 		return result;
 	}
+	public static ref int FindValue(Slot[] items, int count)
+	{
+		ref Slot reference = ref System.Runtime.CompilerServices.Unsafe.NullRef<Slot>();
+		for (int i = 0; i < count; i++)
+		{
+			reference = ref items[i];
+		}
+		return ref reference.Value;
+	}
+}
+public struct Slot
+{
+	public int Value;
 }

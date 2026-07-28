@@ -878,9 +878,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							//
 							// 'Unsafe.NullRef<T>()' returns a reference whose ref-safe-context is the
 							// calling method, so a plain 'ref T x' would reject a later reassignment from a
-							// method-local reference (CS8374). Such a ref local starts unassigned, so it
-							// never legitimately escapes; declare it 'scoped' to narrow its ref-safe-context
-							// enough to admit those reassignments.
+							// method-local reference (CS8374). Declaring it 'scoped' narrows its
+							// ref-safe-context enough to admit those reassignments.
+							//
+							// Starting out unassigned does not mean the local stays inside the method: it
+							// may be rebound to a heap reference and then returned. 'scoped' forbids that,
+							// so a local that is returned by reference has to be left bare (CS8158).
 							if (v.ILVariable.IsRefReadOnly && type is ComposedType composedRefType
 								&& composedRefType.HasRefSpecifier)
 							{
@@ -897,7 +900,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 										TypeArguments = { elementType }
 									}
 								});
-							if (context.Settings.ScopedRef)
+							if (context.Settings.ScopedRef && !RefLocalIsReturnedByRef(v))
 							{
 								vds.IsScopedRef = true;
 							}
@@ -1016,6 +1019,42 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// (the status quo), because a false "does not escape" would inject a new ref-safety error on
 		/// a legitimately escaping local, which is strictly worse than the missing modifier.
 		/// </summary>
+		/// <summary>
+		/// Whether the ref local <paramref name="v"/> is returned by reference anywhere in the method,
+		/// either directly or through one of its members or elements.
+		///
+		/// Such a local cannot carry the <c>scoped</c> modifier its declaration would otherwise get:
+		/// <c>scoped</c> confines the reference to the method, which is exactly what a ref return
+		/// contradicts (CS8158).
+		///
+		/// Only an actual ref return counts, and anything else leaves the modifier in place. The
+		/// asymmetry is deliberate and opposite to <see cref="LocalMayEscape"/>: that one may answer
+		/// "escapes" when it cannot prove otherwise, which here would drop <c>scoped</c> from a local
+		/// that needs it and reintroduce the reassignment error the modifier is there to prevent.
+		/// </summary>
+		bool RefLocalIsReturnedByRef(VariableToDeclare v)
+		{
+			if (v.InsertionPoint.nextNode.Parent is not BlockStatement scope)
+				return false;
+			foreach (AstNode node in OutermostBlock(scope).DescendantsAndSelf)
+			{
+				if (node is not IdentifierExpression identifier)
+					continue;
+				if (ResolveVariableToDeclare(identifier.GetILVariable()) != v)
+					continue;
+				// 'return ref local.Field;' returns a reference derived from the local just as
+				// 'return ref local;' does, so walk out through the accesses that preserve it.
+				AstNode current = identifier;
+				while (current.Parent is MemberReferenceExpression or IndexerExpression or ParenthesizedExpression)
+				{
+					current = current.Parent;
+				}
+				if (current.Parent is DirectionExpression { Parent: ReturnStatement })
+					return true;
+			}
+			return false;
+		}
+
 		bool ShouldDeclareByRefLikeLocalScoped(VariableToDeclare v)
 		{
 			// All uses of the variable live within the block that receives the declaration; the

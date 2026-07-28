@@ -11,6 +11,11 @@
 // address of the by-value parameter 'value') would be rejected with CS8374. The non-ref local in
 // the same method still uses the valid 'Unsafe.SkipInit(out T result)' form, guarding that only
 // the ref case changed.
+//
+// FindValue is the opposite case, and the two are guarded together on purpose. Its ref local is
+// rebound to an array element and a member of it is then returned by reference, so 'scoped' must
+// be left off: it confines the reference to the method, which is what the ref return contradicts
+// (CS8158). Starting out unassigned does not decide this either way.
 
 .assembly extern System.Runtime
 {
@@ -55,4 +60,43 @@
 		ldloc.1
 		ret
 	}
+
+	.method public hidebysig static
+		int32& FindValue (valuetype Slot[] items, int32 count) cil managed
+	{
+		.maxstack 3
+		.locals (
+			[0] valuetype Slot&,
+			[1] int32
+		)
+
+		ldc.i4.0
+		stloc.1
+		br.s CHECK
+
+	LOOP:
+		ldarg.0
+		ldloc.1
+		ldelema Slot
+		stloc.0
+		ldloc.1
+		ldc.i4.1
+		add
+		stloc.1
+
+	CHECK:
+		ldloc.1
+		ldarg.1
+		blt.s LOOP
+
+		ldloc.0
+		ldflda int32 Slot::Value
+		ret
+	}
+}
+
+.class public sequential ansi sealed beforefieldinit Slot
+	extends [System.Runtime]System.ValueType
+{
+	.field public int32 Value
 }
