@@ -217,6 +217,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.VBPretty
 
 		public static IEnumerable<int> YieldReturnInTryCatchInTryFinally()
 		{
+			// Optimized builds from Roslyn 2 onwards keep the inner try nested and leave a fragment
+			// of the state dispatch behind; the other compilers merge the two handlers into one
+			// try/catch/finally. Both reconstruct the yields, which is what this case is about.
 #if OPT && ROSLYN2
 			int num = -1;
 			try
