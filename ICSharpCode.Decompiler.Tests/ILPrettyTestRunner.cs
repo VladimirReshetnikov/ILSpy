@@ -481,6 +481,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task InheritedAllowMultipleAttribute()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task Issue1638()
 		{
 			await Run();

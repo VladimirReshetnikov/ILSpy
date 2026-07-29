@@ -105,10 +105,15 @@ namespace ICSharpCode.Decompiler.IL
 					if (variable.Kind == VariableKind.Local && variable.Index.HasValue)
 						variableTypeMapping[variable.Index.Value] = merged;
 				}
+				// SplitVariables can leave several live variables on one IL local slot. They are the
+				// same source-level local, so the names recovered for one apply to all of them - but
+				// only where the slot really does hold the same type, since an earlier transform may
+				// have retyped one of them (to dynamic or nint, say).
 				foreach (var variable in nestedFunction.Variables)
 				{
 					if (variable.Kind == VariableKind.Local && variable.Index.HasValue
-						&& variableTypeMapping.TryGetValue(variable.Index.Value, out var type))
+						&& variableTypeMapping.TryGetValue(variable.Index.Value, out var type)
+						&& NormalizeTypeVisitor.TypeErasure.EquivalentTypes(variable.Type, type))
 					{
 						variable.Type = type;
 					}

@@ -82,7 +82,6 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				{
 					foreach (var attribute in section.Attributes.ToArray())
 					{
-
 						var trr = attribute.Type.Annotation<TypeResolveResult>();
 						if (trr == null)
 							continue;

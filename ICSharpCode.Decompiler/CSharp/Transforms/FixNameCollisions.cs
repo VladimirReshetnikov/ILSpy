@@ -83,7 +83,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						var variables = member.GetChildren(Slots.Variable).OfType<VariableInitializer>().ToList();
 						if (variables.Count != 1 || variables[0].Name != typeDecl.Name)
 							continue;
-						string newName = PickNewMemberName(usedMemberNames, variables[0].Name);
+						string newName = PickNumberedName(usedMemberNames, variables[0].Name);
 						context.Step($"Rename member '{variables[0].Name}' to '{newName}'", member);
 						variables[0].Name = newName;
 						renamedSymbols[GetSymbolDefinition(variableSymbol)] = newName;
@@ -92,7 +92,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					else if (member is not EnumMemberDeclaration
 						&& member.Name == typeDecl.Name && member.GetSymbol() is ISymbol symbol)
 					{
-						string newName = PickNewMemberName(usedMemberNames, member.Name);
+						string newName = PickNumberedName(usedMemberNames, member.Name);
 						context.Step($"Rename member '{member.Name}' to '{newName}'", member);
 						member.Name = newName;
 						renamedSymbols[GetSymbolDefinition(symbol)] = newName;
@@ -133,7 +133,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						&& !CanShareName(previous.Symbol, symbol));
 					if (conflicts)
 					{
-						string newName = PickNewMemberName(usedMemberNames, name);
+						string newName = PickNumberedName(usedMemberNames, name);
 						context.Step($"Rename conflicting member '{name}' to '{newName}'", member);
 						RenameMember(member, newName);
 						renamedSymbols[GetSymbolDefinition(symbol)] = newName;
@@ -257,7 +257,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				{
 					if (finalTypeParameterNames[i] == outputTypeName)
 					{
-						finalTypeParameterNames[i] = PickNewTypeParameterName(usedTypeParameterNames, finalTypeParameterNames[i]);
+						finalTypeParameterNames[i] = PickNumberedName(usedTypeParameterNames, finalTypeParameterNames[i]);
 						usedTypeParameterNames.Add(finalTypeParameterNames[i]);
 					}
 				}
@@ -269,7 +269,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					&& !(typeDefinition.Kind == TypeKind.Enum && symbol is IField)))
 				{
 					ISymbol definition = GetSymbolDefinition(symbol);
-					string newName = PickNewMemberName(usedNames, names[definition]);
+					string newName = PickNumberedName(usedNames, names[definition]);
 					names[definition] = newName;
 					usedNames.Add(newName);
 				}
@@ -293,7 +293,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						|| acceptedMembers.Any(previous => previous.Name == name && !CanShareName(previous.Symbol, symbol));
 					if (conflicts)
 					{
-						name = PickNewMemberName(usedNames, name);
+						name = PickNumberedName(usedNames, name);
 						names[definition] = name;
 						usedNames.Add(name);
 					}
@@ -354,7 +354,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (!forbidden.Contains(declaration.Name))
 						continue;
 					string oldName = declaration.Name;
-					string newName = PickNewTypeParameterName(usedNames, oldName);
+					string newName = PickNumberedName(usedNames, oldName);
 					context.Step($"Rename type parameter '{oldName}' to '{newName}'", owner);
 					declaration.Name = newName;
 					renamedSymbols[GetSymbolDefinition(symbol)] = newName;
@@ -465,7 +465,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		}
 
-		string PickNewMemberName(ISet<string> usedNames, string name)
+		/// <summary>
+		/// Appends the lowest number that makes <paramref name="name"/> unused. Members and type
+		/// parameters are both renamed this way: neither has a conventional prefix to fall back on,
+		/// so the numbered suffix stays closest to the metadata name.
+		/// </summary>
+		static string PickNumberedName(ISet<string> usedNames, string name)
 		{
 			for (int num = 2; ; num++)
 			{
@@ -475,26 +480,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		}
 
-		string PickNewTypeParameterName(ISet<string> usedNames, string name)
-		{
-			for (int num = 2; ; num++)
-			{
-				string newName = name + num;
-				if (!usedNames.Contains(newName))
-					return newName;
-			}
-		}
-
-		string PickNewName(ISet<string> memberNames, string name)
+		/// <summary>
+		/// Picks a free name for a private field, preferring the <c>m_</c> prefix that conventionally
+		/// distinguishes a backing field from the property or event it collides with.
+		/// </summary>
+		static string PickNewName(ISet<string> memberNames, string name)
 		{
 			if (!memberNames.Contains("m_" + name))
 				return "m_" + name;
-			for (int num = 2; ; num++)
-			{
-				string newName = name + num;
-				if (!memberNames.Contains(newName))
-					return newName;
-			}
+			return PickNumberedName(memberNames, name);
 		}
 	}
 }

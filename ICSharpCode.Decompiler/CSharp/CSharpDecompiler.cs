@@ -1752,6 +1752,9 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 			if (interfaceAccessors ? method.SymbolKind != SymbolKind.Method : method.SymbolKind != SymbolKind.Accessor)
 				yield break;
+			// A synthesized member has no MethodDef row, so it cannot participate in interface mapping.
+			if (method.MetadataToken.Kind != HandleKind.MethodDefinition)
+				yield break;
 			var methodDefinition = metadata.GetMethodDefinition((MethodDefinitionHandle)method.MetadataToken);
 			if ((methodDefinition.Attributes & System.Reflection.MethodAttributes.Virtual) == 0)
 				yield break;

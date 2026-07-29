@@ -146,13 +146,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			ArrayInitializerExpression initializer;
 			if (create != null)
 			{
+				// Folding the assignments back in is exactly the object-initializer syntax.
+				if (!context.Settings.ObjectOrCollectionInitializers)
+					return false;
 				initializer = create.Initializer ?? new ArrayInitializerExpression();
 				if (create.Initializer == null)
 					create.Initializer = initializer;
 			}
 			else
 			{
-				if (!context.Settings.RecordClasses)
+				if (!context.Settings.WithExpressions)
 					return false;
 				initializer = new ArrayInitializerExpression();
 				var copied = variable.Initializer!.Detach();
