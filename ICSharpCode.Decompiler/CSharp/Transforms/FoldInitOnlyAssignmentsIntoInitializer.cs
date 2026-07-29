@@ -87,6 +87,17 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// them once the initializer has been split.
 			var aliases = new HashSet<ILVariable>();
 			var aliasDeclarations = new List<(Statement Statement, ILVariable Variable)>();
+			// An initializer names each member at most once (CS1912), so members the creation
+			// already initializes are off limits for the fold.
+			var usedMemberNames = new HashSet<string>();
+			if (create?.Initializer is { } existingInitializer)
+			{
+				foreach (var element in existingInitializer.Elements)
+				{
+					if (element is NamedExpression named)
+						usedMemberNames.Add(named.Name);
+				}
+			}
 			var absorbed = new List<(Statement Statement, string MemberName, Expression Value, Statement? Hoisted,
 				Expression? HoistedValue, IdentifierExpression? HoistedRead)>();
 			bool sawInitOnly = false;
@@ -111,6 +122,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					candidate = afterHoist;
 				}
 				if (!IsMemberAssignment(candidate, target, aliases, out var member, out var value, out bool isInitOnly))
+					break;
+				// A second assignment to a member the initializer already carries is an ordinary
+				// later mutation; absorbing it would name the member twice (CS1912). It and
+				// everything after it stay behind as statements.
+				if (!usedMemberNames.Add(member))
 					break;
 				IdentifierExpression? hoistedRead = null;
 				if (hoisted != null)
