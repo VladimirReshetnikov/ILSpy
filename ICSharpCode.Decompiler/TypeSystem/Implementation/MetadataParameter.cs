@@ -53,6 +53,8 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		// these can't be bool? as bool? is not thread-safe from torn reads
 		byte constantValueInSignatureState;
 		byte decimalConstantState;
+		// (ReferenceKind + 1), 0 while not yet computed; a byte for the same torn-read reason
+		byte referenceKindState;
 
 		/// <summary>
 		/// Initializes a metadata-backed parameter wrapper.
@@ -149,7 +151,20 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		/// <summary>
 		/// Gets the effective reference kind inferred from byref signature shape and known compiler attributes.
 		/// </summary>
-		public ReferenceKind ReferenceKind => DetectRefKind();
+		public ReferenceKind ReferenceKind {
+			get {
+				// Cached because DetectRefKind can walk the owner's base members and interfaces
+				// (see ContractParameterIs), which is far too expensive to repeat on every read.
+				// Racing threads compute the same value, so an unsynchronized overwrite is fine;
+				// a reentrant read during the walk recomputes instead of seeing a torn state.
+				byte state = referenceKindState;
+				if (state != 0)
+					return (ReferenceKind)(state - 1);
+				ReferenceKind kind = DetectRefKind();
+				referenceKindState = (byte)((byte)kind + 1);
+				return kind;
+			}
+		}
 
 		/// <summary>
 		/// Gets whether the metadata optional flag is set for this parameter.
@@ -216,23 +231,74 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			int parameterIndex = module.metadata.GetParameter(handle).SequenceNumber - 1;
 			if (parameterIndex < 0)
 				return false;
-			// Direct interface-implementation links cover Visual Basic 'Implements' (renamed or not) and
-			// C#-style explicit implementations; GetBaseMembers additionally covers overrides and implicit
-			// same-signature interface implementations.
-			foreach (var contract in method.ExplicitlyImplementedInterfaceMembers
-				.Concat(InheritanceHelper.GetBaseMembers(method, includeImplementedInterfaces: true)))
+			bool ParameterHasKind(IMember contract)
 			{
-				if (contract is IMethod contractMethod
+				return contract is IMethod contractMethod
 					&& parameterIndex < contractMethod.Parameters.Count
-					&& contractMethod.Parameters[parameterIndex].ReferenceKind == kind)
+					&& contractMethod.Parameters[parameterIndex].ReferenceKind == kind;
+			}
+			// Direct interface-implementation links cover Visual Basic 'Implements' (renamed or not)
+			// and C#-style explicit implementations; they name the implemented member outright, so
+			// they are authoritative.
+			foreach (var contract in method.ExplicitlyImplementedInterfaceMembers)
+			{
+				if (ParameterHasKind(contract))
+					return true;
+			}
+			// GetBaseMembers additionally covers overrides and implicit same-signature interface
+			// implementations. It matches by name and byref-insensitive signature alone, so each
+			// candidate still has to be checked for actually constraining this method.
+			foreach (var contract in InheritanceHelper.GetBaseMembers(method, includeImplementedInterfaces: true))
+			{
+				if (!ParameterHasKind(contract))
+					continue;
+				if (contract.DeclaringType.Kind == TypeKind.Interface)
 				{
-					// GetBaseMembers also returns a base class member that this method merely hides
-					// (a 'new' member). Hiding does not require a matching ref-kind, so a hidden
-					// base member is not a contract: only a genuine override or an interface member
-					// constrains the parameter direction. Skip a hidden non-interface base member.
-					if (contractMethod.DeclaringType.Kind != TypeKind.Interface && !method.IsOverride)
+					// A signature match alone does not make this method the implementation of the
+					// interface member: the runtime maps the slot to a same-signature public method
+					// only when no explicit implementation claims it. Without this check, a method
+					// that merely shares the name and byref shape (ref and out compare equal in
+					// signatures) would have its ref-kind flipped by an interface member that is
+					// actually implemented by a sibling.
+					if (method.Accessibility != Accessibility.Public)
+						continue;
+					if (IsExplicitlyImplementedInDeclaringType(contract))
 						continue;
 					return true;
+				}
+				// GetBaseMembers also returns a base class member that this method merely hides
+				// (a 'new' member). Hiding does not require a matching ref-kind, so a hidden
+				// base member is not a contract: only a genuine override or an interface member
+				// constrains the parameter direction. Skip a hidden non-interface base member.
+				if (!method.IsOverride)
+					continue;
+				return true;
+			}
+			return false;
+		}
+
+		/// <summary>
+		/// Returns true if any member of the owning method's declaring type explicitly implements
+		/// the given interface member, i.e. the member's implementation slot is already taken and
+		/// cannot belong to a merely signature-matching method.
+		/// </summary>
+		bool IsExplicitlyImplementedInDeclaringType(IMember interfaceMember)
+		{
+			var declaringType = Owner.DeclaringTypeDefinition;
+			if (declaringType == null)
+				return false;
+			var interfaceMemberDefinition = interfaceMember.MemberDefinition;
+			IEnumerable<IMethod> candidates = Owner.SymbolKind == SymbolKind.Accessor
+				? declaringType.GetAccessors(options: GetMemberOptions.IgnoreInheritedMembers)
+				: declaringType.GetMethods(options: GetMemberOptions.IgnoreInheritedMembers);
+			foreach (var candidate in candidates)
+			{
+				if (!candidate.IsExplicitInterfaceImplementation)
+					continue;
+				foreach (var implemented in candidate.ExplicitlyImplementedInterfaceMembers)
+				{
+					if (interfaceMemberDefinition.Equals(implemented.MemberDefinition))
+						return true;
 				}
 			}
 			return false;
