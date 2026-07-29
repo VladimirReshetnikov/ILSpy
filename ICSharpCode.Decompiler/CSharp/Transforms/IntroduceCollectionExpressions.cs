@@ -174,7 +174,29 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				source = invocation.Arguments.Single();
 			else if (!method.IsStatic && invocation.Arguments.Count == 0 && invocation.Target is MemberReferenceExpression { Target: { } receiver })
 				source = receiver;
+			// The name alone says nothing: plenty of types offer a ToArray that copies out of
+			// something a spread cannot read, MemoryStream among them. Spreading one of those
+			// produces C# that does not compile, so the source has to be enumerable in its own right.
+			if (source != null && !IsSpreadable(source.GetResolveResult().Type))
+				source = null;
 			return source != null;
+		}
+
+		/// <summary>
+		/// Returns whether a spread element may read from <paramref name="type"/>. A spread asks for
+		/// what foreach asks for: either the type implements IEnumerable, or it just offers a
+		/// GetEnumerator to bind against, which is how Span and ReadOnlySpan qualify while
+		/// implementing neither.
+		/// </summary>
+		static bool IsSpreadable(IType type)
+		{
+			if (type.Kind is TypeKind.Array or TypeKind.Dynamic)
+				return true;
+			if (type.Kind is TypeKind.Unknown or TypeKind.None)
+				return false;
+			if (type.GetAllBaseTypes().Any(baseType => baseType.IsKnownType(KnownTypeCode.IEnumerable)))
+				return true;
+			return type.GetMethods(method => method.Name == "GetEnumerator" && !method.IsStatic).Any();
 		}
 
 		static bool IsReadOnlyCollectionWrapper(ITypeDefinition? declaringType)
