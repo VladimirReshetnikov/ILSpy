@@ -462,7 +462,13 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public unsafe int ReadFixedMemberFromRValue(StructWithFixedSizeMembers m)
 		{
 			StructWithFixedSizeMembers structWithFixedSizeMembers = ReturnStruct(m);
+#if ROSLYN2
 			return structWithFixedSizeMembers.Integers[0] & 2;
+#else
+			// Older compilers emit the element-0 read without the index arithmetic that
+			// identifies it as an indexer, so it comes back as a plain dereference.
+			return *structWithFixedSizeMembers.Integers & 2;
+#endif
 		}
 
 		private void UseReference(ref int i)

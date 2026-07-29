@@ -32,7 +32,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public Func<short, bool> GetGenericDelegate(List<short> roles)
 		{
+#if !ROSLYN2 || ROSLYN3
 			return ((IReadOnlyCollection<short>)roles).Contains;
+#else
+			// Casting the receiver is enough to name this method group unambiguously for every
+			// other compiler; against Roslyn 2.10 the reference stays ambiguous, so the search
+			// for a minimal form goes one step further and spells the type argument out.
+			return ((IReadOnlyCollection<short>)roles).Contains<short>;
+#endif
 		}
 	}
 }
