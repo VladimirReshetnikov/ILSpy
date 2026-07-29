@@ -471,7 +471,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						return null;
 					if (!(v.StoreInstructions.SingleOrDefault() is StLoc stloc))
 						return null;
-					if (stloc.Value is NewObj newObj && ValidateConstructor(context, newObj.Method))
+					if (stloc.Value is NewObj newObj && ValidateConstructor(context, newObj.Method)
+						&& CopiesNothingObservable(newObj, stloc.Variable))
 					{
 						result = new DisplayClass(v, definition) {
 							CaptureScope = v.CaptureScope,
@@ -575,7 +576,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			var definition = newObj.Method.DeclaringType.GetDefinition();
 			if (!ValidateDisplayClassDefinition(definition))
 				return null;
-			if (!ValidateConstructor(context, newObj.Method))
+			if (!ValidateConstructor(context, newObj.Method) || !CopiesNothingObservable(newObj, v))
 				return null;
 			if (!initializerBlock.Parent.MatchStLoc(out var referenceVariable))
 				return null;
@@ -684,6 +685,36 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				return false;
 			}
+		}
+
+		/// <summary>
+		/// Returns whether constructing the display class carries nothing across that dissolving it
+		/// would lose. A C# display class is built by a parameterless constructor and so carries
+		/// nothing to begin with. A Visual Basic one is built by a copy constructor, which is only
+		/// safe when the copy cannot carry anything observable: either the argument is null, which is
+		/// what <see cref="NormalizeVisualBasicClosures"/> leaves once it has shown every copied field to
+		/// be reassigned before it can be read, or it is the variable being overwritten. A copy taken
+		/// from anything else is live, and scalarizing the class would silently drop it.
+		/// </summary>
+		static bool CopiesNothingObservable(NewObj newObj, ILVariable target)
+		{
+			foreach (var argument in newObj.Arguments)
+			{
+				if (argument.MatchLdNull())
+					continue;
+				// The Visual Basic per-iteration form builds the instance out of the variable it is
+				// about to overwrite, so the copy can only carry that variable's previous value, which
+				// the closure handling already accounts for. Live-range splitting gives the two ends
+				// separate ILVariables for the one slot, so they are compared the way that split is
+				// undone rather than by identity.
+				if (argument.MatchLdLoc(out var argumentVariable)
+					&& ILVariableEqualityComparer.Instance.Equals(argumentVariable, target))
+				{
+					continue;
+				}
+				return false;
+			}
+			return true;
 		}
 
 		static ILOpCode DecodeOpCodeSkipNop(ref BlobReader reader)
