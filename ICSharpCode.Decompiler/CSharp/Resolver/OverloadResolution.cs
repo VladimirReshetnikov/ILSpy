@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -312,6 +313,16 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			return member;
 		}
 
+		static readonly string overloadResolutionPriorityAttributeName =
+			KnownAttribute.OverloadResolutionPriority.GetTypeName().ReflectionName;
+
+		// Candidate construction asks for the priority of every member considered by every
+		// resolution, and decoding custom-attribute blobs each time is far too expensive for
+		// that path. The priority only depends on the member definition, so it is computed once
+		// per definition. The table weakly references the definitions, so unloading a type
+		// system releases the entries.
+		static readonly ConditionalWeakTable<IParameterizedMember, StrongBox<int>> priorityCache = new();
+
 		static int GetOverloadResolutionPriority(IParameterizedMember member)
 		{
 			if (member is IMethod method)
@@ -328,10 +339,29 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 				return 0;
 			}
 
+			return priorityCache.GetValue(member, static m => new StrongBox<int>(ComputePriorityForInstance(m))).Value;
+		}
+
+		static int ComputePriorityForInstance(IParameterizedMember member)
+		{
+			// A plain specialization carries exactly its definition's attributes, so it shares the
+			// definition's cache entry (specialized instances are transient, their own entries
+			// would rarely be hit). Any other implementation - including wrappers that present
+			// attributes their definition does not have - is computed from the member itself.
+			if ((member.GetType() == typeof(SpecializedMethod) || member.GetType() == typeof(SpecializedProperty))
+				&& member.MemberDefinition is IParameterizedMember definition && !ReferenceEquals(definition, member))
+			{
+				return GetOverloadResolutionPriority(definition);
+			}
+			return ComputeOverloadResolutionPriority(member);
+		}
+
+		static int ComputeOverloadResolutionPriority(IParameterizedMember member)
+		{
 			IAttribute attribute = null;
 			foreach (var candidateAttribute in member.GetAttributes())
 			{
-				if (candidateAttribute.AttributeType.FullName == KnownAttribute.OverloadResolutionPriority.GetTypeName().ReflectionName)
+				if (candidateAttribute.AttributeType.FullName == overloadResolutionPriorityAttributeName)
 					attribute = candidateAttribute;
 			}
 			if (attribute?.FixedArguments.Length == 1
