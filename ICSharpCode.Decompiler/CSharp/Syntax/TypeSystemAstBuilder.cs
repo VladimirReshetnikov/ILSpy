@@ -782,7 +782,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			if (CommentOutUnrepresentableMetadata
 				&& attribute is global::ICSharpCode.Decompiler.TypeSystem.Implementation.AttributeWithUnrepresentableFields { Unrepresentable: { Length: > 0 } unrepresentable })
 			{
-				attr.AddTrailingTrivia(new Comment(" " + unrepresentable,
+				attr.AddTrailingTrivia(new Comment(" " + SanitizeForMultiLineComment(unrepresentable),
 					CommentType.MultiLine));
 			}
 			attr.Type = ConvertAttributeType(attribute.AttributeType);
@@ -899,6 +899,17 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				ulong v => v == 0,
 				_ => false
 			};
+		}
+
+		/// <summary>
+		/// Makes text fit to sit inside a /* */ comment. What is described here was read out of a
+		/// metadata blob and can hold anything at all: a "*/" in it would close the comment early
+		/// and leave the remainder standing as code, and a line break would carry it off the line
+		/// the attribute sits on.
+		/// </summary>
+		static string SanitizeForMultiLineComment(string text)
+		{
+			return text.Replace("*/", "* /").Replace('\r', ' ').Replace('\n', ' ');
 		}
 
 		/// <summary>
