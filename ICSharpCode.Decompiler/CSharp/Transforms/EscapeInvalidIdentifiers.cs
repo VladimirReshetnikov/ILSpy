@@ -75,7 +75,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 	{
 		public void Run(AstNode rootNode, TransformContext context)
 		{
-			var dropped = new List<string>();
+			var dropped = new List<(string Target, string Description)>();
 			foreach (var section in rootNode.Children.OfType<AttributeSection>().ToArray())
 			{
 				if (section.AttributeTarget == "assembly")
@@ -92,7 +92,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						{
 							case "System.Diagnostics.DebuggableAttribute":
 							{
-								dropped.Add(attribute.ToString());
+								dropped.Add((section.AttributeTarget, attribute.ToString()));
 								attribute.Remove();
 								break;
 							}
@@ -100,7 +100,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							{
 								if (arguments.Count == 1 && arguments.First() is PrimitiveExpression expr && expr.Value is int value && value == 8)
 								{
-									dropped.Add(attribute.ToString());
+									dropped.Add((section.AttributeTarget, attribute.ToString()));
 									attribute.Remove();
 								}
 								break;
@@ -113,13 +113,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 									break;
 								if (!(expr1.Expression is PrimitiveExpression expr2) || !(expr2.Value is bool value) || value != true)
 									break;
-								dropped.Add(attribute.ToString());
+								dropped.Add((section.AttributeTarget, attribute.ToString()));
 								attribute.Remove();
 								break;
 							}
 							case "System.Runtime.Versioning.TargetFrameworkAttribute":
 							{
-								dropped.Add(attribute.ToString());
+								dropped.Add((section.AttributeTarget, attribute.ToString()));
 								attribute.Remove();
 								break;
 							}
@@ -152,7 +152,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							case "System.Security.UnverifiableCodeAttribute":
 							case "System.Runtime.CompilerServices.RefSafetyRulesAttribute":
 							case "System.Runtime.CompilerServices.NullablePublicOnlyAttribute":
-								dropped.Add(attribute.ToString());
+								dropped.Add((section.AttributeTarget, attribute.ToString()));
 								attribute.Remove();
 								break;
 						}
@@ -172,9 +172,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// regenerated project's compiler can emit its own without colliding, so record them.
 			if (context.Settings.CommentOutUnrepresentableMetadata)
 			{
-				foreach (var description in dropped)
+				foreach (var (target, description) in dropped)
 				{
-					rootNode.AddLeadingTrivia(new Comment(" attribute left out to keep the rebuild quiet: [assembly: " + description + "]"));
+					rootNode.AddLeadingTrivia(new Comment(
+						" attribute left out to keep the rebuild quiet: [" + target + ": " + description + "]"));
 				}
 			}
 		}
