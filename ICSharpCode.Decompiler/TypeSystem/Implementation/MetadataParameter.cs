@@ -166,7 +166,8 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				// however, also emits [Out] on a ByRef parameter that overrides or implements a C# 'ref'
 				// parameter. Rendering it 'out' there breaks the override, because C# requires the override
 				// to match the base member's ref-kind (CS0115). When the contract declares the parameter
-				// 'ref', follow the contract; the retained [Out] flag is surfaced as an explicit attribute.
+				// 'ref', follow the contract. The [Out] flag itself is then dropped rather than written out,
+				// because [Out] without [In] on a byref parameter is not valid C# either (see GetAttributes).
 				if (ContractParameterIs(ReferenceKind.Ref))
 					return ReferenceKind.Ref;
 				return ReferenceKind.Out;

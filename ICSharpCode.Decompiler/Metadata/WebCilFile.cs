@@ -318,7 +318,7 @@ namespace ICSharpCode.Decompiler.Metadata
 		/// <param name="rva">Relative virtual address to locate.</param>
 		/// <returns>
 		/// A view over the section bytes starting at <paramref name="rva"/> and running to the end of the
-		/// containing section, or an empty view when no section contains it.
+		/// containing section.
 		/// </returns>
 		/// <exception cref="BadImageFormatException">No section contains the supplied <paramref name="rva"/>.</exception>
 		public override unsafe SectionData GetSectionData(int rva)

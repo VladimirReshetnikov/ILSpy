@@ -1333,9 +1333,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 			// In primary-constructor codegen the captures and field initializers run before the
 			// base constructor call, so an un-promoted constructor ends with a trailing base call
-			// instead of starting with it. MoveConstructorInitializer only inspects the first
-			// statement, so a trailing default 'base()' is left behind as invalid 'base..ctor();'.
-			// Drop it here; it has no observable effect.
+			// instead of starting with it. A trailing default 'base()' that survived to here would be
+			// printed as an invalid 'base..ctor();', so drop it; it has no observable effect.
 			foreach (var ctor in node.Children.OfType<ConstructorDeclaration>())
 			{
 				var lastStatement = ctor.Body?.Statements.LastOrDefault();

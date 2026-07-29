@@ -416,7 +416,8 @@ namespace ICSharpCode.Decompiler.Metadata
 		/// <param name="rva">RVA to locate.</param>
 		/// <returns>
 		/// A view over the section bytes starting at <paramref name="rva"/> and running to the end of the
-		/// containing section, or an empty view when no section contains it.
+		/// containing section. What an RVA outside every section produces is left to the
+		/// implementation: <see cref="PEFile"/> hands back an empty view, <see cref="WebCilFile"/> throws.
 		/// </returns>
 		/// <exception cref="BadImageFormatException">The current metadata source does not expose section data.</exception>
 		public virtual SectionData GetSectionData(int rva)
