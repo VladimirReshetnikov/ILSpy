@@ -889,20 +889,52 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							{
 								composedRefType.HasReadOnlySpecifier = true;
 							}
-							AstType elementType = context.TypeSystemAstBuilder.ConvertType(
-								((ByReferenceType)v.Type).ElementType);
-							vds.Variables.Single().Initializer = new DirectionExpression(
-								FieldDirection.Ref,
-								new InvocationExpression {
-									Target = new MemberReferenceExpression {
-										Target = new TypeReferenceExpression(unsafeType),
-										MemberName = "NullRef",
-										TypeArguments = { elementType }
-									}
-								});
-							if (context.Settings.ScopedRef && !RefLocalIsReturnedByRef(v))
+							IType elementTypeRef = ((ByReferenceType)v.Type).ElementType;
+							AstType elementType = context.TypeSystemAstBuilder.ConvertType(elementTypeRef);
+							if (elementTypeRef.IsByRefLike)
 							{
-								vds.IsScopedRef = true;
+								// 'Unsafe.NullRef<T>()' is unusable when T is a ref struct: the type
+								// parameter only admits one under the 'allows ref struct' constraint,
+								// which needs a .NET 9+ runtime, and whether the copy the decompiler
+								// resolved carries the constraint says nothing about the runtime the
+								// assembly actually targets (CS9244 on recompilation when it does not).
+								// Bind the ref local to a placeholder local of the element type
+								// instead. A reference to a local has the narrowest ref-safe-context
+								// there is, so every later ref reassignment stays valid and no
+								// 'scoped' modifier is needed.
+								string placeholderName = v.Name + "_placeholder";
+								var takenNames = v.ILVariable.Function?.Variables.Select(x => x.Name).ToHashSet();
+								while (takenNames != null && takenNames.Contains(placeholderName))
+								{
+									placeholderName += "_";
+								}
+								var placeholder = new VariableDeclarationStatement(
+									context.TypeSystemAstBuilder.ConvertType(elementTypeRef),
+									placeholderName,
+									new DefaultValueExpression(context.TypeSystemAstBuilder.ConvertType(elementTypeRef)));
+								insertionParent.InsertChildBefore(
+									v.InsertionPoint.nextNode,
+									placeholder,
+									Slots.Statement);
+								vds.Variables.Single().Initializer = new DirectionExpression(
+									FieldDirection.Ref,
+									new IdentifierExpression(placeholderName));
+							}
+							else
+							{
+								vds.Variables.Single().Initializer = new DirectionExpression(
+									FieldDirection.Ref,
+									new InvocationExpression {
+										Target = new MemberReferenceExpression {
+											Target = new TypeReferenceExpression(unsafeType),
+											MemberName = "NullRef",
+											TypeArguments = { elementType }
+										}
+									});
+								if (context.Settings.ScopedRef && !RefLocalIsReturnedByRef(v))
+								{
+									vds.IsScopedRef = true;
+								}
 							}
 							insertionParent.InsertChildBefore(
 								v.InsertionPoint.nextNode,

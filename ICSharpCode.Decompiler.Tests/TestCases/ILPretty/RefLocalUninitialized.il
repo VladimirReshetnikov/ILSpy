@@ -62,6 +62,44 @@
 	}
 
 	.method public hidebysig static
+		int32 LoopRefLike (valuetype ByRefSlot 'value', int32 count) cil managed
+	{
+		// Same shape as LoopRef, but the ref local's element type is a ref struct.
+		// 'Unsafe.NullRef<T>()' cannot spell the placeholder for one (its type parameter
+		// only admits a ref struct on .NET 9+), so the declaration binds to a placeholder
+		// local of the element type instead.
+		.maxstack 3
+		.locals (
+			[0] valuetype ByRefSlot&,
+			[1] int32,
+			[2] int32
+		)
+
+		ldc.i4.0
+		stloc.2
+		br.s CHECK
+
+	LOOP:
+		ldloc.0
+		ldfld int32 ByRefSlot::Value
+		stloc.1
+		ldarga.s 'value'
+		stloc.0
+		ldloc.2
+		ldc.i4.1
+		add
+		stloc.2
+
+	CHECK:
+		ldloc.2
+		ldarg.1
+		blt.s LOOP
+
+		ldloc.1
+		ret
+	}
+
+	.method public hidebysig static
 		int32& FindValue (valuetype Slot[] items, int32 count) cil managed
 	{
 		.maxstack 3
@@ -98,5 +136,14 @@
 .class public sequential ansi sealed beforefieldinit Slot
 	extends [System.Runtime]System.ValueType
 {
+	.field public int32 Value
+}
+
+.class public sequential ansi sealed beforefieldinit ByRefSlot
+	extends [System.Runtime]System.ValueType
+{
+	.custom instance void [System.Runtime]System.Runtime.CompilerServices.IsByRefLikeAttribute::.ctor() = (
+		01 00 00 00
+	)
 	.field public int32 Value
 }
