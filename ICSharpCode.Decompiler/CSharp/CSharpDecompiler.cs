@@ -2127,6 +2127,15 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				foreach (IMethod interfaceMethod in GetInterfaceOrdinaryMethodImplementations(accessor))
 				{
+					// The explicit-implementation path takes whatever the MethodImpl row points at, with
+					// no signature check; a hand-written or obfuscated one can aim a setter at a method
+					// declaring no parameters, and the forwarder below would then have no value to assign.
+					// Nothing sensible can be written for that, so leave the accessor alone.
+					if (accessor.AccessorKind == System.Reflection.MethodSemanticsAttributes.Setter
+						&& interfaceMethod.Parameters.Count == 0)
+					{
+						continue;
+					}
 					var methodDecl = new MethodDeclaration {
 						ReturnType = astBuilder.ConvertType(interfaceMethod.ReturnType),
 						PrivateImplementationType = astBuilder.ConvertType(interfaceMethod.DeclaringType),
