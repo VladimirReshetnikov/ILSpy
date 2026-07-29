@@ -129,6 +129,20 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return;
 			}
 			argument.Remove();
+			if (constructor.DeclaringTypeDefinition?.Name == "<>z__ReadOnlySingleElementList"
+				&& constructor.DeclaringType.TypeArguments is [var elementType])
+			{
+				// This wrapper's constructor argument is the single element, not a collection, so
+				// the bare argument would be type-incorrect. A one-element array is the closest
+				// expressible stand-in satisfying the same read-only interfaces.
+				var arrayCreate = new ArrayCreateExpression {
+					Type = context.TypeSystemAstBuilder.ConvertType(elementType),
+					Initializer = new ArrayInitializerExpression(argument)
+				};
+				arrayCreate.WithRR(new ResolveResult(new ArrayType(context.TypeSystem, elementType)));
+				objectCreateExpression.ReplaceWith(arrayCreate);
+				return;
+			}
 			objectCreateExpression.ReplaceWith(KeepArgumentTyped(objectCreateExpression, argument));
 		}
 
@@ -170,10 +184,22 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			source = null;
 			if (invocation.GetSymbol() is not IMethod { Name: "ToArray" } method)
 				return false;
-			if (method.IsStatic && invocation.Arguments.Count == 1)
+			// Only ToArray implementations whose result is exactly the receiver's enumeration
+			// qualify. An arbitrary method that merely shares the name may return contents (or
+			// an element type) unrelated to spreading its receiver, so the rewrite to a spread
+			// would change meaning or not compile at all.
+			string? declaringType = method.DeclaringTypeDefinition?.ReflectionName;
+			if (method.IsStatic && invocation.Arguments.Count == 1
+				&& declaringType == "System.Linq.Enumerable")
+			{
 				source = invocation.Arguments.Single();
-			else if (!method.IsStatic && invocation.Arguments.Count == 0 && invocation.Target is MemberReferenceExpression { Target: { } receiver })
+			}
+			else if (!method.IsStatic && invocation.Arguments.Count == 0
+				&& declaringType is "System.Collections.Generic.List`1" or "System.Span`1" or "System.ReadOnlySpan`1"
+				&& invocation.Target is MemberReferenceExpression { Target: { } receiver })
+			{
 				source = receiver;
+			}
 			// The name alone says nothing: plenty of types offer a ToArray that copies out of
 			// something a spread cannot read, MemoryStream among them. Spreading one of those
 			// produces C# that does not compile, so the source has to be enumerable in its own right.
@@ -471,7 +497,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return false;
 
 			var hoisted = HoistedDeclarationsBefore(firstStatement);
-			var values = elements.Select(element => InlineHoistedValue(element, memberRoot, consumed, hoisted)).ToArray();
+			var values = elements.Select(element => InlineHoistedValue(element, elements, memberRoot, consumed, hoisted)).ToArray();
 			if (!NothingWithSideEffectsPrecedes(use, useStatement) && !values.All(IsSideEffectFree))
 				return false;
 
@@ -521,6 +547,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		{
 			elements = new List<BuilderElement>();
 			Statement current = start;
+			lastStatement = start;
+			// The running index must visibly advance between elements; only the last element may
+			// leave the increment out (the compiler elides it there because nothing reads the index
+			// afterwards). Without this, two stores through the same index value - an overwrite of
+			// one slot, not two elements - would collect as two elements.
+			bool indexAdvancePending = false;
 			while (current.GetNextSibling(n => n is Statement) is Statement next)
 			{
 				if (next is ExpressionStatement {
@@ -532,14 +564,20 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 					&& isWriteTarget(indexer.Target) && IsReferenceTo(indexArgument, index))
 				{
+					if (indexAdvancePending)
+						return false;
 					elements.Add(new BuilderElement(value, isSpread: false, spanTemp: null));
 					current = SkipIndexIncrement(next, index);
+					indexAdvancePending = current == next;
 					continue;
 				}
-				if (TryMatchSpreadCopy(next, index, isCopyDestination, out var spread, out var afterSpread))
+				if (TryMatchSpreadCopy(next, index, isCopyDestination, out var spread, out var afterSpread, out bool advancedIndex))
 				{
+					if (indexAdvancePending)
+						return false;
 					elements.Add(spread);
 					current = afterSpread;
+					indexAdvancePending = !advancedIndex;
 					continue;
 				}
 				break;
@@ -554,10 +592,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// index. Both are absent when the compiler had no use for them.
 		/// </summary>
 		static bool TryMatchSpreadCopy(Statement statement, ILVariable index, Func<Expression?, bool> isCopyDestination,
-			[NotNullWhen(true)] out BuilderElement? element, [NotNullWhen(true)] out Statement? lastStatement)
+			[NotNullWhen(true)] out BuilderElement? element, [NotNullWhen(true)] out Statement? lastStatement,
+			out bool advancedIndex)
 		{
 			element = null;
 			lastStatement = null;
+			advancedIndex = false;
 			Statement copyStatement = statement;
 			ILVariable? spanTemp = null;
 			Expression? source = null;
@@ -599,6 +639,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				&& IsIndexAdvancedBy(assignment, index, copySource))
 			{
 				lastStatement = advance;
+				advancedIndex = true;
 			}
 			element = new BuilderElement(source!, isSpread: true, spanTemp);
 			return true;
@@ -627,8 +668,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		/// <summary>
 		/// Matches the advance of the running index past a spread, in either the compound form
-		/// (<c>index += span.Length</c>) or the plain one (<c>index = index + span.Length</c>). Which
-		/// of the two is present depends on whether PrettifyAssignments has run yet.
+		/// (<c>index += span.Length</c>) or the plain one (<c>index = index + span.Length</c>). The
+		/// compound form appears when ExpressionBuilder's compound-assignment translation engaged;
+		/// the plain form is what remains when it did not.
 		/// </summary>
 		static bool IsIndexAdvancedBy(AssignmentExpression assignment, ILVariable index, Expression source)
 		{
@@ -745,8 +787,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// the value's evaluation ahead of the allocation, which writing the element back into the
 		/// collection expression restores on its own.
 		/// </summary>
-		static Expression InlineHoistedValue(BuilderElement element, AstNode memberRoot,
-			HashSet<AstNode> consumed, HashSet<AstNode> hoisted)
+		static Expression InlineHoistedValue(BuilderElement element, IReadOnlyList<BuilderElement> elements,
+			AstNode memberRoot, HashSet<AstNode> consumed, HashSet<AstNode> hoisted)
 		{
 			if (element.Value is not IdentifierExpression identifier)
 				return element.Value;
@@ -761,6 +803,18 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			var scope = new HashSet<AstNode>(consumed) { declarationStatement };
 			if (ReferencesOutside(memberRoot, local, scope).Any())
 				return element.Value;
+			// The declaration goes away with the inline, so this element's read has to be the
+			// local's only reference that survives into the collection expression. Another element
+			// whose value also reads the local - a repeated spread, or a sibling computed from it -
+			// would either dangle or end up fighting over the single initializer node.
+			foreach (var other in elements)
+			{
+				if (other != element && other.Value.DescendantsAndSelf.OfType<IdentifierExpression>()
+					.Any(reference => reference.GetILVariable() == local))
+				{
+					return element.Value;
+				}
+			}
 			element.HoistedDeclaration = declarationStatement;
 			return value;
 		}
@@ -1035,12 +1089,21 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				{
 					if (sibling == node)
 						break;
-					// The callee of the call being built is named, not evaluated; what runs before the
-					// arguments is only its receiver.
+					// A member-name callee is named, not evaluated; what runs before the arguments
+					// is only its receiver. Any other callee shape - a delegate-producing call, an
+					// indexed handler - is a real expression evaluated before the arguments and has
+					// to be side-effect-free as a whole.
 					if (parent is InvocationExpression invocation && sibling == invocation.Target)
 					{
-						if (sibling is MemberReferenceExpression callee && !IsSideEffectFree(callee.Target))
+						if (sibling is MemberReferenceExpression callee)
+						{
+							if (!IsSideEffectFree(callee.Target))
+								return false;
+						}
+						else if (sibling is Expression calleeExpression && !IsSideEffectFree(calleeExpression))
+						{
 							return false;
+						}
 						continue;
 					}
 					// Likewise, the target of an assignment only evaluates what addresses the storage
