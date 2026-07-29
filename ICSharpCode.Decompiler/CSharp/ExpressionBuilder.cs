@@ -4240,7 +4240,22 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (!trueBranch.Type.Equals(SpecialType.NullType) && !falseBranch.Type.Equals(SpecialType.NullType) && !trueBranch.Type.Equals(falseBranch.Type))
 				{
 					targetType = typeInference.GetBestCommonType(new[] { trueBranch.ResolveResult, falseBranch.ResolveResult }, out bool success);
-					if (!success || targetType.GetStackType() != inst.ResultType)
+					// A tuple literal with a null element has no natural type, so its branch reports an
+					// unknown type and the "best common type" is simply the other branch's type. Taking
+					// that as the conversion target forces the literal's null element to the other
+					// branch's element type - which the element cannot hold when its slot is nullable
+					// there ('(int)null', CS0037). The declared slot types live in the target-type hint,
+					// so when a tuple-typed hint is available, let it decide instead.
+					bool tupleLiteralNeedsTargetType = success
+						&& (IsTypelessTupleLiteral(trueBranch) || IsTypelessTupleLiteral(falseBranch))
+						&& TupleType.IsTupleCompatible(context.TypeHint, out _);
+
+					static bool IsTypelessTupleLiteral(TranslatedExpression branch)
+					{
+						return branch.Type.Kind is TypeKind.Unknown or TypeKind.None
+							&& branch.Expression is TupleExpression;
+					}
+					if (!success || tupleLiteralNeedsTargetType || targetType.GetStackType() != inst.ResultType)
 					{
 						// Figure out the target type based on inst.ResultType.
 						if (context.TypeHint.Kind != TypeKind.Unknown && context.TypeHint.GetStackType() == inst.ResultType)

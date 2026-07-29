@@ -377,5 +377,24 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 			return 0;
 		}
+
+#if CS90
+		public (string Name, int? Index) TupleLiteralWithNullElementInConditional(string[] names, int num)
+		{
+			// The null arm is a tuple literal with no natural type, so the conditional's type has to
+			// come from the target: taking the other arm's type instead would force the null element
+			// to that arm's non-nullable element type ('(int)null', CS0037). Optimized builds split
+			// the conditional into the two returns and keep that shape.
+#if OPT
+			if (num < 0)
+			{
+				return (Name: null, Index: null);
+			}
+			return (Name: names[num], Index: num);
+#else
+			return (num >= 0) ? (Name: names[num], Index: num) : (Name: null, Index: null);
+#endif
+		}
+#endif
 	}
 }
