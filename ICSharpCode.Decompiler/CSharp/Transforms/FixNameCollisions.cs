@@ -445,6 +445,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					&& typeDeclarations.TryGetValue(definition, out TypeDeclaration? declaration))
 				{
 					Accessibility newAccessibility = definition.Accessibility.Union(requiredAccessibility);
+					if (definition.DeclaringTypeDefinition == null && newAccessibility != Accessibility.Public)
+					{
+						// A type at namespace level may only be public or internal (CS1527). Internal covers
+						// a requirement that stays inside the assembly; one that reaches derived types, which
+						// may live outside it, is only met by going public.
+						newAccessibility = newAccessibility is Accessibility.Internal or Accessibility.ProtectedAndInternal
+							? Accessibility.Internal
+							: Accessibility.Public;
+					}
 					context.Step($"Raise signature type accessibility to '{newAccessibility}'", declaration);
 					declaration.Modifiers = declaration.Modifiers & ~Modifiers.VisibilityMask
 						| TypeSystemAstBuilder.ModifierFromAccessibility(newAccessibility,
