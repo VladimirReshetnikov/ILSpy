@@ -129,7 +129,7 @@ namespace ICSharpCode.ILSpy.Updates
 		/// </summary>
 		/// <param name="settings">
 		/// Update settings supplying the automatic-check opt-in flag and the last-successful-check timestamp,
-		/// which this call updates when a check actually runs.
+		/// which this call updates only when a check runs and the version query succeeds.
 		/// </param>
 		/// <returns>
 		/// The download URL of the newer version, or <see langword="null"/> when checks are disabled, still
