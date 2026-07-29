@@ -375,8 +375,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 						allCtors.Add(ctor);
 
-						if (stmt != null && m.Get<Expression>("target").Single() is ThisReferenceExpression)
+						// A struct chains by assigning to this, which is an ordinary body statement.
+						// MoveConstructorInitializer only lifts it into a this(...) initializer when nothing
+						// precedes it, because lifting it past a guard clause would run it too early; one
+						// that stays in the body is not a chain, and a constructor holding it still has to
+						// count against promoting another to a primary constructor.
+						if (stmt != null && m.Get<Expression>("target").Single() is ThisReferenceExpression
+							&& (!isStruct || stmt == ctor.Body?.Statements.FirstOrDefault()))
+						{
 							continue;
+						}
 
 						constructorsNotChainedWithThis.Add(ctor);
 					}
