@@ -159,8 +159,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 			foreach (var node in rootNode.DescendantsAndSelf)
 			{
+				// A delegate invocation carries the delegate type's Invoke as its symbol, but its target
+				// names the delegate value rather than that method - nothing in source ever names it.
+				// Rewriting the target would put a member where the delegate was and lose the call.
 				if (node is InvocationExpression invocation
 					&& invocation.GetSymbol() is { } invokedSymbol
+					&& invokedSymbol is not IMethod { DeclaringType.Kind: TypeKind.Delegate }
 					&& TryGetRenamedName(invokedSymbol, out string? invokedName)
 					&& invocation.Target.GetChild(Slots.Identifier) is Identifier invokedIdentifier)
 				{
