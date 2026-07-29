@@ -22,10 +22,13 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
+using ICSharpCode.Decompiler.Disassembler;
 using ICSharpCode.Decompiler.FlowAnalysis;
 using ICSharpCode.Decompiler.IL.Transforms;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.Util;
+
+using SRM = System.Reflection.Metadata;
 
 namespace ICSharpCode.Decompiler.IL.ControlFlow
 {
@@ -275,11 +278,13 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 		/// chain of isinst/brtrue tests is not recognized as a <see cref="SwitchInstruction"/>
 		/// (so <see cref="InlineSwitchExpressionDefaultCaseThrowHelper"/> never sees it).
 		///
-		/// The compiler-generated throw helper on &lt;PrivateImplementationDetails&gt; is marked
-		/// [DoesNotReturn], so the call appears as a true tail of its block - either directly
-		/// followed by the unreachable branch/leave to the end of the expression, or by an
-		/// inlined "result = default; return result;". The call is replaced by the throw it
-		/// stands for so the un-nameable helper type never leaks into the output.
+		/// The compiler-generated throw helper on &lt;PrivateImplementationDetails&gt; never returns
+		/// (Roslyn additionally marks it [DoesNotReturn] when that attribute is available on the
+		/// target framework), so the call appears as a true tail of its block - either directly
+		/// followed by the unreachable branch/leave to the end of the expression, or by an inlined
+		/// "result = default; return result;". The call is only rewritten after verifying, via the
+		/// attribute or the helper's own IL body, that it indeed cannot return; it is then replaced
+		/// by the throw it stands for so the un-nameable helper type never leaks into the output.
 		/// </summary>
 		internal static void InlineSwitchExpressionDefaultCaseThrowHelperWithoutSwitch(Block block, ILTransformContext context)
 		{
@@ -295,7 +300,12 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 			int callIndex = block.Instructions[last - 1] is StLoc ? last - 2 : last - 1;
 			if (callIndex < 0)
 				return;
-			if (!MatchSwitchExpressionThrowHelperCall(block.Instructions[callIndex], out var value))
+			if (block.Instructions[callIndex] is not Call helperCall
+				|| !MatchSwitchExpressionThrowHelperCall(helperCall, out var value))
+				return;
+
+			// Deleting the trailing instructions is only sound if the call truly cannot return.
+			if (!ThrowHelperCannotReturn(helperCall.Method))
 				return;
 
 			if (!FindThrowHelperExceptionConstructors(context, out var exceptionCtorTable))
@@ -305,7 +315,7 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 
 			context.Step("SwitchExpressionDefaultCaseTransform (no switch instruction)", block.Instructions[callIndex]);
 			var throwInst = BuildThrow(exceptionCtor, value).WithILRange(block.Instructions[callIndex]);
-			// Everything after the [DoesNotReturn] helper call is unreachable continuation.
+			// Everything after the never-returning helper call is unreachable continuation.
 			for (int i = block.Instructions.Count - 1; i > callIndex; i--)
 				block.Instructions.RemoveAt(i);
 			block.Instructions[callIndex] = throwInst;
@@ -394,6 +404,43 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 				default:
 					return false;
 			}
+		}
+
+		/// <summary>
+		/// Verifies that the throw helper cannot return: it must be void and either be marked
+		/// [DoesNotReturn] (Roslyn emits the attribute when it is available on the target
+		/// framework) or have an IL body without any ret/jmp instruction, so that every
+		/// terminating path ends in a throw (the newobj/throw shape Roslyn synthesizes).
+		/// </summary>
+		static bool ThrowHelperCannotReturn(IMethod method)
+		{
+			if (method.ReturnType.Kind != TypeKind.Void)
+				return false;
+			if (method.GetAttributes().Any(a => a.AttributeType.FullName == "System.Diagnostics.CodeAnalysis.DoesNotReturnAttribute"))
+				return true;
+			if (method.MetadataToken.IsNil || method.MetadataToken.Kind != SRM.HandleKind.MethodDefinition)
+				return false;
+			if (method.ParentModule is not MetadataModule module)
+				return false;
+			try
+			{
+				var methodDef = module.MetadataFile.Metadata.GetMethodDefinition((SRM.MethodDefinitionHandle)method.MetadataToken);
+				if (methodDef.RelativeVirtualAddress == 0)
+					return false;
+				var body = module.MetadataFile.GetMethodBody(methodDef.RelativeVirtualAddress).GetILReader();
+				while (body.RemainingBytes > 0)
+				{
+					var opCode = body.DecodeOpCode();
+					if (opCode is SRM.ILOpCode.Ret or SRM.ILOpCode.Jmp)
+						return false;
+					body.SkipOperand(opCode);
+				}
+			}
+			catch (BadImageFormatException)
+			{
+				return false;
+			}
+			return true;
 		}
 
 		/// <summary>

@@ -535,8 +535,18 @@ namespace ICSharpCode.Decompiler.CSharp
 				// The source is a managed reference 'ref x', but a value of targetType is expected here
 				// (e.g. a struct receiver or a deconstruction source). A 'ref' expression cannot be cast --
 				// "(T)(ref x)" is not valid C# -- so render the referenced value and convert that instead.
-				return this.UnwrapChild(sourceDirection.Expression)
-					.ConvertTo(targetType, expressionBuilder, checkForOverflow, allowImplicitConversion);
+				// Only do so when the referenced value itself fits the target (identity up to type
+				// erasure, or an implicit reference conversion): for unrelated targets, in particular
+				// the pointer-sized integer types, a byref-to-value conversion in the IL converts the
+				// address, and quietly substituting the referenced value would change the meaning.
+				var refValueType = ((ByReferenceType)type).ElementType;
+				var refValueConversion = conversions.ImplicitConversion(refValueType, targetType);
+				if (NormalizeTypeVisitor.TypeErasure.EquivalentTypes(refValueType, targetType)
+					|| refValueConversion.IsIdentityConversion || refValueConversion.IsReferenceConversion)
+				{
+					return this.UnwrapChild(sourceDirection.Expression)
+						.ConvertTo(targetType, expressionBuilder, checkForOverflow, allowImplicitConversion);
+				}
 			}
 			if (this.ResolveResult.IsCompileTimeConstant && this.ResolveResult.ConstantValue != null
 				&& NullableType.IsNullable(targetType) && !utype.Equals(targetUType)

@@ -178,12 +178,14 @@ namespace ICSharpCode.Decompiler.Tests
 		{
 			var adjacentGoto = new GotoStatement { Label = "IL_0001" };
 			var nonAdjacentGoto = new GotoStatement { Label = "IL_0002" };
+			var adjacentLabel = new LabelStatement { Label = "IL_0001" };
+			var nonAdjacentLabel = new LabelStatement { Label = "IL_0002" };
 			var nestedBlock = new BlockStatement {
 				adjacentGoto,
-				new LabelStatement { Label = "IL_0001" },
+				adjacentLabel,
 				nonAdjacentGoto,
 				new EmptyStatement(),
-				new LabelStatement { Label = "IL_0002" }
+				nonAdjacentLabel
 			};
 			var root = new BlockStatement {
 				new IfElseStatement {
@@ -196,6 +198,11 @@ namespace ICSharpCode.Decompiler.Tests
 
 			Assert.That(adjacentGoto.Parent, Is.Null);
 			Assert.That(nonAdjacentGoto.Parent, Is.SameAs(nestedBlock));
+			// The removed goto was the only reference to IL_0001, so the label must go too
+			// (an unreferenced label is a CS0164 warning on recompilation); IL_0002 is still
+			// referenced by the surviving goto and must stay.
+			Assert.That(adjacentLabel.Parent, Is.Null);
+			Assert.That(nonAdjacentLabel.Parent, Is.SameAs(nestedBlock));
 		}
 
 		[Test]
