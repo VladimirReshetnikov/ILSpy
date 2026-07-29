@@ -148,8 +148,20 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 							string userDefinedSubType = marshalInfo.ReadSerializedString();
 							if (!string.IsNullOrEmpty(userDefinedSubType))
 							{
-								var subType = module.Compilation.FindType(
-									new FullTypeName(userDefinedSubType));
+								// The serialized name is typically assembly-qualified
+								// ("My.Ns.Record, MyAssembly"), so parse it as a reflection name;
+								// FullTypeName would treat the qualifier's commas as part of the
+								// type name and never resolve.
+								IType subType;
+								try
+								{
+									subType = ReflectionHelper.ParseReflectionName(userDefinedSubType,
+										new SimpleTypeResolveContext(module));
+								}
+								catch (ReflectionNameParseException)
+								{
+									subType = SpecialType.UnknownType;
+								}
 								if (subType.Kind != TypeKind.Unknown)
 								{
 									b.AddNamedArg("SafeArrayUserDefinedSubType",
