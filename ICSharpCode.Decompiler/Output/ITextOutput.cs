@@ -147,6 +147,12 @@ namespace ICSharpCode.Decompiler
 		/// <see langword="true"/> when the region encloses a definition (for example a type or method body).
 		/// </param>
 		void MarkFoldStart(string collapsedText = "...", bool defaultCollapsed = false, bool isDefinition = false);
+		/// <summary>
+		/// Marks the position where an entity declaration begins. The next fold marked with
+		/// isDefinition: true logically extends back to this position, so that leading
+		/// documentation comments and attributes count as part of the definition's region.
+		/// </summary>
+		void MarkDefinitionStart();
 
 		/// <summary>
 		/// Marks the end of the current foldable region.

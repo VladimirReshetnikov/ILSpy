@@ -247,6 +247,13 @@ namespace ICSharpCode.Decompiler
 		/// <summary>
 		/// Ignored in <see cref="PlainTextOutput"/>.
 		/// </summary>
+		void ITextOutput.MarkDefinitionStart()
+		{
+		}
+
+		/// <summary>
+		/// Ignored in <see cref="PlainTextOutput"/>.
+		/// </summary>
 		void ITextOutput.MarkFoldStart(string collapsedText, bool defaultCollapsed, bool isDefinition)
 		{
 		}
@@ -318,6 +325,14 @@ namespace ICSharpCode.Decompiler
 		public void MarkFoldEnd()
 		{
 			actions.Add(target => target.MarkFoldEnd());
+		}
+
+		/// <summary>
+		/// Buffers a definition-start operation.
+		/// </summary>
+		public void MarkDefinitionStart()
+		{
+			actions.Add(target => target.MarkDefinitionStart());
 		}
 
 		/// <summary>

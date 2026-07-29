@@ -66,6 +66,7 @@ namespace ICSharpCode.Decompiler.Tests.Output
 				=> Calls.Add($"MarkFoldStart({collapsedText}, defaultCollapsed:{defaultCollapsed}, isDefinition:{isDefinition})");
 
 			public void MarkFoldEnd() => Calls.Add("MarkFoldEnd");
+			public void MarkDefinitionStart() => Calls.Add("MarkDefinitionStart");
 		}
 
 		[Test]
