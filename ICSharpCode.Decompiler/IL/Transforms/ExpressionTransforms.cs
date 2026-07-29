@@ -798,11 +798,15 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		{
 			if (trueTempStore == null && falseTempStore == null)
 				return true;
-			if ((trueTempStore == null || IsInitializerBlock(value1))
-				&& (falseTempStore == null || IsInitializerBlock(value2)))
+			if ((trueTempStore == null || IsInitializerBlock(value1) && value1.ResultType == StackType.O)
+				&& (falseTempStore == null || IsInitializerBlock(value2) && value2.ResultType == StackType.O))
 			{
 				// Preserve the established initializer-only normalization. Initializer blocks have a
 				// fixed natural type, so removing their single-use materialization temps is safe.
+				// Pointer-producing stackalloc blocks (StackType.I) are excluded: C# only allows a
+				// stackalloc inside a conditional in a Span<T> context, so folding one into a
+				// pointer-typed conditional would produce CS8346. The temp store stays and the
+				// conditional keeps the two-statement shape, mirroring HasSafeConditionalValue.
 				return true;
 			}
 
