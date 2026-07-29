@@ -79,6 +79,12 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 						// Microsoft.VisualBasic as well would be a BC32210 identity conflict.
 						referenceNames = referenceNames.Where(r => r != "Microsoft.VisualBasic.dll");
 					}
+					if (flags.HasFlag(CompilerOptions.EmbedVisualBasicRuntime))
+					{
+						// '-vbruntime*' embeds the helpers; referencing the runtime assembly on top
+						// would pull the same types in a second time.
+						referenceNames = referenceNames.Where(r => r != "Microsoft.VisualBasic.dll");
+					}
 					references = referenceNames.Select(r => "-r:\"" + r + "\"");
 					libPath = coreRefAsmPath;
 				}
@@ -95,10 +101,13 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 				}
 				if (flags.HasFlag(CompilerOptions.ReferenceVisualBasic))
 				{
-					// In the non-Windows netcore-2.2 configuration the VB runtime comes in via
-					// -vbruntime (see below); also referencing the reference set's own
-					// Microsoft.VisualBasic facade would be a BC32210 identity conflict.
-					if (OperatingSystem.IsWindows() || targetFramework != ".NETCoreApp,Version=v2.2")
+					// With '-vbruntime*' the helpers are embedded; also referencing the runtime
+					// assembly would make the embedded and referenced helper types collide. In the
+					// non-Windows netcore-2.2 configuration the VB runtime likewise comes in via
+					// -vbruntime (see below); referencing the reference set's own
+					// Microsoft.VisualBasic facade there would be a BC32210 identity conflict.
+					if (!flags.HasFlag(CompilerOptions.EmbedVisualBasicRuntime)
+						&& (OperatingSystem.IsWindows() || targetFramework != ".NETCoreApp,Version=v2.2"))
 					{
 						references = references.Concat(new[] { "-r:\"Microsoft.VisualBasic.dll\"" });
 					}
@@ -108,6 +117,16 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 					$"-langversion:{languageVersion} " +
 					$"/optimize{(flags.HasFlag(CompilerOptions.Optimize) ? "+ " : "- ")}";
 
+				if (flags.HasFlag(CompilerOptions.EmbedVisualBasicRuntime))
+				{
+					// '-vbruntime*' embeds the helpers into the assembly instead of referencing
+					// them, which is how the Visual Basic compiler itself is built. The embedded
+					// copies live under different type names, so the decompiler has to know both.
+					// This applies on every platform: on Windows vbc would otherwise silently fall
+					// back to referencing its implicit desktop VB runtime, and the embedded-helper
+					// recognition would never be exercised there.
+					otherOptions += "-vbruntime* ";
+				}
 				if (!OperatingSystem.IsWindows())
 				{
 					// The dotnet-hosted vbc has no implicit SDK path for resolving the standard
@@ -117,14 +136,8 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 					// reason); the decompile comparison strips the My namespace anyway.
 					otherOptions += $"-sdkpath:\"{libPath}\" ";
 					otherOptions += "-define:_MYTYPE=\\\"Empty\\\" ";
-					if (flags.HasFlag(CompilerOptions.EmbedVisualBasicRuntime))
-					{
-						// '-vbruntime*' embeds the helpers into the assembly instead of referencing
-						// them, which is how the Visual Basic compiler itself is built. The embedded
-						// copies live under different type names, so the decompiler has to know both.
-						otherOptions += "-vbruntime* ";
-					}
-					else if ((flags & CompilerOptions.UseRoslynMask) != 0 && targetFramework != null)
+					if (!flags.HasFlag(CompilerOptions.EmbedVisualBasicRuntime)
+						&& (flags & CompilerOptions.UseRoslynMask) != 0 && targetFramework != null)
 					{
 						// In the .NET reference packs Microsoft.VisualBasic.dll is a
 						// type-forwarding facade, and vbc does not follow forwards when binding
