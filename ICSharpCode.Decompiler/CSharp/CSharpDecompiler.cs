@@ -715,7 +715,19 @@ namespace ICSharpCode.Decompiler.CSharp
 				== System.Reflection.TypeAttributes.SequentialLayout;
 		}
 
-		IEnumerable<IMember> GetMembersWithSequentialFieldOrdering(ITypeDefinition typeDef)
+		/// <summary>
+		/// Orders a sequential-layout type's members so each backing field keeps the source position
+		/// of the auto-property or field-like event that recreates it.
+		/// </summary>
+		/// <param name="isEmittedAnyway">
+		/// Tells whether a hidden field is nevertheless written out in its own right. Such a field is
+		/// not recreated by the member it belongs to, so it has to keep its own place rather than
+		/// surrender it: substituting that member would drop the field from the type altogether, which
+		/// changes the very layout this ordering exists to preserve and leaves every reference to the
+		/// field undeclared.
+		/// </param>
+		IEnumerable<IMember> GetMembersWithSequentialFieldOrdering(ITypeDefinition typeDef,
+			Func<IEntity, bool> isEmittedAnyway)
 		{
 			var properties = typeDef.Properties.ToDictionary(property => property.MetadataToken);
 			var events = typeDef.Events.ToDictionary(@event => @event.MetadataToken);
@@ -725,7 +737,8 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				IMember member = field;
 				if (field.MetadataToken.Kind == HandleKind.FieldDefinition
-					&& MemberIsHidden(module.MetadataFile, field.MetadataToken, settings))
+					&& MemberIsHidden(module.MetadataFile, field.MetadataToken, settings)
+					&& !isEmittedAnyway(field))
 				{
 					var fieldHandle = (FieldDefinitionHandle)field.MetadataToken;
 					if (module.MetadataFile.PropertyAndEventBackingFieldLookup.IsPropertyBackingField(fieldHandle, out var propertyHandle)
@@ -2348,7 +2361,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				// the auto-property or field-like event that will recreate them.
 				bool requiresSequentialFieldOrdering = RequiresSequentialFieldOrdering(typeDef);
 				IEnumerable<IMember> fieldsPropertiesAndEvents = requiresSequentialFieldOrdering
-					? GetMembersWithSequentialFieldOrdering(typeDef)
+					? GetMembersWithSequentialFieldOrdering(typeDef, IsBackingFieldOfNonAutomaticEvent)
 					: isRecord
 						? recordDecompiler!.FieldsAndProperties.Concat(typeDef.Events)
 						: typeDef.Fields.Concat<IMember>(typeDef.Properties).Concat(typeDef.Events);

@@ -70,6 +70,36 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		}
 	}
 
+	public struct SequentialNonAutomaticEventBackingField
+	{
+		public int Before;
+
+		private Action ChangedEvent;
+
+		public int After;
+
+		public event Action Changed {
+			add {
+				if (value == null)
+				{
+					throw new ArgumentNullException("value");
+				}
+				ChangedEvent = (Action)Delegate.Combine(ChangedEvent, value);
+			}
+			remove {
+				ChangedEvent = (Action)Delegate.Remove(ChangedEvent, value);
+			}
+		}
+
+		public void Raise()
+		{
+			if (ChangedEvent != null)
+			{
+				ChangedEvent();
+			}
+		}
+	}
+
 	public class Structs
 	{
 #if CS100
