@@ -2569,7 +2569,13 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				if (baseMember is not IProperty baseProperty)
 					break;
 				var baseAccessor = kind == MethodSemanticsAttributes.Getter ? baseProperty.Getter : baseProperty.Setter;
-				return baseAccessor?.Accessibility ?? accessor.Accessibility;
+				// Only where the internal half is actually reachable, exactly as EffectiveAccessibility
+				// decides it for the member: across an assembly boundary without friend access C#
+				// requires the override to narrow 'protected internal' to 'protected', so the metadata
+				// value is the one that recompiles.
+				if (baseAccessor == null || !IsInternalVisibleFrom(baseAccessor, accessor))
+					break;
+				return baseAccessor.Accessibility;
 			}
 			return accessor.Accessibility;
 		}
