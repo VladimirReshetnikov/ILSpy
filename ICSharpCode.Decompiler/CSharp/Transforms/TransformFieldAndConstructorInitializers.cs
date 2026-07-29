@@ -704,6 +704,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					return false;
 				var elements = arrayInitializer.Elements.ToArray();
 				var absorbed = new List<(Statement Statement, int Index, Expression Value, Statement? HoistedValue)>();
+				var absorbedIndices = new HashSet<int>();
 				for (Statement? statement = declaration.GetNextStatement(); statement != null && statement != callStatement;
 					statement = statement.GetNextStatement())
 				{
@@ -742,6 +743,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					// Only an element the compiler left at its default is up for grabs; anything else
 					// would be a store the array creation already accounts for.
 					if (elements[index] is not (DefaultValueExpression or NullReferenceExpression))
+						return false;
+					// That test reads the array as it stood before any of this is committed, so a second
+					// store to the same element would pass it as well and then reach a node the first one
+					// has already detached. One store per element is all this can account for.
+					if (!absorbedIndices.Add(index))
 						return false;
 					if (value.DescendantsAndSelf.OfType<IdentifierExpression>()
 						.Any(identifier => identifier.GetILVariable() == variable))
