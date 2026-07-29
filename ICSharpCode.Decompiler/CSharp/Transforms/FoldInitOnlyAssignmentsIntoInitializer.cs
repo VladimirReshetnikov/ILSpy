@@ -205,6 +205,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return false;
 			if (variable.GetILVariable() is not { } aliasVariable)
 				return false;
+			// Only a reference type gets a second name this way. Copying a value type yields an
+			// independent value, so the assignments that follow belong to the copy - that is a
+			// with-expression over the copy, and folding it into the source's initializer would
+			// assign to the wrong variable. Left out here, the copy is folded on its own turn.
+			if (aliasVariable.Type.IsReferenceType != true)
+				return false;
 			alias = aliasVariable;
 			return true;
 		}
