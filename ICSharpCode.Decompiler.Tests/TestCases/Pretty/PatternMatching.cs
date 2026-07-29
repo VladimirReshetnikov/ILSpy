@@ -55,7 +55,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			bool IHasIsFrozen.IsFrozen => Frozen;
 		}
 
-		public class ImplicitFreezable : IHasIsFrozen
+		public sealed class ImplicitFreezable : IHasIsFrozen
+		{
+			public bool IsFrozen { get; set; }
+		}
+
+		public class UnsealedFreezable : IHasIsFrozen
 		{
 			public bool IsFrozen { get; set; }
 		}
@@ -834,8 +839,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public void RecursivePattern_ImplicitInterfaceProperty(object obj)
 		{
 			// ImplicitFreezable implements IHasIsFrozen.IsFrozen implicitly (a public property of the
-			// same name), so a property pattern can name it directly even though the source cast to the
-			// interface. This access still folds into a property pattern.
+			// same name) and is sealed, so a property pattern can name the member directly and no
+			// runtime subtype can re-implement the interface to dispatch elsewhere. This access
+			// folds into a property pattern.
 #if EXPECTED_OUTPUT
 			if (obj is ImplicitFreezable { IsFrozen: true })
 #else
@@ -843,6 +849,21 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #endif
 			{
 				Console.WriteLine("Test " + obj);
+			}
+			else
+			{
+				Console.WriteLine("not Test");
+			}
+		}
+
+		public void RecursivePattern_ImplicitInterfacePropertyUnsealed(object obj)
+		{
+			// UnsealedFreezable implements the member implicitly too, but the class is not sealed: a
+			// derived class could re-implement IHasIsFrozen, making the interface dispatch and the
+			// class member disagree. The interface access must therefore stay a conjunction.
+			if (obj is UnsealedFreezable unsealedFreezable && ((IHasIsFrozen)unsealedFreezable).IsFrozen)
+			{
+				Console.WriteLine("Test " + unsealedFreezable);
 			}
 			else
 			{
