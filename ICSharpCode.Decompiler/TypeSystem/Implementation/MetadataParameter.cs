@@ -206,6 +206,13 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		{
 			if (Owner is not IMethod method || handle.IsNil)
 				return false;
+			// Reading a contract parameter's ReferenceKind asks this same question of that parameter,
+			// and metadata can name an interface that inherits from one inheriting it back. The base
+			// type walk is finite, but the question would keep bouncing between the two members, so
+			// stop as soon as it comes back around: an unanswerable contract constrains nothing.
+			using var busyLock = BusyManager.Enter(this);
+			if (!busyLock.Success)
+				return false;
 			int parameterIndex = module.metadata.GetParameter(handle).SequenceNumber - 1;
 			if (parameterIndex < 0)
 				return false;

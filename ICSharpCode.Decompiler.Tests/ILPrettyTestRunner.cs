@@ -487,6 +487,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task CyclicInterfaceRefKind()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task Issue1638()
 		{
 			await Run();
