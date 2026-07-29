@@ -701,12 +701,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				{
 					Statement? hoisted = null;
 					Expression? hoistedValue = null;
+					ILVariable? hoistedLocal = null;
 					var candidate = statement;
 					if (candidate is VariableDeclarationStatement { Variables: [{ Initializer: not null } declared] } hoistedDeclaration
 						&& !hoistedDeclaration.Type.IsVar() && declared.GetILVariable() is { } hoistedVariable)
 					{
 						hoisted = candidate;
 						hoistedValue = declared.Initializer;
+						hoistedLocal = hoistedVariable;
 						if (candidate.GetNextStatement() is not { } afterHoist || afterHoist == callStatement)
 							return false;
 						candidate = afterHoist;
@@ -741,7 +743,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					absorbed.Add((candidate, index, value, hoisted));
 					if (hoistedValue != null)
 					{
-						var hoistedUse = value.DescendantsAndSelf.OfType<IdentifierExpression>().Single();
+						// The element value may name other things besides the temporary - parameters,
+						// fields, the callee of a call - so pick out the one read of the temporary that
+						// IsSoleUseOfHoistedValue established rather than the only identifier present.
+						var hoistedUse = value.DescendantsAndSelf.OfType<IdentifierExpression>()
+							.Single(identifier => identifier.GetILVariable() == hoistedLocal);
 						hoistedUse.ReplaceWith(hoistedValue.Detach());
 					}
 				}
