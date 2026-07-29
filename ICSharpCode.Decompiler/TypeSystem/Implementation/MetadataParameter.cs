@@ -84,14 +84,18 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		/// <summary>
 		/// Returns whether the signature default can be written as a DefaultParameterValue argument.
 		/// Visual Basic stores an optional parameter's default as a null constant even where the
-		/// parameter is a value type; C# requires the argument to match the parameter type (CS1908),
-		/// so such a default has no C# spelling and is dropped rather than emitted unusably.
+		/// parameter is a value type; C# requires the argument to be implicitly convertible to the
+		/// parameter type (CS1908), so a null default is representable only for reference types and
+		/// Nullable&lt;T&gt; - anywhere else (value types, unconstrained type parameters) it has no C#
+		/// spelling and is dropped rather than emitted unusably.
 		/// </summary>
 		bool CanTypeDefaultValue(object constantValue)
 		{
 			if (constantValue != null)
 				return true;
-			return UnwrapByReference(Type).IsReferenceType != false;
+			var parameterType = UnwrapByReference(Type);
+			return parameterType.IsReferenceType == true
+				|| parameterType.IsKnownType(KnownTypeCode.NullableOfT);
 		}
 
 		static IType UnwrapByReference(IType type)
@@ -122,7 +126,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				// synthesized argument as the parameter type - the value then renders as (MyEnum)0 /
 				// (short)3 instead of a bare int literal. Other parameter types are not affected.
 				var parameterType = UnwrapByReference(Type);
-				if (parameterType.Kind == TypeKind.Enum || parameterType.IsCSharpSmallIntegerType())
+				if (constantValue != null && (parameterType.Kind == TypeKind.Enum || parameterType.IsCSharpSmallIntegerType()))
 					b.Add(KnownAttribute.DefaultParameterValue, parameterType, constantValue);
 				else if (CanTypeDefaultValue(constantValue))
 					b.Add(KnownAttribute.DefaultParameterValue, KnownTypeCode.Object, constantValue);
