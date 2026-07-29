@@ -925,12 +925,19 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// <summary>
 		/// Returns the attribute targets its AttributeUsage permits, or null where that cannot be
 		/// determined. C++/CLI puts attributes on declarations their usage does not cover, and naming
-		/// one where it is not allowed does not compile (CS0592).
+		/// one where it is not allowed does not compile (CS0592). AttributeUsage is itself inherited,
+		/// so the nearest base class that declares one decides.
 		/// </summary>
 		static AttributeTargets? GetPermittedTargets(IType attributeType)
 		{
-			for (IType? type = attributeType; type != null; type = type.DirectBaseTypes.FirstOrDefault(t => t.Kind == TypeKind.Class))
+			// GetNonInterfaceBaseTypes lists base types before derived ones, so reversing it walks
+			// from the attribute type outwards. It also terminates on the cyclic and endlessly
+			// expanding base chains that malformed metadata can hold, which a bare walk over
+			// DirectBaseTypes does not.
+			foreach (IType type in attributeType.GetNonInterfaceBaseTypes().Reverse())
 			{
+				// An unresolved link in the chain could be the one carrying AttributeUsage, so
+				// nothing can be concluded about where the attribute may go.
 				if (type.GetDefinition() is not { } definition)
 					return null;
 				foreach (var usage in definition.GetAttributes())

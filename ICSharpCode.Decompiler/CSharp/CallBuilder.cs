@@ -120,6 +120,15 @@ namespace ICSharpCode.Decompiler.CSharp
 					.ToArray();
 			}
 
+			/// <summary>
+			/// Returns which parameter each translated argument is passed to, or null where the
+			/// arguments are already in declaration order.
+			/// </summary>
+			/// <param name="skipCount">
+			/// Leading arguments to drop, e.g. the receiver of a reduced extension-method call. This
+			/// shifts the map's positions only: the values stay indices into the method's parameter
+			/// list, which is the coordinate system overload resolution reports and compares against.
+			/// </param>
 			public IReadOnlyList<int>? GetArgumentToParameterMap(int skipCount = 0)
 			{
 				return ArgumentToParameterMap?

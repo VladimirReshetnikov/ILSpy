@@ -406,8 +406,15 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		/// </remarks>
 		static bool IsSideEffectFreeRecordCopy(ITypeDefinition? recordType)
 		{
+			// Metadata can hold a base chain that never reaches object: 'class C<X> : C<C<X>>'
+			// resolves back to the same definition. Track what has already been walked rather than
+			// trusting the chain to end, and treat a cycle as unproven.
+			HashSet<ITypeDefinition>? visited = null;
 			while (recordType != null && recordType.IsRecord)
 			{
+				visited ??= new HashSet<ITypeDefinition>();
+				if (!visited.Add(recordType))
+					return false;
 				IMethod? copyConstructor = null;
 				foreach (var ctor in recordType.GetConstructors())
 				{

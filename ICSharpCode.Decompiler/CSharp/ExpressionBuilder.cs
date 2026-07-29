@@ -3026,8 +3026,17 @@ namespace ICSharpCode.Decompiler.CSharp
 			var objectType = compilation.FindType(KnownTypeCode.Object);
 			var typeofExpression = new TypeOfExpression(ConvertType(field.DeclaringType))
 				.WithRR(new TypeOfResolveResult(systemType, field.DeclaringType));
-			var bindingFlags = new CastExpression(ConvertType(bindingFlagsType), new PrimitiveExpression(58))
-				.WithRR(new ResolveResult(bindingFlagsType));
+			// DeclaredOnly | Static | Public | NonPublic: the field is looked up on the type that
+			// declares it, whatever its accessibility. Converting the value through the type system
+			// spells the flags out by name instead of leaving a bare number in the output; that only
+			// works once BindingFlags resolves, so an unresolved one keeps the explicit cast.
+			const int declaredOnlyStaticPublicAndNonPublic = 2 | 8 | 16 | 32;
+			Expression bindingFlagsExpression = bindingFlagsType.Kind == TypeKind.Enum
+				? astBuilder.ConvertConstantValue(bindingFlagsType, declaredOnlyStaticPublicAndNonPublic)
+				: new CastExpression(ConvertType(bindingFlagsType),
+					new PrimitiveExpression(declaredOnlyStaticPublicAndNonPublic));
+			var bindingFlags = bindingFlagsExpression
+				.WithRR(new ConstantResolveResult(bindingFlagsType, declaredOnlyStaticPublicAndNonPublic));
 			var getFieldCall = new InvocationExpression(
 				new MemberReferenceExpression(typeofExpression, "GetField"),
 				new PrimitiveExpression(field.Name), bindingFlags)

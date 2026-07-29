@@ -1672,11 +1672,27 @@ namespace ICSharpCode.Decompiler.CSharp
 			return label;
 		}
 
+		/// <summary>
+		/// Hands out label names that are unique across everything emitted into one member.
+		/// </summary>
+		/// <remarks>
+		/// One allocator is shared by the StatementBuilders of a member and of every lambda,
+		/// anonymous method and local function nested in it, because a label inside a nested body
+		/// may not repeat a name from an enclosing one: C# rejects that as CS0158 ("the label
+		/// shadows another label by the same name in a contained scope"), so per-body numbering
+		/// would produce output that does not compile.
+		/// </remarks>
 		internal sealed class LabelAllocator
 		{
 			readonly HashSet<string> usedLabels = new HashSet<string>();
+			// Remembers where to resume numbering per base name, so repeatedly disambiguating the
+			// same label does not rescan the suffixes already handed out.
 			readonly Dictionary<string, int> nextSuffixes = new Dictionary<string, int>();
 
+			/// <summary>
+			/// Returns <paramref name="label"/> itself the first time it is asked for, and a
+			/// numbered variant of it on every later request.
+			/// </summary>
 			public string GetUniqueLabel(string label)
 			{
 				if (usedLabels.Add(label))
