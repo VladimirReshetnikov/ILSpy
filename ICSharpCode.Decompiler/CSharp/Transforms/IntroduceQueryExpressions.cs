@@ -26,6 +26,7 @@ using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.IL;
+using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Transforms
 {
@@ -88,8 +89,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// longer valid, so drop the explicit 'in' and pass by value; the compiler makes the hidden
 		/// readonly copy that an 'in' parameter requires. 'ref'/'out' are left untouched: they demand
 		/// an lvalue and cannot be satisfied by a range variable at all.
+		/// Dropping the modifier re-runs overload resolution without it: when the invoked member has
+		/// a sibling overload whose parameter list differs only in that parameter's by-value/'in'-ness,
+		/// the by-value overload would silently win. In that case this method returns false without
+		/// touching the query, and the caller gives the query up in favor of the method-call chain,
+		/// where the explicit 'in' remains legal.
 		/// </summary>
-		private void RemoveInModifierFromRangeVariableArguments(QueryExpression query)
+		private bool RemoveInModifierFromRangeVariableArguments(QueryExpression query)
 		{
 			var rangeVariables = new HashSet<ILVariable>();
 			foreach (var fromClause in query.Clauses.OfType<QueryFromClause>())
@@ -105,7 +111,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					rangeVariables.Add(intoVariable);
 			}
 			if (rangeVariables.Count == 0)
-				return;
+				return true;
 			foreach (var directionExpression in query.Descendants.OfType<DirectionExpression>().ToArray())
 			{
 				if (directionExpression.FieldDirection != FieldDirection.In)
@@ -117,11 +123,114 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				{
 					continue;
 				}
+				if (!CanRemoveInModifierWithoutRebinding(directionExpression))
+					return false;
 				context.Step("Remove 'in' modifier from query range variable argument", directionExpression);
 				var value = identifierExpression.Detach();
 				directionExpression.ReplaceWith(value);
 				context.EndStep(value);
 			}
+			return true;
+		}
+
+		/// <summary>
+		/// Determines whether dropping the explicit 'in' modifier from the argument held by
+		/// <paramref name="directionExpression"/> is guaranteed to keep the call bound to the same
+		/// member: the invoked member must be identifiable, the argument must map to an 'in'
+		/// parameter, and no sibling overload may differ from the invoked member only by that
+		/// parameter's by-value/'in'-ness. Anything that cannot be analyzed counts as unsafe.
+		/// </summary>
+		static bool CanRemoveInModifierWithoutRebinding(DirectionExpression directionExpression)
+		{
+			AstNode? argumentHolder = directionExpression.Parent;
+			AstNodeCollection<Expression>? arguments = argumentHolder switch {
+				InvocationExpression invocation => invocation.Arguments,
+				ObjectCreateExpression objectCreate => objectCreate.Arguments,
+				IndexerExpression indexer => indexer.Arguments,
+				_ => null,
+			};
+			if (arguments is null || argumentHolder?.GetSymbol() is not IParameterizedMember member)
+				return false;
+			int argumentIndex = arguments.IndexOf(directionExpression);
+			if (argumentIndex < 0 || argumentIndex >= member.Parameters.Count
+				|| member.Parameters[argumentIndex].ReferenceKind != ReferenceKind.In)
+			{
+				return false;
+			}
+			return !HasSiblingOverloadDifferingOnlyByInModifier(member, argumentIndex);
+		}
+
+		/// <summary>
+		/// Normalization applied before comparing parameter types of sibling overloads; mirrors the
+		/// settings of <see cref="ParameterListComparer"/>, in particular treating the type
+		/// parameters of two different generic methods as equal by their position.
+		/// </summary>
+		static readonly NormalizeTypeVisitor overloadComparisonNormalization = new NormalizeTypeVisitor {
+			ReplaceClassTypeParametersWithDummy = false,
+			ReplaceMethodTypeParametersWithDummy = true,
+			DynamicAndObject = true,
+			TupleToUnderlyingType = true,
+		};
+
+		/// <summary>
+		/// Returns true if the declaring type of <paramref name="member"/> also declares an overload
+		/// whose parameter list matches the member's except that the parameter at
+		/// <paramref name="parameterIndex"/> is by-value instead of 'in'. Members whose overload set
+		/// cannot be enumerated are treated as having such a sibling.
+		/// </summary>
+		static bool HasSiblingOverloadDifferingOnlyByInModifier(IParameterizedMember member, int parameterIndex)
+		{
+			if (member.MemberDefinition is not IParameterizedMember definition)
+				return true;
+			if (definition.DeclaringTypeDefinition is not ITypeDefinition declaringType)
+				return true;
+			IEnumerable<IParameterizedMember>? siblings = definition switch {
+				IMethod => declaringType.Methods,
+				IProperty => declaringType.Properties,
+				_ => null,
+			};
+			if (siblings is null)
+				return true;
+			foreach (IParameterizedMember sibling in siblings)
+			{
+				if (sibling.Name != definition.Name)
+					continue;
+				if (sibling is IMethod siblingMethod && definition is IMethod definitionMethod
+					&& siblingMethod.TypeParameters.Count != definitionMethod.TypeParameters.Count)
+				{
+					continue;
+				}
+				if (ParameterListsDifferOnlyByInModifier(definition.Parameters, sibling.Parameters, parameterIndex))
+					return true;
+			}
+			return false;
+		}
+
+		static bool ParameterListsDifferOnlyByInModifier(IReadOnlyList<IParameter> parameters,
+			IReadOnlyList<IParameter> siblingParameters, int parameterIndex)
+		{
+			if (siblingParameters.Count != parameters.Count)
+				return false;
+			for (int i = 0; i < parameters.Count; i++)
+			{
+				IType parameterType = parameters[i].Type;
+				if (i == parameterIndex)
+				{
+					if (siblingParameters[i].ReferenceKind != ReferenceKind.None)
+						return false;
+					// an 'in' parameter's type carries the managed reference; the by-value
+					// sibling parameter is compared against the referenced element type
+					if (parameterType is ByReferenceType byReference)
+						parameterType = byReference.ElementType;
+				}
+				else if (siblingParameters[i].ReferenceKind != parameters[i].ReferenceKind)
+				{
+					return false;
+				}
+				if (!overloadComparisonNormalization.EquivalentTypes(parameterType, siblingParameters[i].Type))
+					return false;
+			}
+			return true;
 		}
 
 		private void CombineRangeVariables(QueryClause clause, ILVariable? oldVariable, ILVariable? newVariable)
@@ -166,13 +275,24 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			Expression? query = DecompileQuery(node as InvocationExpression);
 			if (query is QueryExpression queryExpression)
 			{
-				RemoveInModifierFromRangeVariableArguments(queryExpression);
-				if (callChain != null)
-					queryExpression.AddAnnotation(new UntranslatedQueryAnnotation(callChain));
+				if (RemoveInModifierFromRangeVariableArguments(queryExpression))
+				{
+					if (callChain != null)
+						queryExpression.AddAnnotation(new UntranslatedQueryAnnotation(callChain));
+				}
+				else
+				{
+					// An explicit 'in' argument that cannot be dropped safely makes the query
+					// unwritable (CS8159), so give the translation up. DecompileQuery only accepts
+					// invocations of query operator names, so the call-chain copy exists whenever
+					// a query was built.
+					Debug.Assert(callChain != null);
+					query = callChain;
+				}
 			}
 			if (query != null)
 			{
-				if (node.Parent is ExpressionStatement && CanUseDiscardAssignment())
+				if (query is QueryExpression && node.Parent is ExpressionStatement && CanUseDiscardAssignment())
 					query = new AssignmentExpression(new IdentifierExpression("_"), query);
 				node.ReplaceWith(query);
 				context.EndStep(query);

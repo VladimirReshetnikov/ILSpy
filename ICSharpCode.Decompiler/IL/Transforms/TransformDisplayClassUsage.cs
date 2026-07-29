@@ -166,11 +166,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					continue;
 				context.Step($"Normalize VB closure initializer for {stloc.Variable.Name}", stloc);
 				newObj.Arguments[0].ReplaceWith(new LdNull());
-				RemoveDeadDefaultStores(stloc.Variable, stloc);
 				// The self-referential argument was the only reader of the variable's initial/loop-carried
-				// value; once it is null the closure is freshly constructed each time, so it no longer uses
-				// its initial value (which would otherwise count as a second definition and block SROA).
-				stloc.Variable.UsesInitialValue = false;
+				// value; once it is null the closure is freshly constructed each time, so when the copy-
+				// constructor store ends up as the variable's only store, the initial value is no longer
+				// used (it would otherwise count as a second definition and block SROA). If any other
+				// store survives, definite assignment may still flow through it, so the initial value
+				// stays marked as used.
+				if (RemoveDeadDefaultStores(stloc.Variable, stloc))
+					stloc.Variable.UsesInitialValue = false;
 			}
 		}
 
@@ -193,6 +196,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				{
 					if (!FieldReadsAreWritten(storeValue, variable, unwritten))
 						return false;
+					// The value is evaluated while the field is still unwritten. If it captures the
+					// closure instance itself (rather than merely reading its fields), every copied
+					// value becomes observable through the captured reference from this point on, so
+					// the copy is only dead if all fields have already been reassigned.
+					if (LoadsVariableInstance(storeValue, variable))
+						return unwritten.Count == 0;
 					unwritten.Remove((IField)storeField.MemberDefinition);
 					continue;
 				}
@@ -242,17 +251,42 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			return false;
 		}
 
-		static void RemoveDeadDefaultStores(ILVariable variable, StLoc keepStore)
+		/// <summary>
+		/// Removes <c>variable = null</c> / <c>variable = default</c> stores that are trivially dead:
+		/// only those in the same block as <paramref name="keepStore"/>, before it, and with no use
+		/// of the variable in between, so the kept store overwrites them on every path. A default
+		/// store anywhere else may be what keeps a conditionally constructed closure definitely
+		/// assigned, so it survives. Returns true if <paramref name="keepStore"/> is the variable's
+		/// only remaining store.
+		/// </summary>
+		static bool RemoveDeadDefaultStores(ILVariable variable, StLoc keepStore)
 		{
 			foreach (var store in variable.StoreInstructions.OfType<StLoc>().ToArray())
 			{
 				if (store == keepStore)
 					continue;
-				if ((store.Value is LdNull || store.Value is DefaultValue) && store.Parent is Block block)
+				if ((store.Value is LdNull || store.Value is DefaultValue)
+					&& store.Parent is Block block && block == keepStore.Parent
+					&& store.ChildIndex < keepStore.ChildIndex
+					&& !VariableIsUsedBetween(variable, block, store.ChildIndex + 1, keepStore.ChildIndex))
 				{
 					block.Instructions.RemoveAt(store.ChildIndex);
 				}
 			}
+			return variable.StoreInstructions.All(store => store == keepStore);
+		}
+
+		static bool VariableIsUsedBetween(ILVariable variable, Block block, int startIndex, int endIndex)
+		{
+			for (int i = startIndex; i < endIndex; i++)
+			{
+				foreach (var node in block.Instructions[i].Descendants.OfType<IInstructionWithVariableOperand>())
+				{
+					if (node.Variable == variable)
+						return true;
+				}
+			}
+			return false;
 		}
 
 		void AnalyzeFunction(ILFunction function)
