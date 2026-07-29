@@ -150,7 +150,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					continue;
 				// Local functions have no declared accessibility; their symbols still refer to generated metadata methods.
 				if (methodDecl.Parent is TypeDeclaration)
-					MakeSignatureTypesAccessible(method);
+					MakeSignatureTypesAccessible(methodDecl, method);
 				var forbiddenNames = methodDecl.Ancestors.OfType<TypeDeclaration>().Select(t => t.Name)
 					.Append(methodDecl.Name);
 				RenameTypeParameters(methodDecl.TypeParameters, method.TypeParameters, methodDecl.Constraints,
@@ -415,7 +415,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return false;
 			}
 
-			void MakeSignatureTypesAccessible(IMethod method)
+			void MakeSignatureTypesAccessible(MethodDeclaration methodDecl, IMethod method)
 			{
 				if (method.IsOverride || method.IsExplicitInterfaceImplementation
 					|| method.DeclaringTypeDefinition?.Kind == TypeKind.Interface)
@@ -423,7 +423,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					return;
 				}
 
-				Accessibility requiredAccessibility = method.EffectiveAccessibility();
+				// What matters is the accessibility the declaration is written with, which is not
+				// always the one the metadata records: a compiler-generated helper can be assembly-
+				// visible in metadata and still be emitted as private. Widening a signature type to
+				// match the metadata would then loosen a declaration nothing has trouble reaching.
+				Accessibility requiredAccessibility = AccessibilityFromModifiers(methodDecl.Modifiers)
+					.Intersect(method.EffectiveAccessibility());
 				MakeTypeAccessible(method.ReturnType, requiredAccessibility);
 				foreach (IParameter parameter in method.Parameters)
 					MakeTypeAccessible(parameter.Type, requiredAccessibility);
@@ -462,6 +467,30 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					foreach (IType typeArgument in type.TypeArguments)
 						MakeTypeAccessible(typeArgument, requiredAccessibility);
 				}
+			}
+		}
+
+		/// <summary>
+		/// Reads back the accessibility a declaration is written with. This is the inverse of
+		/// <see cref="TypeSystemAstBuilder.ModifierFromAccessibility"/>; a member carrying no
+		/// visibility modifier at all is private, which is what C# defaults it to.
+		/// </summary>
+		static Accessibility AccessibilityFromModifiers(Modifiers modifiers)
+		{
+			switch (modifiers & Modifiers.VisibilityMask)
+			{
+				case Modifiers.Public:
+					return Accessibility.Public;
+				case Modifiers.Internal:
+					return Accessibility.Internal;
+				case Modifiers.Protected:
+					return Accessibility.Protected;
+				case Modifiers.Protected | Modifiers.Internal:
+					return Accessibility.ProtectedOrInternal;
+				case Modifiers.Private | Modifiers.Protected:
+					return Accessibility.ProtectedAndInternal;
+				default:
+					return Accessibility.Private;
 			}
 		}
 
