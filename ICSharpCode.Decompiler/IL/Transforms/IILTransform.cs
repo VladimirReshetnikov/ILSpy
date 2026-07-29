@@ -109,7 +109,23 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				var resolver = LazyInit.VolatileRead(ref csharpResolver);
 				if (resolver != null)
 					return resolver;
-				return LazyInit.GetOrSet(ref csharpResolver, new CSharpResolver(new CSharpTypeResolveContext(TypeSystem.MainModule, UsingScope)));
+				// Resolve from inside the decompiled member's namespace, as the emitted file will.
+				// C# consults enclosing namespaces before using directives, so a bare scope answers
+				// name and extension-method lookups differently from the printed code - an extension
+				// method declared in an enclosing namespace wins there, invisible to a bare scope.
+				// The AST transforms nest their resolver the same way (IntroduceExtensionMethods
+				// .InitializeContext); IL transforms predicting those stages must agree with them.
+				var usingScope = UsingScope;
+				var declaringType = Function?.Method?.DeclaringTypeDefinition;
+				if (usingScope != null && !string.IsNullOrEmpty(declaringType?.Namespace))
+				{
+					foreach (string ns in declaringType.Namespace.Split('.'))
+					{
+						usingScope = usingScope.WithNestedNamespace(ns);
+					}
+				}
+				return LazyInit.GetOrSet(ref csharpResolver, new CSharpResolver(
+					new CSharpTypeResolveContext(TypeSystem.MainModule, usingScope, declaringType)));
 			}
 		}
 
