@@ -29,6 +29,13 @@
          CA1001/CA2213 fire because tab-page models hold a CancellationTokenSource that lives as
          long as the document dock, which is intentional. -->
     <NoWarn>$(NoWarn);MEF002;MEF004;CA1001;CA2213</NoWarn>
+    <!-- Parse the XML doc comments so the compiler checks them: a cref naming a type that
+         no longer exists, an ambiguous overload reference, or a malformed tag becomes a
+         build error instead of silently rotting. 1591 and 1573 stay suppressed, so this
+         only asserts that the comments which do exist are well-formed and resolve; it does
+         not oblige anyone to document more. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591;1573</NoWarn>
     <!-- Server GC: spawns one GC heap per CPU core and runs collections on dedicated
          GC threads, which keeps the UI thread responsive when background work
          allocates aggressively. Workstation GC (the default) would pause the UI

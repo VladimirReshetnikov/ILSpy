@@ -31,7 +31,7 @@ namespace ICSharpCode.ILSpy.Util
 	/// <summary>
 	/// Minimal GraphViz DOT-language emitter. Used by the DEBUG-only CFG viewer to dump
 	/// a method's control-flow graph and then call out to <c>dot</c> on PATH to render
-	/// it as PNG. Pure-text producer here; process spawning lives in <see cref="Show"/>.
+	/// it as PNG. Pure-text producer here; process spawning lives in <see cref="Show(string)"/>.
 	/// </summary>
 	internal sealed class GraphVizGraph
 	{
