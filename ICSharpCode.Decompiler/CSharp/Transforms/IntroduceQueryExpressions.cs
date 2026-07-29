@@ -538,6 +538,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return false;
 			if (!(invocation.Target is MemberReferenceExpression mre))
 				return false;
+			// Same reason DecompileQuery refuses one on the outermost call: an ordering clause has
+			// nowhere to put explicit type arguments, and this chain is discarded whole once it is
+			// accepted, so any the inner calls carry would go with it.
+			if (mre.TypeArguments.Count > 0)
+				return false;
 			if (!MatchSimpleLambda(invocation.Arguments.Single(), out var parameter, out _))
 				return false;
 			if (parameter.Name != expectedParameterName)
