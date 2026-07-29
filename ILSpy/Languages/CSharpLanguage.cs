@@ -589,6 +589,12 @@ namespace ICSharpCode.ILSpy.Languages
 				this.options = options;
 			}
 
+			// The handlers match on the name of an entry inside a .resources container - a .baml
+			// page, say - so the container has to be split for any of them to be offered anything.
+			// Left unset, WriteResourceToFile would only ever see the container itself and every
+			// handler would decline it.
+			protected override bool ExtractIndividualResources => true;
+
 			protected override IEnumerable<ProjectItemInfo> WriteResourceToFile(string fileName, string resourceName, Stream entryStream)
 			{
 				var context = new ResourceFileHandlerContext(options);
