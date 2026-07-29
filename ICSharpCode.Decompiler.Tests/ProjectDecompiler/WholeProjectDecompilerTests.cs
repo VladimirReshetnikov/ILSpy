@@ -40,7 +40,8 @@ public sealed class WholeProjectDecompilerTests
 		string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
 		TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
 		decompiler.Settings.UseNestedDirectoriesForNamespaces = true;
-		decompiler.DecompileProject(new PEFile("ICSharpCode.Decompiler.dll"), targetDirectory);
+		using PEFile module = new("ICSharpCode.Decompiler.dll");
+		decompiler.DecompileProject(module, targetDirectory);
 		AssertDirectoryDoesntExist(targetDirectory);
 
 		string projectDecompilerDirectory = Path.Combine(targetDirectory, "ICSharpCode", "Decompiler", "CSharp", "ProjectDecompiler");
@@ -59,7 +60,8 @@ public sealed class WholeProjectDecompilerTests
 		string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
 		TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
 		decompiler.Settings.UseNestedDirectoriesForNamespaces = false;
-		decompiler.DecompileProject(new PEFile("ICSharpCode.Decompiler.dll"), targetDirectory);
+		using PEFile module = new("ICSharpCode.Decompiler.dll");
+		decompiler.DecompileProject(module, targetDirectory);
 		AssertDirectoryDoesntExist(targetDirectory);
 
 		string projectDecompilerDirectory = Path.Combine(targetDirectory, "ICSharpCode.Decompiler.CSharp.ProjectDecompiler");
@@ -82,7 +84,8 @@ public sealed class WholeProjectDecompilerTests
 		TestProjectInfoProvider project = new(assemblyResolver, nullableReferenceTypes);
 		IProjectFileWriter writer = useSdkStyleProjectFormat ? ProjectFileWriterSdkStyle.Create() : ProjectFileWriterDefault.Create();
 		using StringWriter output = new();
-		writer.Write(output, project, [], new PEFile("ICSharpCode.Decompiler.dll"));
+		using PEFile module = new("ICSharpCode.Decompiler.dll");
+		writer.Write(output, project, [], module);
 		string projectFile = output.ToString();
 		if (nullableReferenceTypes)
 		{
@@ -103,7 +106,8 @@ public sealed class WholeProjectDecompilerTests
 			.With("LogicalName", "Test.Strings.resources")
 			.With("WithCulture", "false");
 		using StringWriter output = new();
-		ProjectFileWriterSdkStyle.Create().Write(output, project, [resource], new PEFile("ICSharpCode.Decompiler.dll"));
+		using PEFile module = new("ICSharpCode.Decompiler.dll");
+		ProjectFileWriterSdkStyle.Create().Write(output, project, [resource], module);
 
 		Assert.That(output.ToString(), Does.Contain(
 			"<EmbeddedResource Update=\"Strings.resx\" LogicalName=\"Test.Strings.resources\" WithCulture=\"false\" />"));

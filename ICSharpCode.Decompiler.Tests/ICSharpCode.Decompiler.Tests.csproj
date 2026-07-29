@@ -223,8 +223,9 @@
     <Compile Remove="TestCases\ILPretty\DiscardNameTakenByLocalFunction.cs" />
     <Compile Remove="TestCases\ILPretty\InitOnlySettersAfterInitializer.cs" />
     <Compile Remove="TestCases\ILPretty\AnonymousTypeConditionalPhi.cs" />
-    <Compile Remove="TestCases\ILPretty\CyclicInterfaceRefKind.cs" />
     <None Include="TestCases\ILPretty\AnonymousTypeConditionalPhi.cs" />
+    <Compile Remove="TestCases\ILPretty\CyclicInterfaceRefKind.cs" />
+    <None Include="TestCases\ILPretty\CyclicInterfaceRefKind.cs" />
     <Compile Remove="TestCases\ILPretty\AutoPropertyBackingFieldDebuggerBrowsable.cs" />
     <None Include="TestCases\ILPretty\AutoPropertyBackingFieldDebuggerBrowsable.cs" />
     <Compile Remove="TestCases\ILPretty\PrimaryConstructorMethodAttributes.cs" />

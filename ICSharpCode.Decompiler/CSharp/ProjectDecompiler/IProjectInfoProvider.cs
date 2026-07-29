@@ -60,8 +60,18 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		string StrongNameKeyFile { get; }
 	}
 
+	/// <summary>
+	/// Supplements <see cref="IProjectInfoProvider"/> with the nullable-reference-types setting of
+	/// the project being decompiled. Kept as a separate interface so that adding the setting does
+	/// not break external <see cref="IProjectInfoProvider"/> implementations. Implemented by
+	/// <see cref="WholeProjectDecompiler"/>; the project file writers probe for it and emit
+	/// <c>&lt;Nullable&gt;annotations&lt;/Nullable&gt;</c> when the setting is enabled.
+	/// </summary>
 	interface INullableProjectInfoProvider
 	{
+		/// <summary>
+		/// Gets whether the decompiled code uses nullable reference type annotations.
+		/// </summary>
 		bool NullableReferenceTypes { get; }
 	}
 }

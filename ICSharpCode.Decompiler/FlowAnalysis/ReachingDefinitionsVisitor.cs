@@ -357,11 +357,9 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 				var stores = storesByVar[vi];
 				if (stores != null)
 				{
-					int expectedStoreCount = scope.Variables[vi].StoreInstructions.Count;
-					expectedStoreCount += scope.Variables[vi].AddressInstructions.OfType<LdLoca>().Count(IsOutArgument);
-					// Extra store for the uninitialized state.
-					expectedStoreCount += 1;
-					Debug.Assert(stores.Count == expectedStoreCount);
+					// The store-count computation runs only in debug builds: Debug.Assert is
+					// conditional, so in release builds the argument is never evaluated.
+					Debug.Assert(stores.Count == ExpectedStoreCount(scope.Variables[vi]));
 					stores.CopyTo(allStores, si);
 					// Add all stores except for the first (representing the uninitialized state)
 					// to storeIndexMap.
@@ -376,6 +374,14 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 			Debug.Assert(si == allStores.Length);
 
 			Initialize(CreateInitialState());
+
+			static int ExpectedStoreCount(ILVariable v)
+			{
+				// One extra store represents the uninitialized state.
+				return v.StoreInstructions.Count
+					+ v.AddressInstructions.OfType<LdLoca>().Count(IsOutArgument)
+					+ 1;
+			}
 		}
 
 		/// <summary>

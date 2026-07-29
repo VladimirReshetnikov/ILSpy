@@ -224,11 +224,12 @@ namespace ICSharpCode.Decompiler.Disassembler
 		}
 
 		/// <summary>
-		/// Writes a local-variable reference token for an IL instruction operand.
+		/// Writes a local-variable reference token for an IL instruction operand. The output is the numeric
+		/// slot index of the local.
 		/// </summary>
 		/// <param name="writer">The output sink.</param>
-		/// <param name="metadata">The metadata reader used to resolve local names from debug scopes when available.</param>
-		/// <param name="handle">The method definition that owns the local.</param>
+		/// <param name="metadata">Accepted for signature compatibility; currently unused.</param>
+		/// <param name="handle">Accepted for signature compatibility; currently unused.</param>
 		/// <param name="index">The local variable index.</param>
 		public static void WriteVariableReference(ITextOutput writer, MetadataReader metadata, MethodDefinitionHandle handle, int index)
 		{

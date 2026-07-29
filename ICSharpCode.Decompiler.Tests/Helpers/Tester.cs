@@ -1028,6 +1028,10 @@ namespace System.Runtime.CompilerServices
 			return DecompileCSharp(assemblyFileName, null, settings);
 		}
 
+		/// <summary>
+		/// Decompiles a single type from the given assembly and writes the resulting C# source
+		/// to a temporary file, whose path is returned.
+		/// </summary>
 		public static Task<string> DecompileCSharpType(string assemblyFileName, FullTypeName typeName,
 			DecompilerSettings settings = null)
 		{
@@ -1202,6 +1206,13 @@ namespace System.Runtime.CompilerServices
 			}
 		}
 
+		/// <summary>
+		/// Locates an MSBuild to invoke: Visual Studio's MSBuild.exe found via vswhere, or, when
+		/// that fails, the "dotnet msbuild" driver. Windows-only; on other platforms the calling
+		/// test is ignored. Returns the executable path and an arguments prefix ("" or "msbuild ");
+		/// the prefix carries its trailing space by design, because call sites concatenate it
+		/// directly in front of the argument list.
+		/// </summary>
 		public static async Task<(string FileName, string ArgumentsPrefix)> FindMSBuild()
 		{
 			if (!OperatingSystem.IsWindows())
