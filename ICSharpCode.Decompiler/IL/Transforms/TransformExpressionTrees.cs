@@ -378,7 +378,9 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return false;
 			if (variable.LoadInstructions[0] != onlyUse)
 				return false;
-			if (!(variable.StoreInstructions[0] is StLoc s))
+			// IsSingleDefinition counts a variable's implicit initial value as its definition, so a
+			// parameter that is never assigned satisfies it while holding no store instruction at all.
+			if (variable.StoreInstructions is not [StLoc s])
 				return false;
 			store = s;
 			return true;

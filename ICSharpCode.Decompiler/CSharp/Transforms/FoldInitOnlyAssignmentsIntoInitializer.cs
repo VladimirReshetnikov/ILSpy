@@ -146,13 +146,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			ArrayInitializerExpression initializer;
 			if (create != null)
 			{
+				// Folding the assignments back in is exactly the object-initializer syntax.
+				if (!context.Settings.ObjectOrCollectionInitializers)
+					return false;
 				initializer = create.Initializer ?? new ArrayInitializerExpression();
 				if (create.Initializer == null)
 					create.Initializer = initializer;
 			}
 			else
 			{
-				if (!context.Settings.RecordClasses)
+				if (!context.Settings.WithExpressions)
 					return false;
 				initializer = new ArrayInitializerExpression();
 				var copied = variable.Initializer!.Detach();
@@ -201,6 +204,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			if (sourceVariable != target && !aliases.Contains(sourceVariable))
 				return false;
 			if (variable.GetILVariable() is not { } aliasVariable)
+				return false;
+			// Only a reference type gets a second name this way. Copying a value type yields an
+			// independent value, so the assignments that follow belong to the copy - that is a
+			// with-expression over the copy, and folding it into the source's initializer would
+			// assign to the wrong variable. Left out here, the copy is folded on its own turn.
+			if (aliasVariable.Type.IsReferenceType != true)
 				return false;
 			alias = aliasVariable;
 			return true;

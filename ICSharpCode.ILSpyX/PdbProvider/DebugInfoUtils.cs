@@ -76,8 +76,9 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 		/// <param name="pdbFileName">Path to the symbol file to read.</param>
 		/// <returns>
 		/// A debug-info provider for the file, or <see langword="null"/> when <paramref name="pdbFileName"/> is
-		/// empty or the file does not exist. Malformed symbol data is not detected here; it surfaces when the
-		/// provider is first read.
+		/// empty or the file does not exist. When the data is malformed, the two formats report it at
+		/// different times: a portable PDB is read lazily, so the failure surfaces on first use, whereas a
+		/// legacy Windows PDB is parsed in full while the provider is constructed and therefore throws here.
 		/// </returns>
 		public static IDebugInfoProvider? FromFile(PEFile module, string pdbFileName)
 		{

@@ -394,9 +394,13 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		{
 			foreach (var extension in syntaxTree.Descendants.OfType<ExtensionDeclaration>())
 			{
-				var receiverType = (extension.GetSymbol() as IMethod)?.Parameters.Single().Type;
-				if (receiverType == null || !ContainsObliviousReferenceType(receiverType))
+				// An extension block is represented by a marker method carrying just the receiver.
+				// Anything else is not one we can read a receiver type off, so leave it alone.
+				if (extension.GetSymbol() is not IMethod { Parameters: [var receiver] }
+					|| !ContainsObliviousReferenceType(receiver.Type))
+				{
 					continue;
+				}
 
 				extension.AddLeadingTrivia(new PreProcessorDirective(PreProcessorDirectiveType.Nullable, "disable annotations"));
 				var restore = new PreProcessorDirective(PreProcessorDirectiveType.Nullable, "restore annotations");

@@ -782,7 +782,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			if (CommentOutUnrepresentableMetadata
 				&& attribute is global::ICSharpCode.Decompiler.TypeSystem.Implementation.AttributeWithUnrepresentableFields { Unrepresentable: { Length: > 0 } unrepresentable })
 			{
-				attr.AddTrailingTrivia(new Comment(" " + unrepresentable,
+				attr.AddTrailingTrivia(new Comment(" " + SanitizeForMultiLineComment(unrepresentable),
 					CommentType.MultiLine));
 			}
 			attr.Type = ConvertAttributeType(attribute.AttributeType);
@@ -902,6 +902,17 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		}
 
 		/// <summary>
+		/// Makes text fit to sit inside a /* */ comment. What is described here was read out of a
+		/// metadata blob and can hold anything at all: a "*/" in it would close the comment early
+		/// and leave the remainder standing as code, and a line break would carry it off the line
+		/// the attribute sits on.
+		/// </summary>
+		static string SanitizeForMultiLineComment(string text)
+		{
+			return text.Replace("*/", "* /").Replace('\r', ' ').Replace('\n', ' ');
+		}
+
+		/// <summary>
 		/// Names an attribute for a comment: its type without the conventional suffix, with the
 		/// arguments it was applied with.
 		/// </summary>
@@ -925,12 +936,19 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// <summary>
 		/// Returns the attribute targets its AttributeUsage permits, or null where that cannot be
 		/// determined. C++/CLI puts attributes on declarations their usage does not cover, and naming
-		/// one where it is not allowed does not compile (CS0592).
+		/// one where it is not allowed does not compile (CS0592). AttributeUsage is itself inherited,
+		/// so the nearest base class that declares one decides.
 		/// </summary>
 		static AttributeTargets? GetPermittedTargets(IType attributeType)
 		{
-			for (IType? type = attributeType; type != null; type = type.DirectBaseTypes.FirstOrDefault(t => t.Kind == TypeKind.Class))
+			// GetNonInterfaceBaseTypes lists base types before derived ones, so reversing it walks
+			// from the attribute type outwards. It also terminates on the cyclic and endlessly
+			// expanding base chains that malformed metadata can hold, which a bare walk over
+			// DirectBaseTypes does not.
+			foreach (IType type in attributeType.GetNonInterfaceBaseTypes().Reverse())
 			{
+				// An unresolved link in the chain could be the one carrying AttributeUsage, so
+				// nothing can be concluded about where the attribute may go.
 				if (type.GetDefinition() is not { } definition)
 					return null;
 				foreach (var usage in definition.GetAttributes())
@@ -2562,7 +2580,13 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				if (baseMember is not IProperty baseProperty)
 					break;
 				var baseAccessor = kind == MethodSemanticsAttributes.Getter ? baseProperty.Getter : baseProperty.Setter;
-				return baseAccessor?.Accessibility ?? accessor.Accessibility;
+				// Only where the internal half is actually reachable, exactly as EffectiveAccessibility
+				// decides it for the member: across an assembly boundary without friend access C#
+				// requires the override to narrow 'protected internal' to 'protected', so the metadata
+				// value is the one that recompiles.
+				if (baseAccessor == null || !IsInternalVisibleFrom(baseAccessor, accessor))
+					break;
+				return baseAccessor.Accessibility;
 			}
 			return accessor.Accessibility;
 		}

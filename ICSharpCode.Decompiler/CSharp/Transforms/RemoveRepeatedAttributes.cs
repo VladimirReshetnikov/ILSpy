@@ -85,29 +85,44 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		}
 
+		/// <summary>
+		/// Renders a dropped attribute the way it would have been written. A section without a
+		/// target reports it as the empty string rather than null, so both stand for "no target".
+		/// </summary>
 		static string DescribeAttribute(string? target, Syntax.Attribute attribute)
 		{
 			var text = attribute.ToString();
-			return target == null ? "[" + text + "]" : "[" + target + ": " + text + "]";
+			return string.IsNullOrEmpty(target) ? "[" + text + "]" : "[" + target + ": " + text + "]";
 		}
 
+		/// <summary>
+		/// Returns whether the attribute may be applied more than once to the same declaration.
+		/// AttributeUsage is itself an inherited attribute, so an attribute class that declares none
+		/// is governed by the nearest base class that does - which is why the base chain is walked
+		/// from the attribute type outwards rather than only its own attributes being read.
+		/// </summary>
 		static bool AllowsMultipleApplications(IType attributeType)
 		{
-			var definition = attributeType.GetDefinition();
-			if (definition == null)
-				return true; // an unresolved attribute says nothing; keep every application
-			foreach (var usage in definition.GetAttributes())
+			// An unresolved attribute says nothing about itself, so keep every application.
+			if (attributeType.GetDefinition() == null)
+				return true;
+			// GetNonInterfaceBaseTypes lists base types before derived ones, so reversing it puts the
+			// attribute type first and walks outwards to Attribute/object.
+			foreach (var type in attributeType.GetNonInterfaceBaseTypes().Reverse())
 			{
-				if (usage.AttributeType.FullName != "System.AttributeUsageAttribute")
-					continue;
-				foreach (var argument in usage.NamedArguments)
+				foreach (var usage in type.GetDefinition()?.GetAttributes() ?? Enumerable.Empty<IAttribute>())
 				{
-					if (argument.Name == "AllowMultiple")
-						return argument.Value is true;
+					if (usage.AttributeType.FullName != "System.AttributeUsageAttribute")
+						continue;
+					foreach (var argument in usage.NamedArguments)
+					{
+						if (argument.Name == "AllowMultiple")
+							return argument.Value is true;
+					}
+					return false; // an AttributeUsage without AllowMultiple leaves it at its false default
 				}
-				break;
 			}
-			return false; // AttributeUsage defaults AllowMultiple to false, as does its absence
+			return false; // no AttributeUsage in the whole chain, which also means AllowMultiple is false
 		}
 	}
 }

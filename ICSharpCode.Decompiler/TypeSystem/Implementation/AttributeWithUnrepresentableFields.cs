@@ -32,6 +32,13 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 	/// </summary>
 	public sealed class AttributeWithUnrepresentableFields : DefaultAttribute
 	{
+		/// <param name="attributeType">The type of the attribute being reconstructed.</param>
+		/// <param name="fixedArguments">The constructor arguments the attribute is written with.</param>
+		/// <param name="namedArguments">The property and field assignments the attribute is written with.</param>
+		/// <param name="unrepresentable">
+		/// A human-readable description of what the metadata held beyond those arguments, ready to be
+		/// emitted as a comment next to the attribute.
+		/// </param>
 		public AttributeWithUnrepresentableFields(IType attributeType,
 			ImmutableArray<CustomAttributeTypedArgument<IType>> fixedArguments,
 			ImmutableArray<CustomAttributeNamedArgument<IType>> namedArguments,

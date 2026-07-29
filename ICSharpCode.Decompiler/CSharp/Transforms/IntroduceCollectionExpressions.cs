@@ -174,7 +174,29 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				source = invocation.Arguments.Single();
 			else if (!method.IsStatic && invocation.Arguments.Count == 0 && invocation.Target is MemberReferenceExpression { Target: { } receiver })
 				source = receiver;
+			// The name alone says nothing: plenty of types offer a ToArray that copies out of
+			// something a spread cannot read, MemoryStream among them. Spreading one of those
+			// produces C# that does not compile, so the source has to be enumerable in its own right.
+			if (source != null && !IsSpreadable(source.GetResolveResult().Type))
+				source = null;
 			return source != null;
+		}
+
+		/// <summary>
+		/// Returns whether a spread element may read from <paramref name="type"/>. A spread asks for
+		/// what foreach asks for: either the type implements IEnumerable, or it just offers a
+		/// GetEnumerator to bind against, which is how Span and ReadOnlySpan qualify while
+		/// implementing neither.
+		/// </summary>
+		static bool IsSpreadable(IType type)
+		{
+			if (type.Kind is TypeKind.Array or TypeKind.Dynamic)
+				return true;
+			if (type.Kind is TypeKind.Unknown or TypeKind.None)
+				return false;
+			if (type.GetAllBaseTypes().Any(baseType => baseType.IsKnownType(KnownTypeCode.IEnumerable)))
+				return true;
+			return type.GetMethods(method => method.Name == "GetEnumerator" && !method.IsStatic).Any();
 		}
 
 		static bool IsReadOnlyCollectionWrapper(ITypeDefinition? declaringType)
@@ -921,9 +943,26 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return false;
 			if (definition.DeclaringTypeDefinition != null || definition.TypeParameterCount != 1)
 				return false;
-			return definition.Name.StartsWith("<>y__InlineArray", StringComparison.Ordinal)
+			return HasLengthSuffix(definition.Name, "<>y__InlineArray")
 				|| (definition.Namespace == "System.Runtime.CompilerServices"
-					&& definition.Name.StartsWith("InlineArray", StringComparison.Ordinal));
+					&& HasLengthSuffix(definition.Name, "InlineArray"));
+		}
+
+		/// <summary>
+		/// Returns whether <paramref name="name"/> is <paramref name="prefix"/> followed by the
+		/// buffer's length. The length is what makes the name a generated buffer's rather than a
+		/// coincidence, so a type merely starting with the prefix is not one of these.
+		/// </summary>
+		static bool HasLengthSuffix(string name, string prefix)
+		{
+			if (name.Length <= prefix.Length || !name.StartsWith(prefix, StringComparison.Ordinal))
+				return false;
+			for (int i = prefix.Length; i < name.Length; i++)
+			{
+				if (name[i] < '0' || name[i] > '9')
+					return false;
+			}
+			return true;
 		}
 
 		/// <summary>
@@ -1127,18 +1166,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		/// <summary>
 		/// Returns whether the position <paramref name="expression"/> occupies gives a collection
-		/// expression a target type. The list is an allow-list: a position that is not known to
-		/// target-type its operand keeps the original syntax.
-		/// </summary>
-		bool CanTargetType(Expression expression)
-		{
-			return CanTargetType(expression, out _);
-		}
-
-		/// <summary>
-		/// As <see cref="CanTargetType(Expression)"/>, additionally reporting through
-		/// <paramref name="castTo"/> the type the collection expression must be cast to for the
-		/// position to keep its meaning.
+		/// expression a target type. The positions are an allow-list: one that is not known to
+		/// target-type its operand keeps the original syntax. <paramref name="castTo"/> reports the
+		/// type the collection expression must be cast to for the position to keep its meaning, and
+		/// is null where the position types it on its own.
 		/// </summary>
 		bool CanTargetType(Expression expression, out AstType? castTo)
 		{
@@ -1287,10 +1318,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		/// <summary>
 		/// Returns whether a collection expression converts to <paramref name="type"/>: an array, a
-		/// span, one of the collection interfaces, a type that names its builder, or a collection the
-		/// compiler can fill one element at a time. Types that merely happen to be enumerable, such
-		/// as <c>string</c>, and types that are only a base of the collection, such as
-		/// <c>object</c>, are not targets.
+		/// span, one of the generic collection interfaces, a type that names its builder, or a
+		/// collection the compiler can construct and then fill one element at a time. Types that
+		/// merely happen to be enumerable, such as <c>string</c>, and types that are only a base of
+		/// the collection, such as <c>object</c>, are not targets.
 		/// </summary>
 		static bool IsCollectionExpressionTarget(IType type)
 		{
@@ -1300,8 +1331,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return true;
 			if (type.Kind == TypeKind.Interface)
 			{
-				return type.IsKnownType(KnownTypeCode.IEnumerable)
-					|| type.IsKnownType(KnownTypeCode.IEnumerableOfT)
+				// Only these five generic interfaces are collection-expression targets. The
+				// non-generic System.Collections.IEnumerable is not one of them: it is neither
+				// constructible nor on the list, so `[...]` there is CS9174.
+				return type.IsKnownType(KnownTypeCode.IEnumerableOfT)
 					|| type.IsKnownType(KnownTypeCode.ICollectionOfT)
 					|| type.IsKnownType(KnownTypeCode.IListOfT)
 					|| type.IsKnownType(KnownTypeCode.IReadOnlyCollectionOfT)
@@ -1314,8 +1347,29 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			{
 				return true;
 			}
-			return type.GetAllBaseTypes().Any(baseType => baseType.IsKnownType(KnownTypeCode.IEnumerable))
-				&& type.GetMethods(m => !m.IsStatic && m.Name == "Add" && m.Parameters.Count == 1).Any();
+			return IsFillableCollection(type);
+		}
+
+		/// <summary>
+		/// Returns whether the compiler could build <paramref name="type"/> by allocating it and
+		/// adding one element at a time. That requires an enumerable type it can actually construct:
+		/// an abstract type has no instance to fill (CS0144), and one whose constructors all demand
+		/// arguments cannot be allocated at all (CS9214).
+		/// </summary>
+		static bool IsFillableCollection(IType type)
+		{
+			if (type.GetDefinition() is not { IsAbstract: false })
+				return false;
+			if (!type.GetAllBaseTypes().Any(baseType => baseType.IsKnownType(KnownTypeCode.IEnumerable)))
+				return false;
+			// A private constructor is reachable only from inside the type itself; treating it as
+			// unusable here at worst leaves the original syntax in place.
+			if (!type.GetConstructors(m => m.Accessibility != Accessibility.Private
+				&& m.Parameters.All(p => p.IsOptional || p.IsParams)).Any())
+			{
+				return false;
+			}
+			return type.GetMethods(m => !m.IsStatic && m.Name == "Add" && m.Parameters.Count == 1).Any();
 		}
 	}
 }

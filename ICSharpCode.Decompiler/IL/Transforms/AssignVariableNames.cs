@@ -78,6 +78,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		/// identifier in nested scopes (CS0136) with no merge available to reconcile it. Both kinds are
 		/// therefore compared by identity so distinct instances keep distinct names. (Foreach, fixed and
 		/// catch locals are scoped to their own statement, so they never collide across scopes this way.)
+		///
+		/// Only using locals unified through a hoisted field are separated this way. Two of them
+		/// sharing a locals-signature slot instead are the compiler reusing one slot for source
+		/// variables whose scopes do not overlap, so the reconstruction keeps them in sibling
+		/// scopes where repeating the name is legal and reads better than numbering it.
 		/// </summary>
 		sealed class NamingVariableComparer : IEqualityComparer<ILVariable>
 		{
@@ -87,7 +92,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				if (v.Kind == VariableKind.Local && v.StackType == StackType.Ref)
 					return true;
-				return v.Kind == VariableKind.UsingLocal;
+				// Index takes precedence over StateMachineField in ILVariableEqualityComparer,
+				// so this is exactly the set of using locals that a hoisted field would unify.
+				return v.Kind == VariableKind.UsingLocal
+					&& v.Index == null && v.StateMachineField != null;
 			}
 
 			public bool Equals(ILVariable x, ILVariable y)

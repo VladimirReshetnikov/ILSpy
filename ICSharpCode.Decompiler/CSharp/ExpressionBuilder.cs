@@ -3026,8 +3026,17 @@ namespace ICSharpCode.Decompiler.CSharp
 			var objectType = compilation.FindType(KnownTypeCode.Object);
 			var typeofExpression = new TypeOfExpression(ConvertType(field.DeclaringType))
 				.WithRR(new TypeOfResolveResult(systemType, field.DeclaringType));
-			var bindingFlags = new CastExpression(ConvertType(bindingFlagsType), new PrimitiveExpression(58))
-				.WithRR(new ResolveResult(bindingFlagsType));
+			// DeclaredOnly | Static | Public | NonPublic: the field is looked up on the type that
+			// declares it, whatever its accessibility. Converting the value through the type system
+			// spells the flags out by name instead of leaving a bare number in the output; that only
+			// works once BindingFlags resolves, so an unresolved one keeps the explicit cast.
+			const int declaredOnlyStaticPublicAndNonPublic = 2 | 8 | 16 | 32;
+			Expression bindingFlagsExpression = bindingFlagsType.Kind == TypeKind.Enum
+				? astBuilder.ConvertConstantValue(bindingFlagsType, declaredOnlyStaticPublicAndNonPublic)
+				: new CastExpression(ConvertType(bindingFlagsType),
+					new PrimitiveExpression(declaredOnlyStaticPublicAndNonPublic));
+			var bindingFlags = bindingFlagsExpression
+				.WithRR(new ConstantResolveResult(bindingFlagsType, declaredOnlyStaticPublicAndNonPublic));
 			var getFieldCall = new InvocationExpression(
 				new MemberReferenceExpression(typeofExpression, "GetField"),
 				new PrimitiveExpression(field.Name), bindingFlags)
@@ -3722,16 +3731,26 @@ namespace ICSharpCode.Decompiler.CSharp
 				oce.Type = ConvertType(tupleType.UnderlyingType);
 				return null;
 			}
-			var tuple = new TupleExpression();
-			var elementRRs = new List<ResolveResult>();
+			// Everything is checked before anything is taken. Giving up partway would leave the
+			// object initializer that is fallen back to holding the elements this had already
+			// detached, and a NamedExpression with no value behind it cannot even be printed.
 			foreach (var (index, element) in elements.WithIndex())
 			{
-				if (element is not NamedExpression named || named.Name != "Item" + (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture))
+				// A nested initializer fills an element in place rather than naming a value, so it has
+				// no expression to stand as a tuple element. The object-initializer form does say it.
+				if (element is not NamedExpression { Expression: not (null or ArrayInitializerExpression) } named
+					|| named.Name != "Item" + (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture))
 				{
 					oce.Type = ConvertType(tupleType.UnderlyingType);
 					return null;
 				}
-				var value = named.Expression.Detach();
+			}
+
+			var tuple = new TupleExpression();
+			var elementRRs = new List<ResolveResult>();
+			foreach (var (index, element) in elements.WithIndex())
+			{
+				var value = ((NamedExpression)element).Expression.Detach();
 				if (tupleType.ElementNames.ElementAtOrDefault(index) is string { Length: > 0 } name)
 				{
 					tuple.Elements.Add(new NamedArgumentExpression(name, value));

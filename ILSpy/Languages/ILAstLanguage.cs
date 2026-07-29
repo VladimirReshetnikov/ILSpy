@@ -43,8 +43,8 @@ namespace ICSharpCode.ILSpy.Languages
 {
 	/// <summary>
 	/// Debug-only language that surfaces the decompiler pipeline's intermediate state.
-	/// Two concrete variants ship: <see cref="TypedIL"/> renders raw IL with type
-	/// annotations; <see cref="BlockIL"/> runs the decompiler's IL transforms with a
+	/// Two concrete variants ship: <see cref="TypedILLanguage"/> renders raw IL with type
+	/// annotations; <see cref="BlockILLanguage"/> runs the decompiler's IL transforms with a
 	/// <see cref="Stepper"/> attached so the Debug Steps pane can replay each transform.
 	/// Compiled only when DEBUG is defined — the language list is identical to Release
 	/// otherwise.

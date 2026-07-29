@@ -47,7 +47,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					var trr = attribute.Type.Annotation<TypeResolveResult>();
 					if (trr != null && trr.Type.FullName == "System.CLSCompliantAttribute")
 					{
-						dropped.Add((section.AttributeTarget ?? "") + ": " + attribute.ToString());
+						// A section without a target reports it as the empty string, not as null.
+						dropped.Add(string.IsNullOrEmpty(section.AttributeTarget)
+							? attribute.ToString()
+							: section.AttributeTarget + ": " + attribute.ToString());
 						attribute.Remove();
 					}
 				}

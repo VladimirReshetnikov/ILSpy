@@ -15,7 +15,6 @@ internal class GotoLabels
 		goto IL_0012;
 		IL_0008:
 		Console.WriteLine("zero");
-		goto IL_0012;
 		IL_0012:
 		Console.WriteLine("one");
 		n--;

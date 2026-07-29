@@ -24,6 +24,7 @@ using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.Syntax;
+using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
 
@@ -202,8 +203,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			if (lambda.Body is not Expression expression)
 				return;
 			Step("Wrap lambda body in unsafe block", lambda);
-			bool returnsVoid = expression.GetResolveResult()?.Type.Kind == TypeKind.Void;
-			Statement inner = returnsVoid
+			Statement inner = LambdaReturnsVoid(lambda, expression)
 				? new ExpressionStatement(expression.Detach())
 				: new ReturnStatement(expression.Detach());
 			var innerBlock = new BlockStatement();
@@ -212,6 +212,20 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			lambdaBlock.Add(new UnsafeStatement { Body = innerBlock });
 			lambda.Body = lambdaBlock;
 			EndStep(lambda);
+		}
+
+		/// <summary>
+		/// Whether the block the lambda body becomes must discard the value rather than return it.
+		/// The delegate decides that, not the expression: <c>Action a = () =&gt; i++;</c> has a body
+		/// of type int that the delegate throws away, and returning it would not compile (CS0127).
+		/// The expression's own type only stands in where the delegate is unknown.
+		/// </summary>
+		static bool LambdaReturnsVoid(LambdaExpression lambda, Expression body)
+		{
+			var delegateType = lambda.Annotation<ILFunction>()?.DelegateType ?? lambda.GetResolveResult()?.Type;
+			if (delegateType?.GetDelegateInvokeMethod() is { } invokeMethod)
+				return invokeMethod.ReturnType.Kind == TypeKind.Void;
+			return body.GetResolveResult()?.Type.Kind == TypeKind.Void;
 		}
 
 		/// <summary>

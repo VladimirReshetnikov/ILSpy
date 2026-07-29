@@ -375,8 +375,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 						allCtors.Add(ctor);
 
-						if (stmt != null && m.Get<Expression>("target").Single() is ThisReferenceExpression)
+						// A struct chains by assigning to this, which is an ordinary body statement.
+						// MoveConstructorInitializer only lifts it into a this(...) initializer when nothing
+						// precedes it, because lifting it past a guard clause would run it too early; one
+						// that stays in the body is not a chain, and a constructor holding it still has to
+						// count against promoting another to a primary constructor.
+						if (stmt != null && m.Get<Expression>("target").Single() is ThisReferenceExpression
+							&& (!isStruct || stmt == ctor.Body?.Statements.FirstOrDefault()))
+						{
 							continue;
+						}
 
 						constructorsNotChainedWithThis.Add(ctor);
 					}
@@ -696,17 +704,20 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					return false;
 				var elements = arrayInitializer.Elements.ToArray();
 				var absorbed = new List<(Statement Statement, int Index, Expression Value, Statement? HoistedValue)>();
+				var absorbedIndices = new HashSet<int>();
 				for (Statement? statement = declaration.GetNextStatement(); statement != null && statement != callStatement;
 					statement = statement.GetNextStatement())
 				{
 					Statement? hoisted = null;
 					Expression? hoistedValue = null;
+					ILVariable? hoistedLocal = null;
 					var candidate = statement;
 					if (candidate is VariableDeclarationStatement { Variables: [{ Initializer: not null } declared] } hoistedDeclaration
 						&& !hoistedDeclaration.Type.IsVar() && declared.GetILVariable() is { } hoistedVariable)
 					{
 						hoisted = candidate;
 						hoistedValue = declared.Initializer;
+						hoistedLocal = hoistedVariable;
 						if (candidate.GetNextStatement() is not { } afterHoist || afterHoist == callStatement)
 							return false;
 						candidate = afterHoist;
@@ -733,6 +744,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					// would be a store the array creation already accounts for.
 					if (elements[index] is not (DefaultValueExpression or NullReferenceExpression))
 						return false;
+					// That test reads the array as it stood before any of this is committed, so a second
+					// store to the same element would pass it as well and then reach a node the first one
+					// has already detached. One store per element is all this can account for.
+					if (!absorbedIndices.Add(index))
+						return false;
 					if (value.DescendantsAndSelf.OfType<IdentifierExpression>()
 						.Any(identifier => identifier.GetILVariable() == variable))
 					{
@@ -741,7 +757,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					absorbed.Add((candidate, index, value, hoisted));
 					if (hoistedValue != null)
 					{
-						var hoistedUse = value.DescendantsAndSelf.OfType<IdentifierExpression>().Single();
+						// The element value may name other things besides the temporary - parameters,
+						// fields, the callee of a call - so pick out the one read of the temporary that
+						// IsSoleUseOfHoistedValue established rather than the only identifier present.
+						var hoistedUse = value.DescendantsAndSelf.OfType<IdentifierExpression>()
+							.Single(identifier => identifier.GetILVariable() == hoistedLocal);
 						hoistedUse.ReplaceWith(hoistedValue.Detach());
 					}
 				}
@@ -1327,9 +1347,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 			// In primary-constructor codegen the captures and field initializers run before the
 			// base constructor call, so an un-promoted constructor ends with a trailing base call
-			// instead of starting with it. MoveConstructorInitializer only inspects the first
-			// statement, so a trailing default 'base()' is left behind as invalid 'base..ctor();'.
-			// Drop it here; it has no observable effect.
+			// instead of starting with it. A trailing default 'base()' that survived to here would be
+			// printed as an invalid 'base..ctor();', so drop it; it has no observable effect.
 			foreach (var ctor in node.Children.OfType<ConstructorDeclaration>())
 			{
 				var lastStatement = ctor.Body?.Statements.LastOrDefault();

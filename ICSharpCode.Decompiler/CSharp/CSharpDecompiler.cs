@@ -715,7 +715,19 @@ namespace ICSharpCode.Decompiler.CSharp
 				== System.Reflection.TypeAttributes.SequentialLayout;
 		}
 
-		IEnumerable<IMember> GetMembersWithSequentialFieldOrdering(ITypeDefinition typeDef)
+		/// <summary>
+		/// Orders a sequential-layout type's members so each backing field keeps the source position
+		/// of the auto-property or field-like event that recreates it.
+		/// </summary>
+		/// <param name="isEmittedAnyway">
+		/// Tells whether a hidden field is nevertheless written out in its own right. Such a field is
+		/// not recreated by the member it belongs to, so it has to keep its own place rather than
+		/// surrender it: substituting that member would drop the field from the type altogether, which
+		/// changes the very layout this ordering exists to preserve and leaves every reference to the
+		/// field undeclared.
+		/// </param>
+		IEnumerable<IMember> GetMembersWithSequentialFieldOrdering(ITypeDefinition typeDef,
+			Func<IEntity, bool> isEmittedAnyway)
 		{
 			var properties = typeDef.Properties.ToDictionary(property => property.MetadataToken);
 			var events = typeDef.Events.ToDictionary(@event => @event.MetadataToken);
@@ -725,7 +737,8 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				IMember member = field;
 				if (field.MetadataToken.Kind == HandleKind.FieldDefinition
-					&& MemberIsHidden(module.MetadataFile, field.MetadataToken, settings))
+					&& MemberIsHidden(module.MetadataFile, field.MetadataToken, settings)
+					&& !isEmittedAnyway(field))
 				{
 					var fieldHandle = (FieldDefinitionHandle)field.MetadataToken;
 					if (module.MetadataFile.PropertyAndEventBackingFieldLookup.IsPropertyBackingField(fieldHandle, out var propertyHandle)
@@ -1752,6 +1765,9 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 			if (interfaceAccessors ? method.SymbolKind != SymbolKind.Method : method.SymbolKind != SymbolKind.Accessor)
 				yield break;
+			// A synthesized member has no MethodDef row, so it cannot participate in interface mapping.
+			if (method.MetadataToken.Kind != HandleKind.MethodDefinition)
+				yield break;
 			var methodDefinition = metadata.GetMethodDefinition((MethodDefinitionHandle)method.MetadataToken);
 			if ((methodDefinition.Attributes & System.Reflection.MethodAttributes.Virtual) == 0)
 				yield break;
@@ -2111,6 +2127,15 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				foreach (IMethod interfaceMethod in GetInterfaceOrdinaryMethodImplementations(accessor))
 				{
+					// The explicit-implementation path takes whatever the MethodImpl row points at, with
+					// no signature check; a hand-written or obfuscated one can aim a setter at a method
+					// declaring no parameters, and the forwarder below would then have no value to assign.
+					// Nothing sensible can be written for that, so leave the accessor alone.
+					if (accessor.AccessorKind == System.Reflection.MethodSemanticsAttributes.Setter
+						&& interfaceMethod.Parameters.Count == 0)
+					{
+						continue;
+					}
 					var methodDecl = new MethodDeclaration {
 						ReturnType = astBuilder.ConvertType(interfaceMethod.ReturnType),
 						PrivateImplementationType = astBuilder.ConvertType(interfaceMethod.DeclaringType),
@@ -2345,7 +2370,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				// the auto-property or field-like event that will recreate them.
 				bool requiresSequentialFieldOrdering = RequiresSequentialFieldOrdering(typeDef);
 				IEnumerable<IMember> fieldsPropertiesAndEvents = requiresSequentialFieldOrdering
-					? GetMembersWithSequentialFieldOrdering(typeDef)
+					? GetMembersWithSequentialFieldOrdering(typeDef, IsBackingFieldOfNonAutomaticEvent)
 					: isRecord
 						? recordDecompiler!.FieldsAndProperties.Concat(typeDef.Events)
 						: typeDef.Fields.Concat<IMember>(typeDef.Properties).Concat(typeDef.Events);
