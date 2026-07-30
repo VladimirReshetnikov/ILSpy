@@ -554,6 +554,32 @@ namespace ICSharpCode.Decompiler.TypeSystem
 							break;
 						}
 					}
+					if (method == null)
+					{
+						// Nothing matched by type identity. The two sides can name the same type through
+						// different assemblies: a .NET Framework caller names its BCL types through
+						// mscorlib while a callee built for .NET names them through System.Runtime, and
+						// each resolves to a separate definition. Retry comparing type names, which is
+						// what the two sides do agree on. The candidates are already narrowed to one
+						// declaring type, name, arity and staticness, so a single survivor is the method
+						// the reference denotes; more than one means the names really are ambiguous and
+						// nothing has been learned, so leave those to the fake-method path below.
+						foreach (var m in methods)
+						{
+							if (m.TypeParameters.Count != signature.GenericParameterCount)
+								continue;
+							if (signature.Header.IsInstance != !m.IsStatic)
+								continue;
+							if (!CompareSignaturesByName(m.Parameters, parameterTypes) || !CompareTypesByName(m.ReturnType, signature.ReturnType))
+								continue;
+							if (method != null)
+							{
+								method = null;
+								break;
+							}
+							method = m;
+						}
+					}
 				}
 				else
 				{
@@ -600,6 +626,30 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			for (int i = 0; i < parameterTypes.Length; i++)
 			{
 				if (!CompareTypes(parameterTypes[i], parameters[i].Type))
+					return false;
+			}
+			return true;
+		}
+
+		/// <summary>
+		/// Compares two types by name instead of by identity. Reflection names carry the full type
+		/// name and the whole structure around it - by-ref, pointer, array rank, generic arguments -
+		/// but not the assembly a definition came from, which is exactly the difference to look past
+		/// when two assemblies name one type through different references to it.
+		/// </summary>
+		static bool CompareTypesByName(IType a, IType b)
+		{
+			return a.AcceptVisitor(normalizeTypeVisitor).ReflectionName
+				== b.AcceptVisitor(normalizeTypeVisitor).ReflectionName;
+		}
+
+		static bool CompareSignaturesByName(IReadOnlyList<IParameter> parameters, ImmutableArray<IType> parameterTypes)
+		{
+			if (parameterTypes.Length != parameters.Count)
+				return false;
+			for (int i = 0; i < parameterTypes.Length; i++)
+			{
+				if (!CompareTypesByName(parameterTypes[i], parameters[i].Type))
 					return false;
 			}
 			return true;

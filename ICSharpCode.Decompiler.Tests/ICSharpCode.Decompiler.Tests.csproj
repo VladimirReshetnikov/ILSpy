@@ -117,6 +117,7 @@
     <None Include="TestCases\ILPretty\AnonymousTypeConditionalPhi.il" />
     <None Include="TestCases\ILPretty\AwaitInCatchUnresolvedExceptionDispatchInfo.il" />
     <None Include="TestCases\ILPretty\ConstrainedCallOnRefStruct.il" />
+    <None Include="TestCases\ILPretty\OutParameterWithUnresolvedSignatureType.il" />
     <None Include="TestCases\ILPretty\DuplicateParameterNames.il" />
     <None Include="TestCases\ILPretty\FakeMethodOnGenericInstance.il" />
     <None Include="TestCases\ILPretty\ExtensionEncodingV2.il" />
@@ -238,6 +239,8 @@
     <None Include="TestCases\ILPretty\ConstructorInitializerAfterLeadingStatements.cs" />
     <Compile Remove="TestCases\ILPretty\ConstrainedCallOnRefStruct.cs" />
     <None Include="TestCases\ILPretty\ConstrainedCallOnRefStruct.cs" />
+    <Compile Remove="TestCases\ILPretty\OutParameterWithUnresolvedSignatureType.cs" />
+    <None Include="TestCases\ILPretty\OutParameterWithUnresolvedSignatureType.cs" />
     <Compile Remove="TestCases\ILPretty\DuplicateParameterNames.cs" />
     <None Include="TestCases\ILPretty\DuplicateParameterNames.cs" />
     <Compile Remove="TestCases\ILPretty\FakeMethodOnGenericInstance.cs" />
