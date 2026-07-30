@@ -266,13 +266,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		void DecompileQueries(AstNode node)
 		{
 			// A query built from a chain that cannot be fully translated leaves its transparent
-			// identifiers visible, and those are not names C# can write. Keep an untouched copy of
-			// the call chain so such a query can go back to being method calls.
-			Expression? callChain = node is InvocationExpression { Target: MemberReferenceExpression target }
-				&& IsQueryOperatorName(target.MemberName)
-				? (Expression)node.Clone()
-				: null;
+			// identifiers visible, and those are not names C# can write. An untouched copy of the
+			// call chain lets such a query go back to being method calls. The copy is taken lazily
+			// by BeginQueryBuild, just before the first build detaches anything: cloning every
+			// operator-named invocation up front would deep-clone each segment of every LINQ chain
+			// even though most never become query expressions.
+			currentChainRoot = node as InvocationExpression;
+			untouchedChainForRollback = null;
 			Expression? query = DecompileQuery(node as InvocationExpression);
+			Expression? callChain = untouchedChainForRollback;
 			if (query is QueryExpression queryExpression)
 			{
 				if (RemoveInModifierFromRangeVariableArguments(queryExpression))
@@ -334,6 +336,22 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return context.Settings.Discards;
 		}
 
+		// The outermost operator-named invocation DecompileQueries is currently processing, and
+		// the untouched copy of it captured by BeginQueryBuild once a build actually starts.
+		InvocationExpression? currentChainRoot;
+		Expression? untouchedChainForRollback;
+
+		/// <summary>
+		/// Marks the start of building a query from the current chain: captures the rollback copy
+		/// of the whole untouched chain (once - nested builds keep the outermost copy) before the
+		/// build detaches any of its pieces, then records the transform step.
+		/// </summary>
+		void BeginQueryBuild(string stepName, InvocationExpression invocation)
+		{
+			untouchedChainForRollback ??= (Expression?)currentChainRoot?.Clone();
+			context.Step(stepName, invocation);
+		}
+
 		QueryExpression? DecompileQuery(InvocationExpression? invocation)
 		{
 			if (invocation == null)
@@ -357,7 +375,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					Expression expr = invocation.Arguments.Single();
 					if (MatchSimpleLambda(expr, out var parameter, out var body))
 					{
-						context.Step("Build select query", invocation);
+						BeginQueryBuild("Build select query", invocation);
 						QueryExpression query = new QueryExpression();
 						query.Clauses.Add(MakeFromClause(parameter, mre.Target.Detach()));
 						query.Clauses.Add(new QuerySelectClause { Expression = WrapExpressionInParenthesesIfNecessary(body.Detach(), parameter.Name!) }.CopyAnnotationsFrom(expr));
@@ -375,7 +393,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							&& MatchSimpleLambda(projectionLambda, out var parameter2, out var elementSelector)
 							&& parameter1.Name == parameter2.Name)
 						{
-							context.Step("Build group query", invocation);
+							BeginQueryBuild("Build group query", invocation);
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(MakeFromClause(parameter1, mre.Target.Detach()));
 							var queryGroupClause = new QueryGroupClause {
@@ -393,7 +411,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						Expression lambda = invocation.Arguments.Single();
 						if (MatchSimpleLambda(lambda, out var parameter, out var keySelector))
 						{
-							context.Step("Build group query", invocation);
+							BeginQueryBuild("Build group query", invocation);
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(MakeFromClause(parameter, mre.Target.Detach()));
 							query.Clauses.Add(new QueryGroupClause { Projection = new IdentifierExpression(parameter.Name!).CopyAnnotationsFrom(parameter), Key = keySelector.Detach() });
@@ -418,7 +436,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						ParameterDeclaration p2 = lambda.Parameters.ElementAt(1);
 						if (p1.Name == parameter.Name)
 						{
-							context.Step("Build select-many query", invocation);
+							BeginQueryBuild("Build select-many query", invocation);
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(MakeFromClause(p1, mre.Target.Detach()));
 							query.Clauses.Add(MakeFromClause(p2, collectionSelector.Detach()).CopyAnnotationsFrom(fromExpressionLambda));
@@ -437,7 +455,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					Expression expr = invocation.Arguments.Single();
 					if (MatchSimpleLambda(expr, out var parameter, out var body))
 					{
-						context.Step("Build where query", invocation);
+						BeginQueryBuild("Build where query", invocation);
 						QueryExpression query = new QueryExpression();
 						query.Clauses.Add(MakeFromClause(parameter, mre.Target.Detach()));
 						query.Clauses.Add(new QueryWhereClause { Condition = body.Detach() }.CopyAnnotationsFrom(expr));
@@ -459,7 +477,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					{
 						if (ValidateThenByChain(invocation, parameter.Name!))
 						{
-							context.Step("Build order query", invocation);
+							BeginQueryBuild("Build order query", invocation);
 							QueryOrderClause orderClause = new QueryOrderClause();
 							// Each OrderBy/ThenBy lambda introduces its own parameter ILVariable, but they all
 							// denote the single range variable of the resulting query. Only the final (OrderBy)
@@ -539,7 +557,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						if (ValidateParameter(p1) && ValidateParameter(p2)
 							&& p1.Name == element1.Name && (p2.Name == element2.Name || mre.MemberName == "GroupJoin"))
 						{
-							context.Step(mre.MemberName == "GroupJoin" ? "Build group join query" : "Build join query", invocation);
+							BeginQueryBuild(mre.MemberName == "GroupJoin" ? "Build group join query" : "Build join query", invocation);
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(MakeFromClause(element1, source1.Detach()));
 							QueryJoinClause joinClause = new QueryJoinClause();

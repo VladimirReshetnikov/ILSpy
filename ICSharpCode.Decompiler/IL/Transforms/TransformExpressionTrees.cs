@@ -154,26 +154,22 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		bool TryConvertDeinlinedExpressionTree(Block block, int pos)
 		{
 			// block.Instructions[pos] is the first statement after the registered parameter assignments that
-			// is not itself a parameter assignment. For the de-inlined shape it is the hoisted body local
-			// (e.g. body = Expression.Field(p, ...)); scan forward over the intermediate statements until the
-			// one that contains Expression.Lambda(ldloc body, ldloc parameterArray).
-			int lambdaIndex = -1;
-			CallInstruction lambdaCall = null;
-			for (int i = pos; i < block.Instructions.Count; i++)
+			// is not itself a parameter assignment. For the de-inlined shape it is a hoisted
+			// single-definition local (e.g. body = Expression.Field(p, ...)). The def-use chain of the
+			// hoisted locals leads to the Expression.Lambda(ldloc body, ldloc parameterArray) call in a
+			// handful of steps; scanning every following statement for it instead would multiply with the
+			// framework re-invoking this transform at every block position, going quadratic on the long
+			// Expression.* store chains that generated LINQ-provider code contains.
+			CallInstruction lambdaCall = FindDeinlinedLambdaViaUses(block, pos, out int lambdaIndex);
+			if (lambdaCall == null)
+				return false;
+			// Until the lambda, every statement must be one of the intermediate statements that build the
+			// lambda's body and parameter array, so an unrelated statement sequence is never absorbed.
+			for (int i = pos; i < lambdaIndex; i++)
 			{
-				lambdaCall = FindDeinlinedLambda(block.Instructions[i]);
-				if (lambdaCall != null)
-				{
-					lambdaIndex = i;
-					break;
-				}
-				// Until the lambda is reached, every statement must be one of the intermediate statements
-				// that build the lambda's body and parameter array.
 				if (!IsDeinlinedIntermediateStatement(block.Instructions[i]))
 					return false;
 			}
-			if (lambdaCall == null)
-				return false;
 
 			// arg0 = ldloc body (single-definition, single-use, expression-tree local).
 			if (!lambdaCall.Arguments[0].MatchLdLoc(out var bodyVar))
@@ -310,23 +306,47 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		}
 
 		/// <summary>
-		/// Returns the Expression.Lambda call inside <paramref name="stmt"/> whose body and parameter array
-		/// are supplied as separate locals, or null if this statement does not contain such a lambda.
+		/// Starting from the hoisted definition at <paramref name="pos"/>, follows the def-use chain
+		/// of the single-definition locals to the Expression.Lambda call that consumes its body and
+		/// parameter array as separate locals (which is why MightBeExpressionTree, expecting an
+		/// inline parameter array, does not match this shape). Each hoisted local feeds either
+		/// another hoisted definition or the lambda call itself, so the chain reaches the call - or
+		/// provably never will - without inspecting unrelated statements.
+		/// <paramref name="lambdaIndex"/> receives the index of the statement containing the call.
 		/// </summary>
-		static CallInstruction FindDeinlinedLambda(ILInstruction stmt)
+		static CallInstruction FindDeinlinedLambdaViaUses(Block block, int pos, out int lambdaIndex)
 		{
-			foreach (var descendant in stmt.Descendants)
+			lambdaIndex = -1;
+			ILInstruction current = block.Instructions[pos];
+			// The chain visits distinct statements of this block, so the remaining statement count
+			// bounds it even for pathological self-referencing definitions.
+			for (int remaining = block.Instructions.Count - pos; remaining > 0; remaining--)
 			{
-				// The de-inlined lambda takes both its body and its parameter array as separate locals,
-				// so MightBeExpressionTree (which expects an inline parameter array) does not match here.
-				if (descendant is CallInstruction call
-					&& call.Method.FullNameIs("System.Linq.Expressions.Expression", "Lambda")
-					&& call.Arguments.Count == 2
-					&& call.Arguments[0].MatchLdLoc(out _)
-					&& call.Arguments[1].MatchLdLoc(out _))
+				if (current is not StLoc { Variable: var local } || !IsDeinlinedIntermediateStatement(current))
+					return null;
+				StLoc nextDefinition = null;
+				foreach (var load in local.LoadInstructions)
 				{
-					return call;
+					if (load.Parent is CallInstruction call
+						&& call.Method.FullNameIs("System.Linq.Expressions.Expression", "Lambda")
+						&& call.Arguments.Count == 2
+						&& call.Arguments[0].MatchLdLoc(out _)
+						&& call.Arguments[1].MatchLdLoc(out _))
+					{
+						lambdaIndex = FindStatementIndex(block, call);
+						return lambdaIndex >= 0 ? call : null;
+					}
+					// A load inside another hoisted definition continues the chain; loads inside the
+					// parameter array's element stores stay within the shape and are not links.
+					var enclosing = load as ILInstruction;
+					while (enclosing.Parent != null && enclosing.Parent != block)
+						enclosing = enclosing.Parent;
+					if (enclosing.Parent == block && enclosing != current && enclosing is StLoc definition)
+						nextDefinition ??= definition;
 				}
+				if (nextDefinition == null)
+					return null;
+				current = nextDefinition;
 			}
 			return null;
 		}

@@ -62,6 +62,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			finally
 			{
 				this.context = null;
+				this.memberIndexes.Clear();
 			}
 		}
 
@@ -787,15 +788,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// the value's evaluation ahead of the allocation, which writing the element back into the
 		/// collection expression restores on its own.
 		/// </summary>
-		static Expression InlineHoistedValue(BuilderElement element, IReadOnlyList<BuilderElement> elements,
+		Expression InlineHoistedValue(BuilderElement element, IReadOnlyList<BuilderElement> elements,
 			AstNode memberRoot, HashSet<AstNode> consumed, HashSet<AstNode> hoisted)
 		{
 			if (element.Value is not IdentifierExpression identifier)
 				return element.Value;
 			if (identifier.GetILVariable() is not { } local)
 				return element.Value;
-			var declarations = memberRoot.Descendants.OfType<VariableInitializer>()
-				.Where(initializer => initializer.GetILVariable() == local).ToArray();
+			var declarations = AttachedDeclarations(memberRoot, local).ToArray();
 			if (declarations is not [{ Initializer: { } value } declaration])
 				return element.Value;
 			if (declaration.Parent is not VariableDeclarationStatement declarationStatement || !hoisted.Contains(declarationStatement))
@@ -851,12 +851,79 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return statements;
 		}
 
-		static IdentifierExpression[] ReferencesOutside(AstNode memberRoot, ILVariable variable, HashSet<AstNode> statements)
+		IdentifierExpression[] ReferencesOutside(AstNode memberRoot, ILVariable variable, HashSet<AstNode> statements)
 		{
-			return memberRoot.Descendants.OfType<IdentifierExpression>()
-				.Where(identifier => identifier.GetILVariable() == variable
-					&& !identifier.Ancestors.Any(statements.Contains))
+			return AttachedReferences(memberRoot, variable)
+				.Where(identifier => !identifier.Ancestors.Any(statements.Contains))
 				.ToArray();
+		}
+
+		/// <summary>
+		/// Per-member index of identifier references and declarations by IL variable. Walking every
+		/// descendant of the member for each candidate would be quadratic in generated members full
+		/// of builder shapes; this transform only moves or removes existing nodes (it never creates
+		/// new identifier references), so the index built on first use stays complete and consumers
+		/// merely skip entries that have since been detached from the member.
+		/// </summary>
+		sealed class MemberReferenceIndex
+		{
+			public readonly Dictionary<ILVariable, List<IdentifierExpression>> Identifiers = new();
+			public readonly Dictionary<ILVariable, List<VariableInitializer>> Declarations = new();
+		}
+
+		readonly Dictionary<AstNode, MemberReferenceIndex> memberIndexes = new();
+
+		MemberReferenceIndex GetMemberIndex(AstNode memberRoot)
+		{
+			if (memberIndexes.TryGetValue(memberRoot, out var index))
+				return index;
+			index = new MemberReferenceIndex();
+			foreach (var node in memberRoot.Descendants)
+			{
+				switch (node)
+				{
+					case IdentifierExpression identifier when identifier.GetILVariable() is { } variable:
+						AddToIndex(index.Identifiers, variable, identifier);
+						break;
+					case VariableInitializer initializer when initializer.GetILVariable() is { } declared:
+						AddToIndex(index.Declarations, declared, initializer);
+						break;
+				}
+			}
+			memberIndexes.Add(memberRoot, index);
+			return index;
+
+			static void AddToIndex<T>(Dictionary<ILVariable, List<T>> map, ILVariable variable, T node)
+			{
+				if (!map.TryGetValue(variable, out var list))
+				{
+					list = new List<T>();
+					map.Add(variable, list);
+				}
+				list.Add(node);
+			}
+		}
+
+		IEnumerable<IdentifierExpression> AttachedReferences(AstNode memberRoot, ILVariable variable)
+		{
+			if (!GetMemberIndex(memberRoot).Identifiers.TryGetValue(variable, out var references))
+				yield break;
+			foreach (var reference in references)
+			{
+				if (reference.Ancestors.Contains(memberRoot))
+					yield return reference;
+			}
+		}
+
+		IEnumerable<VariableInitializer> AttachedDeclarations(AstNode memberRoot, ILVariable variable)
+		{
+			if (!GetMemberIndex(memberRoot).Declarations.TryGetValue(variable, out var declarations))
+				yield break;
+			foreach (var declaration in declarations)
+			{
+				if (declaration.Ancestors.Contains(memberRoot))
+					yield return declaration;
+			}
 		}
 
 		/// <summary>
@@ -943,7 +1010,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// local. A hoisted local is reported through <paramref name="countDeclaration"/> so the
 		/// caller can drop it along with the statements it served.
 		/// </summary>
-		static bool TryGetConstantCount(Expression expression, Statement statement, out int count, out Statement? countDeclaration)
+		bool TryGetConstantCount(Expression expression, Statement statement, out int count, out Statement? countDeclaration)
 		{
 			count = 0;
 			countDeclaration = null;
@@ -954,8 +1021,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					return true;
 				case IdentifierExpression identifier when identifier.GetILVariable() is { } variable:
 					var memberRoot = GetMemberRoot(statement);
-					var declarations = memberRoot.Descendants.OfType<VariableInitializer>()
-						.Where(v => v.GetILVariable() == variable).ToArray();
+					var declarations = AttachedDeclarations(memberRoot, variable).ToArray();
 					if (declarations is not [{ Initializer: PrimitiveExpression { Value: int value } } declaration])
 						return false;
 					// Two reads: the constructor capacity and the SetCount argument.
@@ -1169,9 +1235,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		}
 
-		static int CountReferences(AstNode root, ILVariable variable)
+		int CountReferences(AstNode root, ILVariable variable)
 		{
-			return root.Descendants.OfType<IdentifierExpression>().Count(identifier => identifier.GetILVariable() == variable);
+			return AttachedReferences(root, variable).Count();
 		}
 
 		/// <summary>
