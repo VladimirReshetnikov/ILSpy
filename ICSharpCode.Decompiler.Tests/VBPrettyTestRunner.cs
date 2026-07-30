@@ -23,6 +23,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
 using ICSharpCode.Decompiler.Tests.Helpers;
+using ICSharpCode.Decompiler.TypeSystem;
 
 using NUnit.Framework;
 
@@ -116,7 +117,12 @@ namespace ICSharpCode.Decompiler.Tests
 		[Test]
 		public async Task SelectEmbeddedRuntime([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
-			await Run(options: options | CompilerOptions.Library | CompilerOptions.EmbedVisualBasicRuntime);
+			// Only the program type is compared: what is under test is the string-switch fold
+			// through the embedded EmbeddedOperators.CompareString helper, while the embedded
+			// runtime types themselves are compiler plumbing whose exact shape varies with the
+			// compiler version.
+			await Run(options: options | CompilerOptions.Library | CompilerOptions.EmbedVisualBasicRuntime,
+				typeName: "EmbeddedProgram");
 		}
 
 		[Test]
@@ -207,7 +213,7 @@ namespace ICSharpCode.Decompiler.Tests
 			}
 		}
 
-		async Task Run([CallerMemberName] string testName = null, CompilerOptions options = CompilerOptions.UseDebug, DecompilerSettings settings = null)
+		async Task Run([CallerMemberName] string testName = null, CompilerOptions options = CompilerOptions.UseDebug, DecompilerSettings settings = null, string typeName = null)
 		{
 			var vbFile = Path.Combine(TestCasePath, testName + ".vb");
 			var csFile = Path.Combine(TestCasePath, testName + ".cs");
@@ -218,7 +224,10 @@ namespace ICSharpCode.Decompiler.Tests
 			}
 
 			var executable = await Tester.CompileVB(vbFile, options | CompilerOptions.ReferenceVisualBasic, exeFile).ConfigureAwait(false);
-			var decompiled = await Tester.DecompileCSharp(executable.PathToAssembly, settings ?? new DecompilerSettings { FileScopedNamespaces = false }).ConfigureAwait(false);
+			var decompilerSettings = settings ?? new DecompilerSettings { FileScopedNamespaces = false };
+			var decompiled = typeName == null
+				? await Tester.DecompileCSharp(executable.PathToAssembly, decompilerSettings).ConfigureAwait(false)
+				: await Tester.DecompileCSharpType(executable.PathToAssembly, new FullTypeName(typeName), decompilerSettings).ConfigureAwait(false);
 
 			CodeAssert.FilesAreEqual(csFile, decompiled, Tester.GetPreprocessorSymbols(options).ToArray());
 			Tester.RepeatOnIOError(() => File.Delete(decompiled));

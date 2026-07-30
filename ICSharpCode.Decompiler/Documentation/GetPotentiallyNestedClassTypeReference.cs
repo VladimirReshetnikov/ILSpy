@@ -112,7 +112,6 @@ namespace ICSharpCode.Decompiler.Documentation
 		/// </remarks>
 		public EntityHandle ResolveInPEFile(MetadataFile module)
 		{
-
 			string[] parts = typeName.Split('.');
 			for (int i = parts.Length - 1; i >= 0; i--)
 			{

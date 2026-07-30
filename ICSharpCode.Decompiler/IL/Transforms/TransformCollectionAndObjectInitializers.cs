@@ -344,6 +344,16 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				// on it having happened already.
 				if (current.Descendants.OfType<IInstructionWithVariableOperand>().Any(load => load.Variable == v))
 					break;
+				// Moving the clone call down means its field reads happen after this statement
+				// instead of before it. The clone is a compiler-generated memberwise copy (see
+				// IsSideEffectFreeRecordCopy above), so only a statement that writes state the
+				// clone reads could observe the difference; the fillers here are the compiler's
+				// own initializer-value computations, whose calls (enumerators, getters) do not
+				// do that in compiler-generated code. A hand-written callee that mutates the
+				// source's fields would diverge - accepted, because the detached form otherwise
+				// assigns an init-only member outside any initializer and cannot compile
+				// (CS8852). The receiver expression itself must still be reorderable, so writes
+				// to the receiver local are caught.
 				if (!SemanticHelper.MayReorder(source, current))
 					break;
 				// The values of the member assignments found so far move past this statement, too.

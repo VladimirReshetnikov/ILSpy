@@ -381,18 +381,19 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (!(TransformDisplayClassUsage.IsPotentialClosure(context, field.Type.GetDefinition()) || context.Function.Method.DeclaringType.Equals(field.Type)))
 				return null;
 			// The referenced closure may be the method-level display class, which is a variable of the
-			// top-level function itself rather than of a nested lambda or local function, so the search
-			// includes context.Function. An exact instantiation match is preferred; the fallback matches
-			// the closure type definition, because IsClosure may report the unbound generic display class
-			// (e.g. <>c__DisplayClass0_0`1) while the parent-pointer field is typed with its closed
-			// instantiation (<>c__DisplayClass0_0<T>) - that mismatch otherwise leaves a local function's
-			// 'this' unresolved, leaking it as a cast of 'this' to the display-class type.
+			// top-level function itself rather than of a nested lambda or local function; Descendants
+			// includes the node itself, so the search covers context.Function too. An exact instantiation
+			// match is preferred; the fallback matches the closure type definition, because IsClosure may
+			// report the unbound generic display class (e.g. <>c__DisplayClass0_0`1) while the
+			// parent-pointer field is typed with its closed instantiation (<>c__DisplayClass0_0<T>) -
+			// that mismatch otherwise leaves a local function's 'this' unresolved, leaking it as a cast
+			// of 'this' to the display-class type.
 			return FindClosureVariable(varType => varType.Equals(field.Type))
 				?? FindClosureVariable(varType => varType.GetDefinition() is { } d && d.Equals(field.Type.GetDefinition()));
 
 			ILVariable FindClosureVariable(Func<IType, bool> typeMatches)
 			{
-				foreach (var f in context.Function.Descendants.OfType<ILFunction>().Append(context.Function))
+				foreach (var f in context.Function.Descendants.OfType<ILFunction>())
 				{
 					foreach (var v in f.Variables)
 					{

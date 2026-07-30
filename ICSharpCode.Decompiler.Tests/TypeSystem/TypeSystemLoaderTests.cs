@@ -769,6 +769,37 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		}
 
 		[Test]
+		public void OutParameterKeepsItsKindNextToAnExplicitRefImplementation()
+		{
+			// The explicit implementation owns the IRefParameterContract.M slot, so the unrelated
+			// public M(out ...) must not inherit 'ref' from the interface member it happens to
+			// signature-match (byref signatures compare equal regardless of ref/out direction).
+			ITypeDefinition type = GetTypeDefinition(typeof(ExplicitRefImplementationWithOutOverload));
+			IParameter p = type.Methods.Single(m => m.Name == "M").Parameters.Single();
+			Assert.That(p.ReferenceKind, Is.EqualTo(ReferenceKind.Out));
+
+			IParameter explicitImplParameter = type.Methods
+				.Single(m => m.IsExplicitInterfaceImplementation && m.Name.EndsWith("M", StringComparison.Ordinal))
+				.Parameters.Single();
+			Assert.That(explicitImplParameter.ReferenceKind, Is.EqualTo(ReferenceKind.Ref));
+		}
+
+		[Test]
+		public void RefParameterKeepsItsKindNextToAnExplicitOutImplementation()
+		{
+			// Mirror case: the public M(ref ...) must not be turned into 'out' by the
+			// explicitly implemented IOutParameterContract.M slot next to it.
+			ITypeDefinition type = GetTypeDefinition(typeof(ExplicitOutImplementationWithRefOverload));
+			IParameter p = type.Methods.Single(m => m.Name == "M").Parameters.Single();
+			Assert.That(p.ReferenceKind, Is.EqualTo(ReferenceKind.Ref));
+
+			IParameter explicitImplParameter = type.Methods
+				.Single(m => m.IsExplicitInterfaceImplementation && m.Name.EndsWith("M", StringComparison.Ordinal))
+				.Parameters.Single();
+			Assert.That(explicitImplParameter.ReferenceKind, Is.EqualTo(ReferenceKind.Out));
+		}
+
+		[Test]
 		public void MethodWithParamsArray()
 		{
 			IParameter p = GetTypeDefinition(typeof(ParameterTests)).Methods.Single(m => m.Name == "MethodWithParamsArray").Parameters.Single();

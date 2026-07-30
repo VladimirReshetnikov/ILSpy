@@ -412,6 +412,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		void MoveDeclarationsOutsideGotoRanges(AstNode rootNode)
 		{
+			// The overwhelmingly common goto-free method does not need the full node index built
+			// below, so get out before materializing it.
+			if (!rootNode.DescendantsAndSelf.OfType<GotoStatement>().Any())
+				return;
 			var nodes = rootNode.DescendantsAndSelf.ToList();
 			var sourceOrder = nodes.Select((node, index) => (node, index))
 				.ToDictionary(item => item.node, item => item.index);
@@ -828,12 +832,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					AstType type = context.TypeSystemAstBuilder.ConvertType(v.Type);
 					if (v.Type.Kind != TypeKind.ByReference
 						&& (v.DefaultInitialization == VariableInitKind.NeedsDefaultValue
-							|| (v.DefaultInitialization == VariableInitKind.NeedsSkipInit && v.Type.Kind == TypeKind.Pointer)))
+							|| (v.DefaultInitialization == VariableInitKind.NeedsSkipInit
+								&& v.Type.Kind is TypeKind.Pointer or TypeKind.FunctionPointer)))
 					{
-						// A pointer cannot be a generic type argument, so Unsafe.SkipInit<T> has no
-						// spelling for one (CS0306). A null pointer is the closest stand-in: the local
-						// is assigned before it is read either way, so what it starts as is not
-						// observable.
+						// A pointer (data or function) cannot be a generic type argument, so
+						// Unsafe.SkipInit<T> has no spelling for one (CS0306). A null pointer is the
+						// closest stand-in: the local is assigned before it is read either way, so
+						// what it starts as is not observable.
 						initializer = new DefaultValueExpression(type.Clone());
 					}
 					var vds = new VariableDeclarationStatement(type, v.Name, initializer);
@@ -861,7 +866,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					AstNode insertionParent = insertionNode.Parent
 						?? throw new InvalidOperationException("Variable insertion point has no parent.");
 					if (v.Type.Kind == TypeKind.ByReference
-						|| (v.DefaultInitialization == VariableInitKind.NeedsSkipInit && v.Type.Kind != TypeKind.Pointer))
+						|| (v.DefaultInitialization == VariableInitKind.NeedsSkipInit
+							&& v.Type.Kind is not (TypeKind.Pointer or TypeKind.FunctionPointer)))
 					{
 						AstType unsafeType = context.TypeSystemAstBuilder.ConvertType(
 							context.TypeSystem.FindType(KnownTypeCode.Unsafe));
@@ -1037,21 +1043,6 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		}
 
 		/// <summary>
-		/// Determines whether a by-ref-like (ref struct) local that is emitted as a bare hoisted
-		/// declaration (assigned in multiple branches and merged, so it cannot be combined with a
-		/// single initializer) should carry the C# 11 <c>scoped</c> modifier.
-		///
-		/// A bare ref-struct local's safe-context is the caller context (it may be returned), so
-		/// assigning it a stack-referring value such as the result of a <c>stackalloc</c> is a
-		/// compile error (CS8352/CS8353). <c>scoped</c> restricts the safe-context to the current
-		/// method and makes the narrow assignment legal - but only when the local genuinely does not
-		/// escape. This check is therefore deliberately asymmetric: it returns <see langword="true"/>
-		/// only when a stack-referring value is assigned <em>and</em> every use is provably confined
-		/// to the method. Any use whose confinement cannot be proven leaves the declaration bare
-		/// (the status quo), because a false "does not escape" would inject a new ref-safety error on
-		/// a legitimately escaping local, which is strictly worse than the missing modifier.
-		/// </summary>
-		/// <summary>
 		/// Whether the ref local <paramref name="v"/> is returned by reference anywhere in the method,
 		/// either directly or through one of its members or elements.
 		///
@@ -1077,16 +1068,54 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				// 'return ref local.Field;' returns a reference derived from the local just as
 				// 'return ref local;' does, so walk out through the accesses that preserve it.
 				AstNode current = identifier;
-				while (current.Parent is MemberReferenceExpression or IndexerExpression or ParenthesizedExpression)
+				while (true)
 				{
-					current = current.Parent;
+					if (current.Parent is MemberReferenceExpression or IndexerExpression or ParenthesizedExpression)
+					{
+						current = current.Parent;
+						continue;
+					}
+					if (current.Parent is DirectionExpression direction)
+					{
+						if (direction.Parent is ReturnStatement)
+							return true;
+						// A ref ternary ('ref c ? ref a : ref b') forwards whichever arm it
+						// selects, so a returned ternary returns the local's reference too.
+						if (direction.Parent is ConditionalExpression conditional && direction != conditional.Condition)
+						{
+							current = conditional;
+							continue;
+						}
+						// A ref argument handed to an invocation may be forwarded by the callee's
+						// ref return; if that invocation result is what gets returned, assume it
+						// carries the local's reference.
+						if (direction.Slot?.Kind == Slots.Argument && direction.Parent is InvocationExpression invocation)
+						{
+							current = invocation;
+							continue;
+						}
+					}
+					break;
 				}
-				if (current.Parent is DirectionExpression { Parent: ReturnStatement })
-					return true;
 			}
 			return false;
 		}
 
+		/// <summary>
+		/// Determines whether a by-ref-like (ref struct) local that is emitted as a bare hoisted
+		/// declaration (assigned in multiple branches and merged, so it cannot be combined with a
+		/// single initializer) should carry the C# 11 <c>scoped</c> modifier.
+		///
+		/// A bare ref-struct local's safe-context is the caller context (it may be returned), so
+		/// assigning it a stack-referring value such as the result of a <c>stackalloc</c> is a
+		/// compile error (CS8352/CS8353). <c>scoped</c> restricts the safe-context to the current
+		/// method and makes the narrow assignment legal - but only when the local genuinely does not
+		/// escape. This check is therefore deliberately asymmetric: it returns <see langword="true"/>
+		/// only when a stack-referring value is assigned <em>and</em> every use is provably confined
+		/// to the method. Any use whose confinement cannot be proven leaves the declaration bare
+		/// (the status quo), because a false "does not escape" would inject a new ref-safety error on
+		/// a legitimately escaping local, which is strictly worse than the missing modifier.
+		/// </summary>
 		bool ShouldDeclareByRefLikeLocalScoped(VariableToDeclare v)
 		{
 			// All uses of the variable live within the block that receives the declaration; the

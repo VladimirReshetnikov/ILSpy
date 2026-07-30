@@ -552,6 +552,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				return false;
 			}
+			// Nameability is not enough: the original access dispatches through the interface,
+			// while the property pattern binds to the class member. A derived class can
+			// re-implement the interface and split the two, so the fold is only
+			// behavior-preserving when no runtime subtype can exist.
+			if (patternTypeDef.Kind != TypeKind.Struct && !patternTypeDef.IsSealed)
+			{
+				return false;
+			}
 			IMember? implementation = InheritanceHelper.GetDerivedMember(member, patternTypeDef);
 			return implementation != null && !implementation.IsExplicitInterfaceImplementation;
 		}

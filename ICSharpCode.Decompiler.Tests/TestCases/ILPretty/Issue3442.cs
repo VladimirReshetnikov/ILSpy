@@ -17,7 +17,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty.Issue3442
 			return pairs[0];
 		}
 
-		(int, int) Interface.NamedTuple((int, int)[] pairs)
+		(int result, int count) Interface.NamedTuple((int left, int right)[] pairs)
 		{
 			//ILSpy generated this explicit interface implementation from .override directive in NamedTuple
 			return this.NamedTuple(pairs);

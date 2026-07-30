@@ -49,6 +49,9 @@ namespace ICSharpCode.ILSpyCmd
 
 		public CancellationToken CancellationToken { get; set; }
 
+		// The .baml check in WriteResourceToFile matches on the name of an entry inside a .resources
+		// container, so the container has to be split for the BAML handler to ever see a .baml entry.
+		// Left unset, WriteResourceToFile would only be offered the container itself.
 		protected override bool ExtractIndividualResources => true;
 
 		protected override IEnumerable<ProjectItemInfo> WriteResourceToFile(string fileName, string resourceName, Stream entryStream)

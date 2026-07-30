@@ -431,6 +431,14 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		#endregion
 
 		#region WriteResourceFilesInProject
+		/// <summary>
+		/// Controls whether .resources containers are split into their individual entries before being
+		/// written to disk. Resource handlers match on the names of entries inside a .resources
+		/// container, so the container must be split for <see cref="WriteResourceToFile"/> to ever be
+		/// offered an individual entry. The base implementation returns false, emitting each container
+		/// as-is; override to return true so that derived decompilers can process individual entries
+		/// (e.g. .baml pages).
+		/// </summary>
 		protected virtual bool ExtractIndividualResources => false;
 
 		protected virtual IEnumerable<ProjectItemInfo> WriteResourceFilesInProject(MetadataFile module)
@@ -444,6 +452,13 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			}
 		}
 
+		/// <summary>
+		/// Writes a single embedded resource to the target directory and yields the project items
+		/// referencing the written file(s). When <see cref="ExtractIndividualResources"/> is true and
+		/// the resource is a .resources container whose entries are all streams, each entry is written
+		/// as its own file via <see cref="WriteResourceToFile"/>; otherwise the resource is written as
+		/// a single file. Override to customize how an entire resource is written.
+		/// </summary>
 		protected virtual IEnumerable<ProjectItemInfo> WriteResourceFile(Resource resource)
 		{
 			using Stream stream = resource.TryOpenStream();

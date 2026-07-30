@@ -1016,7 +1016,25 @@ namespace ICSharpCode.ILSpy.Properties {
                 return ResourceManager.GetString("DecompilerSettings.CheckForOverflowUnderflow", resourceCulture);
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized string similar to Use collection expressions.
+        /// </summary>
+        public static string DecompilerSettings_CollectionExpressions {
+            get {
+                return ResourceManager.GetString("DecompilerSettings.CollectionExpressions", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Comment out metadata that cannot be declared in C#.
+        /// </summary>
+        public static string DecompilerSettings_CommentOutMetadataThatCannotBeDeclaredInCSharp {
+            get {
+                return ResourceManager.GetString("DecompilerSettings.CommentOutMetadataThatCannotBeDeclaredInCSharp", resourceCulture);
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to Decompile anonymous methods/lambdas.
         /// </summary>
@@ -1275,15 +1293,6 @@ namespace ICSharpCode.ILSpy.Properties {
         public static string DecompilerSettings_GetterOnlyAutomaticProperties {
             get {
                 return ResourceManager.GetString("DecompilerSettings.GetterOnlyAutomaticProperties", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Comment out metadata that cannot be declared in C#.
-        /// </summary>
-        public static string DecompilerSettings_CommentOutMetadataThatCannotBeDeclaredInCSharp {
-            get {
-                return ResourceManager.GetString("DecompilerSettings.CommentOutMetadataThatCannotBeDeclaredInCSharp", resourceCulture);
             }
         }
         
@@ -1684,7 +1693,16 @@ namespace ICSharpCode.ILSpy.Properties {
                 return ResourceManager.GetString("DecompilerSettings.UseExtensionMethodSyntax", resourceCulture);
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized string similar to Use &apos;field&apos; keyword in semi-auto-properties.
+        /// </summary>
+        public static string DecompilerSettings_UseFieldKeyword {
+            get {
+                return ResourceManager.GetString("DecompilerSettings.UseFieldKeyword", resourceCulture);
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to Use implicit conversions between tuple types.
         /// </summary>

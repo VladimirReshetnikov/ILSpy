@@ -764,6 +764,17 @@ namespace ICSharpCode.Decompiler.CSharp
 			return MergeMemberOrders(baselineOrder, fieldOrder, propertyOrder, eventOrder);
 		}
 
+		/// <summary>
+		/// Merges several member orderings into one sequence that preserves the internal order of
+		/// every list in <paramref name="constrainedOrders"/>, using a topological sort over the
+		/// pairwise adjacency constraints each list implies. Among members not ordered relative to
+		/// each other by any constraint, their relative position in <paramref name="baselineOrder"/>
+		/// decides the placement. The result is the distinct union of all input members. When the
+		/// constrained orders contradict each other (the constraint graph has a cycle), no merged
+		/// order exists; the method then falls back to <c>constrainedOrders[0]</c> followed by all
+		/// remaining members, so callers must pass the ordering that has to win such a conflict
+		/// first.
+		/// </summary>
 		internal static List<IMember> MergeMemberOrders(List<IMember> baselineOrder, params IReadOnlyList<IMember>[] constrainedOrders)
 		{
 			var nodes = baselineOrder.Concat(constrainedOrders.SelectMany(order => order)).Distinct().ToList();
@@ -1660,22 +1671,26 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (memberDecl.ReturnType is { } memberReturnType)
 				{
 					methodDecl.ReturnType = memberReturnType.Clone();
-					RemoveTupleElementNames(methodDecl.ReturnType);
+					// C# requires an explicit implementation's tuple element names to match the
+					// interface member exactly (CS8141), so the bridge carries the interface's names
+					// rather than whatever the ordinary implementation happened to use.
+					ApplyContractTupleElementNames(methodDecl.ReturnType, m.ReturnType);
 				}
 				methodDecl.PrivateImplementationType = astBuilder.ConvertType(m.DeclaringType);
 				methodDecl.Name = m.Name;
 				methodDecl.TypeParameters.AddRange(memberDecl.GetChildren(Slots.TypeParameter)
 												   .Select(n => (TypeParameterDeclaration)n.Clone()));
+				int parameterIndex = 0;
 				foreach (ParameterDeclaration parameter in memberDecl.GetChildren(Slots.Parameter))
 				{
 					var clone = (ParameterDeclaration)parameter.Clone();
 					// Calls to an explicit implementation use the interface declaration's params behavior.
 					// Retaining it on this synthetic bridge would invent a ParamArrayAttribute row.
 					clone.IsParams = false;
-					// This bridge has no counterpart in the original metadata. Retaining tuple names from the
-					// ordinary implementation would make Roslyn invent TupleElementNamesAttribute rows for it.
-					if (clone.Type is { } parameterType)
-						RemoveTupleElementNames(parameterType);
+					// Tuple element names must match the interface member's (CS8141); see the return type above.
+					if (clone.Type is { } parameterType && parameterIndex < m.Parameters.Count)
+						ApplyContractTupleElementNames(parameterType, m.Parameters[parameterIndex].Type);
+					parameterIndex++;
 					// Explicit interface implementations cannot be called with omitted arguments. Copying an
 					// optional default onto this synthetic bridge also invents a Constant row and causes CS1066.
 					clone.DefaultExpression = null;
@@ -1706,10 +1721,61 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 		}
 
-		static void RemoveTupleElementNames(AstType type)
+		/// <summary>
+		/// Rewrites the tuple element names inside <paramref name="type"/> (a clone of the
+		/// implementing member's signature type) to the names the interface member
+		/// <paramref name="contractType"/> declares, walking both shapes in parallel. Structural
+		/// mismatches leave the affected part's names cleared rather than guessing.
+		/// </summary>
+		static void ApplyContractTupleElementNames(AstType type, IType contractType)
 		{
-			foreach (var element in type.DescendantsAndSelf.OfType<TupleTypeElement>())
-				element.Name = null;
+			if (contractType is ByReferenceType byReference)
+				contractType = byReference.ElementType;
+			switch (type)
+			{
+				case TupleAstType tupleAst when contractType is TupleType tupleType
+					&& tupleAst.Elements.Count == tupleType.ElementTypes.Length:
+				{
+					int index = 0;
+					foreach (var element in tupleAst.Elements)
+					{
+						element.Name = index < tupleType.ElementNames.Length ? tupleType.ElementNames[index] : null;
+						ApplyContractTupleElementNames(element.Type, tupleType.ElementTypes[index]);
+						index++;
+					}
+					break;
+				}
+				case ComposedType { HasNullableSpecifier: true, ArraySpecifiers.Count: 0, PointerRank: 0 } nullable
+					when contractType is ParameterizedType { TypeArguments: [var nullableArgument] } nullableContract
+						&& nullableContract.IsKnownType(KnownTypeCode.NullableOfT):
+					ApplyContractTupleElementNames(nullable.BaseType, nullableArgument);
+					break;
+				case ComposedType { ArraySpecifiers.Count: 1, PointerRank: 0, HasNullableSpecifier: false } array
+					when contractType is ArrayType arrayContract:
+					ApplyContractTupleElementNames(array.BaseType, arrayContract.ElementType);
+					break;
+				case SimpleType simple when contractType is ParameterizedType parameterized
+					&& simple.TypeArguments.Count == parameterized.TypeArguments.Count:
+				{
+					int index = 0;
+					foreach (var argument in simple.TypeArguments)
+						ApplyContractTupleElementNames(argument, parameterized.TypeArguments[index++]);
+					break;
+				}
+				case MemberType member when contractType is ParameterizedType memberContract
+					&& member.TypeArguments.Count == memberContract.TypeArguments.Count:
+				{
+					int index = 0;
+					foreach (var argument in member.TypeArguments)
+						ApplyContractTupleElementNames(argument, memberContract.TypeArguments[index++]);
+					break;
+				}
+				default:
+					// No parallel structure to draw names from: leave nothing misleading behind.
+					foreach (var element in type.DescendantsAndSelf.OfType<TupleTypeElement>())
+						element.Name = null;
+					break;
+			}
 		}
 
 		IEnumerable<IMethod> GetInterfaceMethodImplementations(IMethod method)
@@ -1786,6 +1852,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 
 			var seen = new HashSet<IMethod>();
+			List<IMethod>? claimedSlots = null;
 			foreach (IType directInterface in declaringType.DirectBaseTypes.Where(t => t.Kind == TypeKind.Interface))
 			{
 				foreach (IType interfaceType in directInterface.GetAllBaseTypes().Where(t => t.Kind == TypeKind.Interface))
@@ -1806,11 +1873,45 @@ namespace ICSharpCode.Decompiler.CSharp
 							// it shares a signature with, so no bridge is needed.
 							continue;
 						}
+						// A MethodImpl anywhere in the type claims the interface slot outright; the
+						// runtime then never falls back to implicit name/signature mapping for it. A
+						// bridge emitted from a method that merely signature-matches such a slot would
+						// duplicate the real explicit implementation (CS0102).
+						claimedSlots ??= CollectInterfaceMethodImplDeclarations(declaringType);
+						if (claimedSlots.Any(claimed => claimed.MemberDefinition.Equals(candidate.MemberDefinition)
+							&& claimed.DeclaringType.Equals(candidate.DeclaringType)))
+						{
+							continue;
+						}
 						if (seen.Add(candidate))
 							yield return candidate;
 					}
 				}
 			}
+		}
+
+		/// <summary>
+		/// Resolves the interface members that any MethodImpl of <paramref name="declaringType"/>
+		/// explicitly implements, i.e. the interface slots that are spoken for regardless of which
+		/// method carries the .override directive.
+		/// </summary>
+		List<IMethod> CollectInterfaceMethodImplDeclarations(ITypeDefinition declaringType)
+		{
+			var result = new List<IMethod>();
+			if (declaringType.MetadataToken.IsNil || declaringType.MetadataToken.Kind != HandleKind.TypeDefinition)
+				return result;
+			var typeDefinition = metadata.GetTypeDefinition((TypeDefinitionHandle)declaringType.MetadataToken);
+			var genericContext = new Decompiler.TypeSystem.GenericContext(declaringType.TypeParameters);
+			foreach (var handle in typeDefinition.GetMethodImplementations())
+			{
+				var methodImpl = metadata.GetMethodImplementation(handle);
+				if (module.ResolveMethod(methodImpl.MethodDeclaration, genericContext) is { } declaration
+					&& declaration.DeclaringType.Kind == TypeKind.Interface)
+				{
+					result.Add(declaration);
+				}
+			}
+			return result;
 		}
 
 		static bool HaveSameRuntimeSignature(IMethod implementation, IMethod declaration)
@@ -3492,11 +3593,22 @@ namespace ICSharpCode.Decompiler.CSharp
 				{
 					if (baseType.GetDefinition()?.Equals(implementation.DeclaringTypeDefinition) == true)
 						continue;
+					// The nearest base member with a matching runtime signature is what the C#
+					// 'override' would bind to (or trip over, per CS0506). Property form is only
+					// right when that nearest member is an overridable accessor: an ordinary method
+					// there means the slot belongs to a method, and a non-overridable accessor
+					// cannot legally be overridden in C# at all.
 					foreach (IMethod candidate in baseType.GetAccessors(
 						a => a.Name == implementation.Name, GetMemberOptions.IgnoreInheritedMembers))
 					{
 						if (HaveSameRuntimeSignature(implementation, candidate))
-							return candidate;
+							return candidate.IsOverridable ? candidate : null;
+					}
+					foreach (IMethod candidate in baseType.GetMethods(
+						m => m.Name == implementation.Name, GetMemberOptions.IgnoreInheritedMembers))
+					{
+						if (HaveSameRuntimeSignature(implementation, candidate))
+							return null;
 					}
 				}
 				return null;

@@ -220,6 +220,28 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		public void VarArgsMethod(__arglist) { }
 	}
 
+	public interface IRefParameterContract
+	{
+		void M(ref int x);
+	}
+
+	public class ExplicitRefImplementationWithOutOverload : IRefParameterContract
+	{
+		void IRefParameterContract.M(ref int x) { }
+		public void M(out int x) { x = 0; }
+	}
+
+	public interface IOutParameterContract
+	{
+		void M(out int x);
+	}
+
+	public class ExplicitOutImplementationWithRefOverload : IOutParameterContract
+	{
+		void IOutParameterContract.M(out int x) { x = 0; }
+		public void M(ref int x) { }
+	}
+
 	public class VarArgsCtor
 	{
 		public VarArgsCtor(__arglist) { }

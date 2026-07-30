@@ -408,6 +408,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			// This is necessary to make .NET Core/PCL binaries work better.
 			var referencedAssemblies = new List<MetadataFile>();
 			var nameLookupOnlyAssemblyNames = new HashSet<string>();
+			// Simple names of the assembly references actually declared in metadata (by the main
+			// module or by type forwarders), whether or not they resolve. An assembly the module
+			// declares a reference to is a real reference even when the declared reference failed
+			// to resolve and the file was found via the implicit-reference fallback instead, so it
+			// must never be demoted to a name-lookup-only module.
+			var declaredAssemblyReferenceNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 			var assemblyReferenceQueue = new Queue<(bool IsAssembly, MetadataFile MainModule, object Reference, Task<MetadataFile> ResolveTask)>();
 			var comparer = KeyComparer.Create(((bool IsAssembly, MetadataFile MainModule, object Reference) reference) =>
 				reference.IsAssembly ? "A:" + ((IAssemblyReference)reference.Reference).FullName :
@@ -438,6 +444,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 			foreach (var refs in mainModule.AssemblyReferences)
 			{
+				declaredAssemblyReferenceNames.Add(refs.Name);
 				AddToQueue(true, mainModule, refs);
 			}
 			while (assemblyReferenceQueue.Count > 0)
@@ -454,7 +461,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 						switch (exportedType.Implementation.Kind)
 						{
 							case SRM.HandleKind.AssemblyReference:
-								AddToQueue(true, asm, new AssemblyReference(asm, (SRM.AssemblyReferenceHandle)exportedType.Implementation));
+								var forwarderRef = new AssemblyReference(asm, (SRM.AssemblyReferenceHandle)exportedType.Implementation);
+								declaredAssemblyReferenceNames.Add(forwarderRef.Name);
+								AddToQueue(true, asm, forwarderRef);
 								break;
 							case SRM.HandleKind.AssemblyFile:
 								var file = metadata.GetAssemblyFile((SRM.AssemblyFileHandle)exportedType.Implementation);
@@ -478,7 +487,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 								if (existing == null)
 								{
 									AddToQueue(true, mainModule, AssemblyNameReference.Parse(item + ", Version=" + version.ToString(3) + ".0, Culture=neutral"));
-									if (Array.IndexOf(namespaceCompletionReferences, item) >= 0)
+									// Demote to name-lookup-only just those assemblies the module does not
+									// declare a reference to; a declared-but-unresolved reference stays a
+									// full reference when the fallback load finds it.
+									if (Array.IndexOf(namespaceCompletionReferences, item) >= 0
+										&& !declaredAssemblyReferenceNames.Contains(item))
 									{
 										nameLookupOnlyAssemblyNames.Add(item);
 									}

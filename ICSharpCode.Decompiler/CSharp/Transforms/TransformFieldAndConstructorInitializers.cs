@@ -408,20 +408,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					{
 						bool transformToPrimaryConstructor = MetadataTokens.GetRowNumber(ctorMethod.MetadataToken) == firstMethodRowNumber;
 
-						if (ctorMethod.Parameters.Count == 0)
-						{
-							transformToPrimaryConstructor = false;
-						}
-
-						// An initializer that reads another instance member (e.g. 'field2 = field1.Length;')
-						// cannot be expressed as a field initializer, so the constructor body must be kept.
-						// Converting such a constructor to a primary constructor would emit field initializers
-						// that reference 'this', producing non-compilable C# (CS0236).
-						if (initializer.Statements.Any(s => s.ReferencesInstanceMember))
-						{
-							transformToPrimaryConstructor = false;
-						}
-
+						// A '<p>P' backing-field store proves the source used a primary constructor,
+						// overriding the row-number heuristic - but only the heuristic: the
+						// disqualifying checks below must still win, so they come after this loop.
 						foreach (var (stmt, member, expr, dependsOnBody, referencesInstanceMember) in initializer.Statements)
 						{
 							if (member is IField f && IsGeneratedPrimaryConstructorBackingField(f))
@@ -437,6 +426,20 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 									transformToPrimaryConstructor = true;
 								}
 							}
+						}
+
+						if (ctorMethod.Parameters.Count == 0)
+						{
+							transformToPrimaryConstructor = false;
+						}
+
+						// An initializer that reads another instance member (e.g. 'field2 = field1.Length;')
+						// cannot be expressed as a field initializer, so the constructor body must be kept.
+						// Converting such a constructor to a primary constructor would emit field initializers
+						// that reference 'this', producing non-compilable C# (CS0236).
+						if (initializer.Statements.Any(s => s.ReferencesInstanceMember))
+						{
+							transformToPrimaryConstructor = false;
 						}
 
 						if (context.Settings.ShowXmlDocumentation && context.DecompileRun.DocumentationProvider is { } provider)
@@ -657,7 +660,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							continue;
 						// Element stores fold into the array creation they follow, which leaves the
 						// temporary read only by the call and the ordinary fold below applicable.
-						if (!TryFoldArrayElementStores(callStatement, variable, declaration, initializer))
+						if (!TryFoldArrayElementStores(body, callStatement, variable, declaration, initializer))
 							return false;
 						totalUses = body.DescendantsAndSelf
 							.OfType<IdentifierExpression>()
@@ -675,12 +678,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						return false;
 					}
 
-					// A temporary read by more than one argument is inlined into each use even though
-					// that re-evaluates the initializer. A constructor initializer cannot be preceded
-					// by a local declaration, so once the call lifts there is no place to keep a single
-					// evaluation; leaving the call in the body instead would emit an uncompilable
-					// explicit '.ctor' invocation. This matches the source such IL typically comes from,
-					// where the same expression was written in each argument position.
+					// A temporary read by more than one argument is inlined into each use, which
+					// re-evaluates the initializer once per argument. A constructor initializer
+					// cannot be preceded by a local declaration, so there is no place to keep a
+					// single evaluation. Values that are just reads - parameters, literals, field
+					// and property chains - are accepted, matching the source idiom the IL comes
+					// from ('x.P != null ? x.P : y' reads the member twice in source, too); a
+					// value with call or operator semantics is not, because duplicating it would
+					// silently change behavior, so the call stays in the body instead.
+					if (uses.Count > 1 && !IsRereadableValue(initializer))
+						return false;
 					foreach (var use in uses)
 					{
 						use.ReplaceWith(initializer.Clone());
@@ -697,14 +704,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			/// whenever its value needs a temporary of its own; that temporary comes along, since it is
 			/// declared immediately before the store that reads it.
 			/// </summary>
-			private static bool TryFoldArrayElementStores(Statement callStatement, ILVariable variable,
+			private static bool TryFoldArrayElementStores(BlockStatement body, Statement callStatement, ILVariable variable,
 				VariableDeclarationStatement declaration, Expression initializer)
 			{
 				if (initializer is not ArrayCreateExpression { Initializer: { } arrayInitializer } arrayCreation || arrayInitializer.Elements.Count == 0)
 					return false;
 				var elements = arrayInitializer.Elements.ToArray();
 				var absorbed = new List<(Statement Statement, int Index, Expression Value, Statement? HoistedValue)>();
-				var absorbedIndices = new HashSet<int>();
+				int lastAbsorbedIndex = -1;
 				for (Statement? statement = declaration.GetNextStatement(); statement != null && statement != callStatement;
 					statement = statement.GetNextStatement())
 				{
@@ -722,7 +729,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							return false;
 						candidate = afterHoist;
 						statement = candidate;
-						if (!IsSoleUseOfHoistedValue(hoistedVariable, candidate))
+						if (!IsSoleUseOfHoistedValue(body, hoistedVariable, candidate))
 							return false;
 					}
 					if (candidate is not ExpressionStatement {
@@ -744,11 +751,21 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					// would be a store the array creation already accounts for.
 					if (elements[index] is not (DefaultValueExpression or NullReferenceExpression))
 						return false;
-					// That test reads the array as it stood before any of this is committed, so a second
-					// store to the same element would pass it as well and then reach a node the first one
-					// has already detached. One store per element is all this can account for.
-					if (!absorbedIndices.Add(index))
+					// Folding moves each store's evaluation to its element position, so the stores must
+					// already be in ascending element order (which also rules out a second store to the
+					// same element reaching a node the first one has detached), and moving a value ahead
+					// of the trailing elements it crosses must be unobservable: either the value itself
+					// or every non-default element after its position has to be side-effect-free.
+					if (index <= lastAbsorbedIndex)
 						return false;
+					lastAbsorbedIndex = index;
+					if (!IsStableValue(value)
+						&& elements.Skip(index + 1).Any(element =>
+							element is not (DefaultValueExpression or NullReferenceExpression)
+							&& !IsStableValue(element)))
+					{
+						return false;
+					}
 					if (value.DescendantsAndSelf.OfType<IdentifierExpression>()
 						.Any(identifier => identifier.GetILVariable() == variable))
 					{
@@ -778,11 +795,47 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return true;
 			}
 
-			static bool IsSoleUseOfHoistedValue(ILVariable hoisted, Statement store)
+			static bool IsSoleUseOfHoistedValue(BlockStatement body, ILVariable hoisted, Statement store)
 			{
-				return store is ExpressionStatement { Expression: AssignmentExpression { Right: var value } }
-					&& value.DescendantsAndSelf.OfType<IdentifierExpression>()
+				if (store is not ExpressionStatement { Expression: AssignmentExpression { Right: var value } })
+					return false;
+				// The hoisted temporary's declaration is removed when the store folds, so the one
+				// read inside the store's value must be the only read anywhere in the body - a
+				// later read would be left referencing an undeclared local.
+				return value.DescendantsAndSelf.OfType<IdentifierExpression>()
+						.Any(identifier => identifier.GetILVariable() == hoisted)
+					&& body.DescendantsAndSelf.OfType<IdentifierExpression>()
 						.Count(identifier => identifier.GetILVariable() == hoisted) == 1;
+			}
+
+			/// <summary>
+			/// True for expressions whose repeated evaluation is guaranteed to yield the same value
+			/// with no side effects, so a single original evaluation may be cloned into several
+			/// positions or moved across other evaluations without observable difference.
+			/// </summary>
+			static bool IsStableValue(Expression expression)
+			{
+				return expression switch {
+					IdentifierExpression identifier => identifier.GetILVariable() is { Kind: VariableKind.Parameter },
+					ThisReferenceExpression or PrimitiveExpression or NullReferenceExpression
+						or DefaultValueExpression or TypeOfExpression => true,
+					_ => false
+				};
+			}
+
+			/// <summary>
+			/// A weaker notion than <see cref="IsStableValue"/> for positions where a temporary
+			/// cannot survive at all: additionally accepts field and property reads through stable
+			/// receivers. A getter may in principle have side effects, but such chains are exactly
+			/// what source code repeats freely, and the alternative is uncompilable output.
+			/// </summary>
+			static bool IsRereadableValue(Expression expression)
+			{
+				if (IsStableValue(expression))
+					return true;
+				return expression is MemberReferenceExpression { Target: var target } member
+					&& member.GetSymbol() is IField or IProperty
+					&& (target is TypeReferenceExpression || IsRereadableValue(target));
 			}
 
 			private static bool TryFoldInitializedObjectTemporary(BlockStatement body, Statement callStatement,
@@ -838,6 +891,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (access.GetSymbol() is IField field
 						&& fieldInitializers.TryGetValue(field.MemberDefinition ?? field, out var fieldInitializer))
 					{
+						// Only a genuine read may be replaced by the initialization value. A later
+						// assignment through the temporary (or a ref/out use) targets the field
+						// itself; substituting the value would silently redirect the store to
+						// whatever the value names (e.g. the captured parameter).
+						if (access.Parent is AssignmentExpression { Left: var assignmentTarget } && assignmentTarget == access)
+							return false;
+						if (access.Parent is DirectionExpression)
+							return false;
 						fieldReads.Add((access, fieldInitializer.Value));
 						continue;
 					}

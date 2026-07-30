@@ -26,6 +26,7 @@ using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.IL;
+using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Transforms
 {
@@ -88,8 +89,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// longer valid, so drop the explicit 'in' and pass by value; the compiler makes the hidden
 		/// readonly copy that an 'in' parameter requires. 'ref'/'out' are left untouched: they demand
 		/// an lvalue and cannot be satisfied by a range variable at all.
+		/// Dropping the modifier re-runs overload resolution without it: when the invoked member has
+		/// a sibling overload whose parameter list differs only in that parameter's by-value/'in'-ness,
+		/// the by-value overload would silently win. In that case this method returns false without
+		/// touching the query, and the caller gives the query up in favor of the method-call chain,
+		/// where the explicit 'in' remains legal.
 		/// </summary>
-		private void RemoveInModifierFromRangeVariableArguments(QueryExpression query)
+		private bool RemoveInModifierFromRangeVariableArguments(QueryExpression query)
 		{
 			var rangeVariables = new HashSet<ILVariable>();
 			foreach (var fromClause in query.Clauses.OfType<QueryFromClause>())
@@ -105,7 +111,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					rangeVariables.Add(intoVariable);
 			}
 			if (rangeVariables.Count == 0)
-				return;
+				return true;
 			foreach (var directionExpression in query.Descendants.OfType<DirectionExpression>().ToArray())
 			{
 				if (directionExpression.FieldDirection != FieldDirection.In)
@@ -117,11 +123,114 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				{
 					continue;
 				}
+				if (!CanRemoveInModifierWithoutRebinding(directionExpression))
+					return false;
 				context.Step("Remove 'in' modifier from query range variable argument", directionExpression);
 				var value = identifierExpression.Detach();
 				directionExpression.ReplaceWith(value);
 				context.EndStep(value);
 			}
+			return true;
+		}
+
+		/// <summary>
+		/// Determines whether dropping the explicit 'in' modifier from the argument held by
+		/// <paramref name="directionExpression"/> is guaranteed to keep the call bound to the same
+		/// member: the invoked member must be identifiable, the argument must map to an 'in'
+		/// parameter, and no sibling overload may differ from the invoked member only by that
+		/// parameter's by-value/'in'-ness. Anything that cannot be analyzed counts as unsafe.
+		/// </summary>
+		static bool CanRemoveInModifierWithoutRebinding(DirectionExpression directionExpression)
+		{
+			AstNode? argumentHolder = directionExpression.Parent;
+			AstNodeCollection<Expression>? arguments = argumentHolder switch {
+				InvocationExpression invocation => invocation.Arguments,
+				ObjectCreateExpression objectCreate => objectCreate.Arguments,
+				IndexerExpression indexer => indexer.Arguments,
+				_ => null,
+			};
+			if (arguments is null || argumentHolder?.GetSymbol() is not IParameterizedMember member)
+				return false;
+			int argumentIndex = arguments.IndexOf(directionExpression);
+			if (argumentIndex < 0 || argumentIndex >= member.Parameters.Count
+				|| member.Parameters[argumentIndex].ReferenceKind != ReferenceKind.In)
+			{
+				return false;
+			}
+			return !HasSiblingOverloadDifferingOnlyByInModifier(member, argumentIndex);
+		}
+
+		/// <summary>
+		/// Normalization applied before comparing parameter types of sibling overloads; mirrors the
+		/// settings of <see cref="ParameterListComparer"/>, in particular treating the type
+		/// parameters of two different generic methods as equal by their position.
+		/// </summary>
+		static readonly NormalizeTypeVisitor overloadComparisonNormalization = new NormalizeTypeVisitor {
+			ReplaceClassTypeParametersWithDummy = false,
+			ReplaceMethodTypeParametersWithDummy = true,
+			DynamicAndObject = true,
+			TupleToUnderlyingType = true,
+		};
+
+		/// <summary>
+		/// Returns true if the declaring type of <paramref name="member"/> also declares an overload
+		/// whose parameter list matches the member's except that the parameter at
+		/// <paramref name="parameterIndex"/> is by-value instead of 'in'. Members whose overload set
+		/// cannot be enumerated are treated as having such a sibling.
+		/// </summary>
+		static bool HasSiblingOverloadDifferingOnlyByInModifier(IParameterizedMember member, int parameterIndex)
+		{
+			if (member.MemberDefinition is not IParameterizedMember definition)
+				return true;
+			if (definition.DeclaringTypeDefinition is not ITypeDefinition declaringType)
+				return true;
+			IEnumerable<IParameterizedMember>? siblings = definition switch {
+				IMethod => declaringType.Methods,
+				IProperty => declaringType.Properties,
+				_ => null,
+			};
+			if (siblings is null)
+				return true;
+			foreach (IParameterizedMember sibling in siblings)
+			{
+				if (sibling.Name != definition.Name)
+					continue;
+				if (sibling is IMethod siblingMethod && definition is IMethod definitionMethod
+					&& siblingMethod.TypeParameters.Count != definitionMethod.TypeParameters.Count)
+				{
+					continue;
+				}
+				if (ParameterListsDifferOnlyByInModifier(definition.Parameters, sibling.Parameters, parameterIndex))
+					return true;
+			}
+			return false;
+		}
+
+		static bool ParameterListsDifferOnlyByInModifier(IReadOnlyList<IParameter> parameters,
+			IReadOnlyList<IParameter> siblingParameters, int parameterIndex)
+		{
+			if (siblingParameters.Count != parameters.Count)
+				return false;
+			for (int i = 0; i < parameters.Count; i++)
+			{
+				IType parameterType = parameters[i].Type;
+				if (i == parameterIndex)
+				{
+					if (siblingParameters[i].ReferenceKind != ReferenceKind.None)
+						return false;
+					// an 'in' parameter's type carries the managed reference; the by-value
+					// sibling parameter is compared against the referenced element type
+					if (parameterType is ByReferenceType byReference)
+						parameterType = byReference.ElementType;
+				}
+				else if (siblingParameters[i].ReferenceKind != parameters[i].ReferenceKind)
+				{
+					return false;
+				}
+				if (!overloadComparisonNormalization.EquivalentTypes(parameterType, siblingParameters[i].Type))
+					return false;
+			}
+			return true;
 		}
 
 		private void CombineRangeVariables(QueryClause clause, ILVariable? oldVariable, ILVariable? newVariable)
@@ -157,22 +266,35 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		void DecompileQueries(AstNode node)
 		{
 			// A query built from a chain that cannot be fully translated leaves its transparent
-			// identifiers visible, and those are not names C# can write. Keep an untouched copy of
-			// the call chain so such a query can go back to being method calls.
-			Expression? callChain = node is InvocationExpression { Target: MemberReferenceExpression target }
-				&& IsQueryOperatorName(target.MemberName)
-				? (Expression)node.Clone()
-				: null;
+			// identifiers visible, and those are not names C# can write. An untouched copy of the
+			// call chain lets such a query go back to being method calls. The copy is taken lazily
+			// by BeginQueryBuild, just before the first build detaches anything: cloning every
+			// operator-named invocation up front would deep-clone each segment of every LINQ chain
+			// even though most never become query expressions.
+			currentChainRoot = node as InvocationExpression;
+			untouchedChainForRollback = null;
 			Expression? query = DecompileQuery(node as InvocationExpression);
+			Expression? callChain = untouchedChainForRollback;
 			if (query is QueryExpression queryExpression)
 			{
-				RemoveInModifierFromRangeVariableArguments(queryExpression);
-				if (callChain != null)
-					queryExpression.AddAnnotation(new UntranslatedQueryAnnotation(callChain));
+				if (RemoveInModifierFromRangeVariableArguments(queryExpression))
+				{
+					if (callChain != null)
+						queryExpression.AddAnnotation(new UntranslatedQueryAnnotation(callChain));
+				}
+				else
+				{
+					// An explicit 'in' argument that cannot be dropped safely makes the query
+					// unwritable (CS8159), so give the translation up. DecompileQuery only accepts
+					// invocations of query operator names, so the call-chain copy exists whenever
+					// a query was built.
+					Debug.Assert(callChain != null);
+					query = callChain;
+				}
 			}
 			if (query != null)
 			{
-				if (node.Parent is ExpressionStatement && CanUseDiscardAssignment())
+				if (query is QueryExpression && node.Parent is ExpressionStatement && CanUseDiscardAssignment())
 					query = new AssignmentExpression(new IdentifierExpression("_"), query);
 				node.ReplaceWith(query);
 				context.EndStep(query);
@@ -214,6 +336,22 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return context.Settings.Discards;
 		}
 
+		// The outermost operator-named invocation DecompileQueries is currently processing, and
+		// the untouched copy of it captured by BeginQueryBuild once a build actually starts.
+		InvocationExpression? currentChainRoot;
+		Expression? untouchedChainForRollback;
+
+		/// <summary>
+		/// Marks the start of building a query from the current chain: captures the rollback copy
+		/// of the whole untouched chain (once - nested builds keep the outermost copy) before the
+		/// build detaches any of its pieces, then records the transform step.
+		/// </summary>
+		void BeginQueryBuild(string stepName, InvocationExpression invocation)
+		{
+			untouchedChainForRollback ??= (Expression?)currentChainRoot?.Clone();
+			context.Step(stepName, invocation);
+		}
+
 		QueryExpression? DecompileQuery(InvocationExpression? invocation)
 		{
 			if (invocation == null)
@@ -237,7 +375,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					Expression expr = invocation.Arguments.Single();
 					if (MatchSimpleLambda(expr, out var parameter, out var body))
 					{
-						context.Step("Build select query", invocation);
+						BeginQueryBuild("Build select query", invocation);
 						QueryExpression query = new QueryExpression();
 						query.Clauses.Add(MakeFromClause(parameter, mre.Target.Detach()));
 						query.Clauses.Add(new QuerySelectClause { Expression = WrapExpressionInParenthesesIfNecessary(body.Detach(), parameter.Name!) }.CopyAnnotationsFrom(expr));
@@ -255,7 +393,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							&& MatchSimpleLambda(projectionLambda, out var parameter2, out var elementSelector)
 							&& parameter1.Name == parameter2.Name)
 						{
-							context.Step("Build group query", invocation);
+							BeginQueryBuild("Build group query", invocation);
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(MakeFromClause(parameter1, mre.Target.Detach()));
 							var queryGroupClause = new QueryGroupClause {
@@ -273,7 +411,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						Expression lambda = invocation.Arguments.Single();
 						if (MatchSimpleLambda(lambda, out var parameter, out var keySelector))
 						{
-							context.Step("Build group query", invocation);
+							BeginQueryBuild("Build group query", invocation);
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(MakeFromClause(parameter, mre.Target.Detach()));
 							query.Clauses.Add(new QueryGroupClause { Projection = new IdentifierExpression(parameter.Name!).CopyAnnotationsFrom(parameter), Key = keySelector.Detach() });
@@ -298,7 +436,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						ParameterDeclaration p2 = lambda.Parameters.ElementAt(1);
 						if (p1.Name == parameter.Name)
 						{
-							context.Step("Build select-many query", invocation);
+							BeginQueryBuild("Build select-many query", invocation);
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(MakeFromClause(p1, mre.Target.Detach()));
 							query.Clauses.Add(MakeFromClause(p2, collectionSelector.Detach()).CopyAnnotationsFrom(fromExpressionLambda));
@@ -317,7 +455,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					Expression expr = invocation.Arguments.Single();
 					if (MatchSimpleLambda(expr, out var parameter, out var body))
 					{
-						context.Step("Build where query", invocation);
+						BeginQueryBuild("Build where query", invocation);
 						QueryExpression query = new QueryExpression();
 						query.Clauses.Add(MakeFromClause(parameter, mre.Target.Detach()));
 						query.Clauses.Add(new QueryWhereClause { Condition = body.Detach() }.CopyAnnotationsFrom(expr));
@@ -339,7 +477,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					{
 						if (ValidateThenByChain(invocation, parameter.Name!))
 						{
-							context.Step("Build order query", invocation);
+							BeginQueryBuild("Build order query", invocation);
 							QueryOrderClause orderClause = new QueryOrderClause();
 							// Each OrderBy/ThenBy lambda introduces its own parameter ILVariable, but they all
 							// denote the single range variable of the resulting query. Only the final (OrderBy)
@@ -419,7 +557,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						if (ValidateParameter(p1) && ValidateParameter(p2)
 							&& p1.Name == element1.Name && (p2.Name == element2.Name || mre.MemberName == "GroupJoin"))
 						{
-							context.Step(mre.MemberName == "GroupJoin" ? "Build group join query" : "Build join query", invocation);
+							BeginQueryBuild(mre.MemberName == "GroupJoin" ? "Build group join query" : "Build join query", invocation);
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(MakeFromClause(element1, source1.Detach()));
 							QueryJoinClause joinClause = new QueryJoinClause();

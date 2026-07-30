@@ -1657,6 +1657,13 @@ namespace ICSharpCode.Decompiler.CSharp
 					&& gotoStatement.Label == labelStatement.Label)
 				{
 					gotoStatement.Remove();
+					// If the removed goto was the label's only reference, the label is now
+					// unused and would trigger CS0164 on recompilation - drop it as well.
+					if (!blockStatement.Descendants.OfType<GotoStatement>()
+						.Any(g => g.Label == labelStatement.Label))
+					{
+						labelStatement.Remove();
+					}
 				}
 			}
 		}

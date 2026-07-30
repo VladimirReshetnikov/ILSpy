@@ -122,6 +122,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					}
 					descend.Add(stmt);
 				}
+				else if (runStart != null && !ContainsAwait(stmt)
+					&& AnyRunVariableReferencedFrom(runStart, stmt))
+				{
+					// A variable declared inside the open run is still needed at or beyond this
+					// statement. Closing the block here would end the declaration's scope at its
+					// closing brace, so the run absorbs the statement instead - a statement without
+					// pointer usage is perfectly legal inside an 'unsafe' block.
+					continue;
+				}
 				if (runStart != null)
 				{
 					runs.Add((runStart, stmt));
@@ -136,6 +145,35 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				WrapStatementsInUnsafe(first, afterExclusive);
 			foreach (var stmt in descend)
 				DescendForUnsafe(stmt);
+		}
+
+		/// <summary>
+		/// Whether any variable declared in the statements [<paramref name="runStart"/>,
+		/// <paramref name="current"/>) is referenced by <paramref name="current"/> or a later
+		/// sibling statement.
+		/// </summary>
+		static bool AnyRunVariableReferencedFrom(Statement runStart, Statement current)
+		{
+			var declared = new HashSet<ILVariable>();
+			for (Statement? stmt = runStart; stmt != null && stmt != current; stmt = stmt.GetNextStatement())
+			{
+				foreach (var initializer in stmt.DescendantsAndSelf.OfType<VariableInitializer>())
+				{
+					if (initializer.GetILVariable() is { } declaredVariable)
+						declared.Add(declaredVariable);
+				}
+			}
+			if (declared.Count == 0)
+				return false;
+			for (Statement? stmt = current; stmt != null; stmt = stmt.GetNextStatement())
+			{
+				if (stmt.DescendantsAndSelf.OfType<IdentifierExpression>()
+					.Any(identifier => identifier.GetILVariable() is { } used && declared.Contains(used)))
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		/// <summary>
@@ -190,7 +228,54 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			var unsafeStatement = new UnsafeStatement { Body = newBlock };
 			first.ReplaceWith(unsafeStatement);
 			newBlock.Statements.InsertAfter(null, first);
+			HoistDeclarationsReferencedAfter(unsafeStatement);
 			EndStep(unsafeStatement);
+		}
+
+		/// <summary>
+		/// Splits declarations inside a freshly created 'unsafe' block whose variable is still
+		/// referenced after the block into a bare declaration before the block plus an assignment
+		/// inside it. This arises when the run had to close early - typically at a statement
+		/// containing an await, which may live neither inside the unsafe block (CS4004) nor be
+		/// crossed by the declaration's scope otherwise. Pointer-typed declarations cannot leave
+		/// the unsafe context (CS0214), but a pointer live across an await cannot occur in
+		/// compilable code in the first place.
+		/// </summary>
+		static void HoistDeclarationsReferencedAfter(UnsafeStatement unsafeStatement)
+		{
+			if (unsafeStatement.Parent is not BlockStatement parentBlock)
+				return;
+			foreach (var declaration in unsafeStatement.Body.Statements.OfType<VariableDeclarationStatement>().ToArray())
+			{
+				if (declaration.Variables is not [{ Initializer: not null } declarator])
+					continue;
+				if (declarator.GetILVariable() is not { } variable)
+					continue;
+				bool referencedAfter = false;
+				for (Statement? stmt = unsafeStatement.GetNextStatement(); stmt != null; stmt = stmt.GetNextStatement())
+				{
+					if (stmt.DescendantsAndSelf.OfType<IdentifierExpression>()
+						.Any(identifier => identifier.GetILVariable() == variable))
+					{
+						referencedAfter = true;
+						break;
+					}
+				}
+				if (!referencedAfter)
+					continue;
+				if (declaration.Type.DescendantsAndSelf.Any(
+					node => node is FunctionPointerAstType or ComposedType { PointerRank: > 0 }))
+				{
+					continue;
+				}
+				var hoistedDeclaration = new VariableDeclarationStatement((AstType)declaration.Type.Clone(), declarator.Name);
+				hoistedDeclaration.Variables.Single().CopyAnnotationsFrom(declarator);
+				parentBlock.Statements.InsertBefore(unsafeStatement, hoistedDeclaration);
+				var reference = new IdentifierExpression(declarator.Name);
+				reference.CopyAnnotationsFrom(declarator);
+				declaration.ReplaceWith(new ExpressionStatement(
+					new AssignmentExpression(reference, declarator.Initializer.Detach())));
+			}
 		}
 
 		/// <summary>

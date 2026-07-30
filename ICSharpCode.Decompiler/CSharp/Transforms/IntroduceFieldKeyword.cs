@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Metadata;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.Semantics;
@@ -46,13 +47,71 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 	public class IntroduceFieldKeyword : DepthFirstAstVisitor, IAstTransform
 	{
 		TransformContext context;
+		// One reference index per type declaration, built on first use: walking the whole type's
+		// descendants once per property would be quadratic for the property-heavy generated types
+		// this transform routinely sees.
+		Dictionary<TypeDeclaration, TypeReferenceIndex> referenceIndexes;
 
 		public void Run(AstNode rootNode, TransformContext context)
 		{
 			if (context.Settings.GetMinimumRequiredVersion() < LanguageVersion.CSharp14_0)
 				return;
 			this.context = context;
-			rootNode.AcceptVisitor(this);
+			this.referenceIndexes = new Dictionary<TypeDeclaration, TypeReferenceIndex>();
+			try
+			{
+				rootNode.AcceptVisitor(this);
+			}
+			finally
+			{
+				this.referenceIndexes = null;
+			}
+		}
+
+		/// <summary>
+		/// Field and property references of one type declaration, bucketed by the referenced
+		/// member's declaring module and metadata token (the same identity the per-property
+		/// matching uses, so generic instantiations land in their definition's bucket).
+		/// </summary>
+		sealed class TypeReferenceIndex
+		{
+			public readonly Dictionary<(IModule Module, EntityHandle Token), List<Expression>> FieldReferences = new();
+			public readonly Dictionary<(IModule Module, EntityHandle Token), List<Expression>> PropertyReferences = new();
+		}
+
+		TypeReferenceIndex GetReferenceIndex(TypeDeclaration typeDeclaration)
+		{
+			if (referenceIndexes.TryGetValue(typeDeclaration, out var index))
+				return index;
+			index = new TypeReferenceIndex();
+			foreach (AstNode node in typeDeclaration.Descendants)
+			{
+				if (node is not (IdentifierExpression or MemberReferenceExpression))
+					continue;
+				var expression = (Expression)node;
+				switch (node.GetSymbol())
+				{
+					case IField field when field.ParentModule != null:
+						AddReference(index.FieldReferences, (field.ParentModule, field.MetadataToken), expression);
+						break;
+					case IProperty property when property.ParentModule != null:
+						AddReference(index.PropertyReferences, (property.ParentModule, property.MetadataToken), expression);
+						break;
+				}
+			}
+			referenceIndexes.Add(typeDeclaration, index);
+			return index;
+
+			static void AddReference(Dictionary<(IModule, EntityHandle), List<Expression>> references,
+				(IModule, EntityHandle) key, Expression expression)
+			{
+				if (!references.TryGetValue(key, out var list))
+				{
+					list = new List<Expression>();
+					references.Add(key, list);
+				}
+				list.Add(expression);
+			}
 		}
 
 		public override void VisitPropertyDeclaration(PropertyDeclaration propertyDeclaration)
@@ -104,42 +163,44 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// Collect every reference to the backing field anywhere in the declaring type. Accessor
 			// references can become 'field'. C# also permits a getter-only field-backed property to be
 			// assigned in a matching constructor, just like a getter-only auto-property.
+			// The type's references are indexed by declaring module plus metadata token: a token
+			// alone is only a per-module row index, so an unrelated member in another assembly can
+			// share it, while matching the token (rather than member identity) keeps a reference
+			// through a generic instantiation - a specialized member distinct from the definition -
+			// matching too. Rewrites for an earlier property only ever touch that property's own
+			// buckets, so entries for this one are still attached; detached nodes are skipped anyway.
 			var accessorReferences = new List<Expression>();
 			var constructorAssignmentReferences = new List<Expression>();
 			var constructorPropertyAssignmentReferences = new List<Expression>();
 			var externalReferences = new List<Expression>();
-			foreach (AstNode node in typeDeclaration.Descendants)
+			var referenceIndex = GetReferenceIndex(typeDeclaration);
+			if (referenceIndex.PropertyReferences.TryGetValue((property.ParentModule, property.MetadataToken), out var propertyReferences))
 			{
-				if (node is not (IdentifierExpression or MemberReferenceExpression))
-					continue;
-				var expression = (Expression)node;
-				// PatternStatementTransform may already render a store to a compiler-generated
-				// backing field as a getter-only property assignment. That spelling is valid if we
-				// introduce 'field', but must be changed back to the explicit field whenever this
-				// transform has to re-materialize it.
-				if (node.GetSymbol() is IProperty referencedProperty
-					&& referencedProperty.MetadataToken == property.MetadataToken
-					&& referencedProperty.ParentModule == property.ParentModule
-					&& IsRewritableConstructorAssignment(expression, propertyDeclaration, property))
+				foreach (var expression in propertyReferences)
 				{
-					constructorPropertyAssignmentReferences.Add(expression);
-					continue;
+					if (!expression.Ancestors.Contains(typeDeclaration))
+						continue;
+					// PatternStatementTransform may already render a store to a compiler-generated
+					// backing field as a getter-only property assignment. That spelling is valid if we
+					// introduce 'field', but must be changed back to the explicit field whenever this
+					// transform has to re-materialize it.
+					if (IsRewritableConstructorAssignment(expression, propertyDeclaration, property))
+						constructorPropertyAssignmentReferences.Add(expression);
 				}
-				// Match by metadata token plus declaring module. A token alone is only a per-module row
-				// index, so an unrelated field in another assembly can share it and be mistaken for this
-				// backing field, rewriting a cross-assembly reference to the wrong member. Comparing the
-				// token (rather than IField identity) keeps a reference through a generic instantiation,
-				// which is a specialized member distinct from the field definition, matching too.
-				if (node.GetSymbol() is not IField referenced
-					|| referenced.MetadataToken != field.MetadataToken
-					|| referenced.ParentModule != field.ParentModule)
-					continue;
-				if (IsInsideOwnAccessor(node, propertyDeclaration))
-					accessorReferences.Add(expression);
-				else if (IsRewritableConstructorAssignment(expression, propertyDeclaration, property))
-					constructorAssignmentReferences.Add(expression);
-				else
-					externalReferences.Add(expression);
+			}
+			if (referenceIndex.FieldReferences.TryGetValue((field.ParentModule, field.MetadataToken), out var fieldReferences))
+			{
+				foreach (var expression in fieldReferences)
+				{
+					if (!expression.Ancestors.Contains(typeDeclaration))
+						continue;
+					if (IsInsideOwnAccessor(expression, propertyDeclaration))
+						accessorReferences.Add(expression);
+					else if (IsRewritableConstructorAssignment(expression, propertyDeclaration, property))
+						constructorAssignmentReferences.Add(expression);
+					else
+						externalReferences.Add(expression);
+				}
 			}
 			if (externalReferences.Count > 0)
 			{

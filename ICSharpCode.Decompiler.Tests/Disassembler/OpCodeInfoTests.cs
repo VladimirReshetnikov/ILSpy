@@ -56,8 +56,12 @@ namespace ICSharpCode.Decompiler.Tests.Disassembler
 		[Test]
 		public void EncodedNameMatchesAFieldOnSystemReflectionEmitOpCodes()
 		{
+			var knownOpCodes = KnownOpCodes().ToList();
+			Assert.That(knownOpCodes, Has.Count.GreaterThan(200),
+				"GetDisplayName() should cover essentially the whole ILOpCode enum; an empty or tiny set would make this test pass vacuously.");
+
 			var unmatched = new List<string>();
-			foreach (var (code, displayName) in KnownOpCodes())
+			foreach (var (code, displayName) in knownOpCodes)
 			{
 				string encoded = new OpCodeInfo(code, displayName).EncodedName;
 				if (!OpCodesFieldNames.Contains(encoded))

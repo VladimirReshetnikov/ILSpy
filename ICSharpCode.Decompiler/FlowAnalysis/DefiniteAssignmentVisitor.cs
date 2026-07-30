@@ -287,8 +287,10 @@ namespace ICSharpCode.Decompiler.FlowAnalysis
 
 		/// <summary>
 		/// Visits an address-of-local instruction and records a potential use before assignment, since a variable
-		/// must be initialized before its address is taken. Address loads used as out arguments are handled by the
-		/// call logic and never reach this method.
+		/// must be initialized before its address is taken. Address loads used as out arguments of direct calls
+		/// (call/callvirt/newobj) are intercepted by the call logic and do not reach this method; address loads
+		/// used as out arguments of function-pointer calls (calli) do reach it and are conservatively treated
+		/// as reads.
 		/// </summary>
 		/// <param name="inst">The address load instruction.</param>
 		protected internal override void VisitLdLoca(LdLoca inst)

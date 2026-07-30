@@ -51,7 +51,11 @@ namespace ICSharpCode.ILSpyX.Abstractions
 		/// <param name="handle">The handle to a metadata entity.</param>
 		/// <param name="fullName">If set, returns a fully qualified name when possible.</param>
 		/// <param name="omitGenerics">If set, omits generic arity and type arguments.</param>
-		/// <returns>A language-formatted name for the entity.</returns>
+		/// <returns>
+		/// A language-formatted name for the entity, or <c>null</c> for handle kinds the
+		/// language does not recognize. Callers such as the member search strategy tolerate
+		/// a <c>null</c> result by skipping the language-specific name match.
+		/// </returns>
 		string GetEntityName(MetadataFile module, System.Reflection.Metadata.EntityHandle handle, bool fullName, bool omitGenerics);
 
 		/// <summary>

@@ -124,23 +124,35 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				var acceptedMembers = new List<(ISymbol Symbol, string Name)>();
 				usedMemberNames = typeDecl.Members.SelectMany(GetMemberNames)
 					.Append(typeDecl.Name).Concat(typeParameterNames).Concat(reservedNestedTypeNames).ToHashSet();
+				var conflictCandidates = new List<(EntityDeclaration Member, ISymbol Symbol, string Name, bool NameIsPinned)>();
 				foreach (EntityDeclaration member in typeDecl.Members)
 				{
 					if (!TryGetMember(member, out ISymbol? symbol, out string? name))
 						continue;
-					bool conflicts = typeParameterNames.Contains(name) || reservedNestedTypeNames.Contains(name)
-						|| acceptedMembers.Any(previous => previous.Name == name
+					conflictCandidates.Add((member, symbol, name, IsInheritanceConstrained(symbol)));
+				}
+				// Members whose name is pinned by inheritance keep it and claim it first; overridable
+				// members are also preferred, so a colliding virtual/non-virtual pair resolves by
+				// renaming the non-virtual member. The ordering is stable, so unconstrained members
+				// still resolve conflicts among themselves in declaration order.
+				foreach (var (member, symbol, name, nameIsPinned) in conflictCandidates
+					.OrderByDescending(candidate => candidate.NameIsPinned
+						|| candidate.Symbol is IMember { IsOverridable: true }))
+				{
+					string acceptedName = name;
+					bool conflicts = typeParameterNames.Contains(acceptedName) || reservedNestedTypeNames.Contains(acceptedName)
+						|| acceptedMembers.Any(previous => previous.Name == acceptedName
 						&& !CanShareName(previous.Symbol, symbol));
-					if (conflicts)
+					if (conflicts && !nameIsPinned)
 					{
-						string newName = PickNumberedName(usedMemberNames, name);
-						context.Step($"Rename conflicting member '{name}' to '{newName}'", member);
+						string newName = PickNumberedName(usedMemberNames, acceptedName);
+						context.Step($"Rename conflicting member '{acceptedName}' to '{newName}'", member);
 						RenameMember(member, newName);
 						renamedSymbols[GetSymbolDefinition(symbol)] = newName;
 						usedMemberNames.Add(newName);
-						name = newName;
+						acceptedName = newName;
 					}
-					acceptedMembers.Add((symbol, name));
+					acceptedMembers.Add((symbol, acceptedName));
 				}
 			}
 
@@ -208,8 +220,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				symbol = GetSymbolDefinition(symbol);
 				if (renamedSymbols.TryGetValue(symbol, out newName))
 					return true;
-				if (symbol is not IMember member || member.DeclaringTypeDefinition is not { } declaringType
-					|| declaringType.ParentModule != context.TypeSystem.MainModule)
+				// Members and nested types declared in another file of the same module may have been
+				// renamed by that file's declaration pass; recompute those renames from the type system.
+				ITypeDefinition? declaringType = symbol switch {
+					IMember member => member.DeclaringTypeDefinition,
+					ITypeDefinition typeDefinition => typeDefinition.DeclaringTypeDefinition,
+					_ => null,
+				};
+				if (declaringType is null || declaringType.ParentModule != context.TypeSystem.MainModule)
 					return false;
 				var externalRenames = GetExternalRenames(declaringType);
 				return externalRenames.TryGetValue(symbol, out newName);
@@ -289,13 +307,19 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 				var acceptedMembers = new List<(ISymbol Symbol, string Name)>();
 				usedNames = names.Values.Append(outputTypeName).Concat(typeParameterNames).ToHashSet();
-				foreach (ISymbol symbol in symbols)
+				// Mirrors the conflict pass over the emitted declarations: names pinned by inheritance
+				// are claimed first and never renamed, so external references and the declaring file
+				// agree on which colliding member had to move.
+				foreach (var (symbol, nameIsPinned) in symbols
+					.Select(symbol => (Symbol: symbol, NameIsPinned: IsInheritanceConstrained(symbol)))
+					.OrderByDescending(candidate => candidate.NameIsPinned
+						|| candidate.Symbol is IMember { IsOverridable: true }))
 				{
 					ISymbol definition = GetSymbolDefinition(symbol);
 					string name = names[definition];
 					bool conflicts = typeParameterNames.Contains(name)
 						|| acceptedMembers.Any(previous => previous.Name == name && !CanShareName(previous.Symbol, symbol));
-					if (conflicts)
+					if (conflicts && !nameIsPinned)
 					{
 						name = PickNumberedName(usedNames, name);
 						names[definition] = name;
@@ -329,6 +353,23 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return symbol is not IProperty { IsIndexer: true };
 			}
 
+			// Returns true if the member's name is pinned by an inheritance relationship: renaming an
+			// override severs it from the virtual member it overrides (CS0115), and renaming a member
+			// that implicitly implements an interface member leaves the interface unimplemented
+			// (CS0535). A same-signature member of an implemented interface counts as an
+			// implementation without verifying which sibling actually occupies the slot: skipping a
+			// rename merely leaves a collision behind, while renaming a genuine implementation breaks
+			// the type.
+			static bool IsInheritanceConstrained(ISymbol symbol)
+			{
+				if (symbol is not IMember member)
+					return false;
+				if (member.IsOverride)
+					return true;
+				return InheritanceHelper.GetBaseMembers(member, includeImplementedInterfaces: true)
+					.Any(baseMember => baseMember.DeclaringType.Kind == TypeKind.Interface);
+			}
+
 			foreach (var type in rootNode.DescendantsAndSelf.OfType<AstType>())
 			{
 				ISymbol? symbol = type.GetResolveResult() switch {
@@ -336,7 +377,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					TypeResolveResult typeResolveResult => typeResolveResult.Type.GetDefinition(),
 					_ => null,
 				};
-				if (symbol != null && renamedSymbols.TryGetValue(GetSymbolDefinition(symbol), out string? newName)
+				if (symbol != null && TryGetRenamedName(symbol, out string? newName)
 					&& type.GetChild(Slots.Identifier) is Identifier identifier)
 				{
 					context.Step($"Rename type reference to '{newName}'", type);

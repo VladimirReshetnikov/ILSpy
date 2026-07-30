@@ -204,7 +204,6 @@ namespace System.Runtime.CompilerServices
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static void SkipInit<T>(out T value)
 		{
-			value = default(T);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
