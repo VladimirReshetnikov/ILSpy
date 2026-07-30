@@ -23,46 +23,6 @@ using System.Collections.Generic;
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
-	/// Represents an unresolved reference to a field, method, property, or event symbol.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// Implementations usually originate from metadata signatures and are resolved lazily against an
-	/// <see cref="ITypeResolveContext"/>. This allows decompiler pipelines to carry symbolic references while type-system
-	/// construction is still in progress.
-	/// </para>
-	/// <para>
-	/// Resolution can legitimately fail (returning <see langword="null"/>) when referenced members are missing,
-	/// inaccessible in the current context, or cannot be bound because of incomplete metadata closure.
-	/// </para>
-	/// </remarks>
-	public interface IMemberReference
-	{
-		/// <summary>
-		/// Gets the declaring type reference for the member.
-		/// </summary>
-		ITypeReference DeclaringTypeReference { get; }
-
-		/// <summary>
-		/// Resolves this reference to a concrete member symbol in the specified context.
-		/// </summary>
-		/// <param name="context">
-		/// Context to use for resolving this member reference.
-		/// Which kind of context is required depends on the kind of member reference this is;
-		/// please consult the documentation of the method that was used to create this member reference,
-		/// or that of the class implementing this method.
-		/// </param>
-		/// <returns>
-		/// The resolved member symbol, or <see langword="null"/> if no matching member could be found.
-		/// </returns>
-		/// <remarks>
-		/// Implementations should not throw for ordinary lookup misses; callers expect missing references to surface as
-		/// <see langword="null"/> so they can continue with degraded semantics.
-		/// </remarks>
-		IMember? Resolve(ITypeResolveContext context);
-	}
-
-	/// <summary>
 	/// Method/field/property/event.
 	/// </summary>
 	public interface IMember : IEntity

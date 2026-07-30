@@ -82,7 +82,7 @@ public sealed class WholeProjectDecompilerTests
 	{
 		UniversalAssemblyResolver assemblyResolver = new(null, false, null);
 		TestProjectInfoProvider project = new(assemblyResolver, nullableReferenceTypes);
-		IProjectFileWriter writer = useSdkStyleProjectFormat ? ProjectFileWriterSdkStyle.Create() : ProjectFileWriterDefault.Create();
+		IProjectFileWriter writer = useSdkStyleProjectFormat ? ProjectFileWriterSdkStyle.Default : ProjectFileWriterDefault.Instance;
 		using StringWriter output = new();
 		using PEFile module = new("ICSharpCode.Decompiler.dll");
 		writer.Write(output, project, [], module);
@@ -107,7 +107,7 @@ public sealed class WholeProjectDecompilerTests
 			.With("WithCulture", "false");
 		using StringWriter output = new();
 		using PEFile module = new("ICSharpCode.Decompiler.dll");
-		ProjectFileWriterSdkStyle.Create().Write(output, project, [resource], module);
+		ProjectFileWriterSdkStyle.Default.Write(output, project, [resource], module);
 
 		Assert.That(output.ToString(), Does.Contain(
 			"<EmbeddedResource Update=\"Strings.resx\" LogicalName=\"Test.Strings.resources\" WithCulture=\"false\" />"));
@@ -545,7 +545,7 @@ public sealed class WholeProjectDecompilerTests
 	{
 		public IAssemblyResolver AssemblyResolver => assemblyResolver;
 
-		public AssemblyReferenceClassifier AssemblyReferenceClassifier { get; } = new();
+		public IAssemblyReferenceClassifier AssemblyReferenceClassifier { get; } = new AssemblyReferenceClassifier();
 
 		public CSharp.LanguageVersion LanguageVersion => CSharp.LanguageVersion.CSharp14_0;
 

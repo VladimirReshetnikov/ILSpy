@@ -143,6 +143,15 @@ namespace ICSharpCode.Decompiler.Metadata
 	}
 
 	/// <summary>
+	/// Classifies assembly references: which resolve through the GAC, and which are supplied by a
+	/// shared runtime pack.
+	/// </summary>
+	public interface IAssemblyReferenceClassifier
+	{
+		bool IsGacAssembly(IAssemblyReference reference);
+		bool IsSharedAssembly(IAssemblyReference reference, [NotNullWhen(true)] out string? runtimePack);
+	}
+	/// <summary>
 	/// Classifies assembly references for project-decompilation output decisions.
 	/// </summary>
 	/// <remarks>
@@ -155,7 +164,7 @@ namespace ICSharpCode.Decompiler.Metadata
 	/// <see cref="UniversalAssemblyResolver"/> extends this base type to provide runtime-aware classification.
 	/// </para>
 	/// </remarks>
-	public class AssemblyReferenceClassifier
+	public class AssemblyReferenceClassifier : IAssemblyReferenceClassifier
 	{
 		/// <summary>
 		/// For GAC assembly references, the WholeProjectDecompiler will omit the HintPath in the
