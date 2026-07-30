@@ -489,6 +489,16 @@ namespace ICSharpCode.Decompiler.CSharp
 					return this;
 				}
 				var elementType = ((ByReferenceType)targetType).ElementType;
+				if (this.Type is ByReferenceType sourceByRef && SameTypeName(sourceByRef.ElementType, elementType))
+				{
+					// The same type reached through different assemblies: a .NET Framework caller's
+					// System.Guid and a .NET callee's are separate definitions sharing one name. No
+					// conversion between them can be written down - both sides print the same, so
+					// `Unsafe.As<Guid, Guid>` states nothing, and the pointer form the conversion falls
+					// back to is illegal wherever unsafe code is, most visibly inside an async method,
+					// where no project setting can rescue it.
+					return this;
+				}
 				if (this.Expression is DirectionExpression thisDir && this.ILInstructions.Any(i => i.OpCode == OpCode.AddressOf)
 					&& thisDir.Expression.GetResolveResult()?.Type.GetStackType() == elementType.GetStackType())
 				{
@@ -659,6 +669,17 @@ namespace ICSharpCode.Decompiler.CSharp
 				}
 			}
 			return castExpr.WithoutILInstruction().WithRR(rr);
+		}
+
+		/// <summary>
+		/// Whether two types differ only in which assembly declares them. Reflection names carry the
+		/// full type name and the structure around it, but not that assembly - which is the whole of
+		/// the difference when one type is reached through two references to it.
+		/// </summary>
+		static bool SameTypeName(IType a, IType b)
+		{
+			return a.Kind != TypeKind.Unknown && b.Kind != TypeKind.Unknown
+				&& a.ReflectionName == b.ReflectionName;
 		}
 
 		bool IsFixedVariable()
