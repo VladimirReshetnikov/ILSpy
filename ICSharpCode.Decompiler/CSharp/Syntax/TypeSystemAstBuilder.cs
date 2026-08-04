@@ -2870,7 +2870,26 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			ConstructorDeclaration decl = new ConstructorDeclaration();
 			decl.Modifiers = GetMemberModifiers(ctor);
 			if (ShowAttributes)
-				decl.Attributes.AddRange(ConvertAttributes(ctor.GetAttributes()));
+			{
+				// A constructor is a MethodDef in metadata, so a compiler can put an attribute on one
+				// whose AttributeUsage does not include Constructor: synthesized attributes are written
+				// straight to metadata and never meet the check C# applies to source. Naming such an
+				// attribute on a constructor declaration does not compile (CS0592), so hold it back the
+				// same way a type declaration does.
+				var notRepresentable = new List<IAttribute>();
+				decl.Attributes.AddRange(ConvertAttributes(ctor.GetAttributes(),
+					appliedTo: AttributeTargets.Constructor,
+					notRepresentable: notRepresentable));
+				if (CommentOutUnrepresentableMetadata)
+				{
+					foreach (var attribute in notRepresentable)
+					{
+						decl.AddLeadingTrivia(new Comment(
+							" attribute not valid on this declaration: ["
+							+ DescribeAttribute(attribute) + "]"));
+					}
+				}
+			}
 			if (ctor.DeclaringTypeDefinition != null)
 				decl.Name = ctor.DeclaringTypeDefinition.Name;
 			foreach (IParameter p in ctor.Parameters)
