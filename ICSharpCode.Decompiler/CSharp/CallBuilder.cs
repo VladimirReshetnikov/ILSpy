@@ -375,6 +375,11 @@ namespace ICSharpCode.Decompiler.CSharp
 					callOpCode = OpCode.CallVirt;
 				}
 			}
+			if (callOpCode == OpCode.Call
+				&& TryHandleWindowsRuntimeEventCall(method, callArguments, out var eventAssignment))
+			{
+				return eventAssignment;
+			}
 			// Used for Call, CallVirt and NewObj
 			var expectedTargetDetails = new ExpectedTargetDetails {
 				CallOpCode = callOpCode
@@ -2430,6 +2435,112 @@ namespace ICSharpCode.Decompiler.CSharp
 					return false;
 				return true;
 			}
+		}
+
+		/// <summary>
+		/// Roslyn compiles a WinRT event subscription 'x.E += h' into
+		/// WindowsRuntimeMarshal.AddEventHandler(new Func&lt;T, EventRegistrationToken&gt;(x.add_E),
+		/// new Action&lt;EventRegistrationToken&gt;(x.remove_E), h), and 'x.E -= h' into
+		/// WindowsRuntimeMarshal.RemoveEventHandler(new Action&lt;EventRegistrationToken&gt;(x.remove_E), h).
+		/// The delegate arguments name the event accessors, which C# cannot reference (CS0571),
+		/// so the only legal rendering of such a call is the event assignment it came from.
+		/// </summary>
+		bool TryHandleWindowsRuntimeEventCall(IMethod method, IReadOnlyList<ILInstruction> callArguments, out ExpressionWithResolveResult result)
+		{
+			result = default;
+			if (!method.IsStatic || method.TypeArguments.Count != 1)
+				return false;
+			if (method.DeclaringType.FullName != "System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeMarshal")
+				return false;
+			IEvent? evt;
+			ILInstruction? eventTarget;
+			ILInstruction handlerArg;
+			AssignmentOperatorType op;
+			switch (method.Name)
+			{
+				case "AddEventHandler" when callArguments.Count == 3:
+					if (!IsEventAccessorDelegateCreation(callArguments[0], out var addAccessor, out eventTarget))
+						return false;
+					if (!IsEventAccessorDelegateCreation(callArguments[1], out var removeAccessor, out var removeTarget))
+						return false;
+					evt = addAccessor.AccessorOwner as IEvent;
+					if (evt == null || !addAccessor.Equals(evt.AddAccessor) || !removeAccessor.Equals(evt.RemoveAccessor))
+						return false;
+					if (!IsSameEventTarget(eventTarget, removeTarget))
+						return false;
+					handlerArg = callArguments[2];
+					op = AssignmentOperatorType.Add;
+					break;
+				case "RemoveEventHandler" when callArguments.Count == 2:
+					if (!IsEventAccessorDelegateCreation(callArguments[0], out var accessor, out eventTarget))
+						return false;
+					evt = accessor.AccessorOwner as IEvent;
+					if (evt == null || !accessor.Equals(evt.RemoveAccessor))
+						return false;
+					handlerArg = callArguments[1];
+					op = AssignmentOperatorType.Subtract;
+					break;
+				default:
+					return false;
+			}
+			if (evt.IsStatic != eventTarget.MatchLdNull())
+				return false;
+			var target = expressionBuilder.TranslateTarget(eventTarget,
+				nonVirtualInvocation: false, memberStatic: evt.IsStatic, memberDeclaringType: evt.DeclaringType);
+			bool requireTarget;
+			if (settings.AlwaysQualifyMemberReferences || expressionBuilder.HidesVariableWithName(evt.Name))
+				requireTarget = true;
+			else if (evt.IsStatic)
+				requireTarget = !expressionBuilder.IsCurrentOrContainingType(evt.DeclaringTypeDefinition);
+			else
+				requireTarget = !(target.Expression is ThisReferenceExpression);
+			var value = expressionBuilder.Translate(handlerArg, typeHint: evt.ReturnType)
+				.ConvertTo(evt.ReturnType, expressionBuilder, allowImplicitConversion: true);
+			var rr = new MemberResolveResult(target.ResolveResult, evt);
+			ExpressionWithResolveResult lhs = requireTarget
+				? new MemberReferenceExpression(target.Expression, evt.Name).WithRR(rr)
+				: new IdentifierExpression(evt.Name).WithRR(rr);
+			result = new AssignmentExpression(lhs, op, value.Expression)
+				.WithRR(new TypeResolveResult(evt.ReturnType));
+			return true;
+		}
+
+		static bool IsEventAccessorDelegateCreation(ILInstruction inst, [NotNullWhen(true)] out IMethod? accessor, [NotNullWhen(true)] out ILInstruction? target)
+		{
+			accessor = null;
+			target = null;
+			switch (inst)
+			{
+				case NewObj { Arguments: [var thisArg, var func] } newObj:
+					if (newObj.Method.DeclaringType.Kind != TypeKind.Delegate)
+						return false;
+					switch (func)
+					{
+						case LdFtn ldftn:
+							accessor = ldftn.Method;
+							break;
+						case LdVirtFtn ldVirtFtn:
+							accessor = ldVirtFtn.Method;
+							break;
+						default:
+							return false;
+					}
+					target = thisArg;
+					return true;
+				case LdVirtDelegate ldVirtDelegate:
+					accessor = ldVirtDelegate.Method;
+					target = ldVirtDelegate.Argument;
+					return true;
+				default:
+					return false;
+			}
+		}
+
+		static bool IsSameEventTarget(ILInstruction target1, ILInstruction target2)
+		{
+			// The event assignment evaluates its target once, so the two receiver
+			// expressions may only be merged if they are interchangeable and repeatable.
+			return SemanticHelper.IsPure(target1.Flags) && target1.Match(target2).Success;
 		}
 
 		internal TranslatedExpression Build(LdVirtDelegate inst)
