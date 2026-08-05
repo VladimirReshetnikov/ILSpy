@@ -3296,7 +3296,11 @@ namespace ICSharpCode.Decompiler.CSharp
 							enumDec.Initializer = typeSystemAstBuilder.ConvertConstantValue(decompilationContext.CurrentTypeDefinition.EnumUnderlyingType!, constantValue);
 						}
 					}
-					enumDec.Attributes.AddRange(field.GetAttributes().Select(a => new AttributeSection(typeSystemAstBuilder.ConvertAttribute(a))));
+					// Enum members build their AST node here rather than in TypeSystemAstBuilder, so route the
+					// attributes through ConvertAttributes to get the same AttributeUsage filtering every
+					// other declaration gets: an enum member is a field, and an attribute whose usage
+					// excludes Field cannot be written on one (CS0592).
+					enumDec.Attributes.AddRange(typeSystemAstBuilder.ConvertAttributes(field.GetAttributes(), appliedTo: AttributeTargets.Field));
 					enumDec.AddAnnotation(new MemberResolveResult(null, field));
 					return enumDec;
 				}

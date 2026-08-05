@@ -52,12 +52,10 @@ public static class Program
 	[CompilationMapping(SourceConstructFlags.Closure)]
 	internal sealed class getSeq_00405(int pc, int current) : GeneratedSequenceBase<int>
 	{
-		[DebuggerNonUserCode]
 		[DebuggerBrowsable(DebuggerBrowsableState.Never)]
 		[CompilerGenerated]
 		public int pc = pc;
 
-		[DebuggerNonUserCode]
 		[DebuggerBrowsable(DebuggerBrowsableState.Never)]
 		[CompilerGenerated]
 		public int current = current;

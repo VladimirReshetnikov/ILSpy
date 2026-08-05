@@ -107,6 +107,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task AttributeNotValidOnMember()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task NamedArgumentOverloadCollision()
 		{
 			await Run();

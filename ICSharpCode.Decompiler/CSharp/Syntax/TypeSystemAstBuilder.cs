@@ -2075,7 +2075,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			decl.IsScopedRef = parameter.Lifetime.ScopedRef;
 			if (ShowAttributes)
 			{
-				decl.Attributes.AddRange(ConvertAttributes(parameter.GetAttributes()));
+				decl.Attributes.AddRange(ConvertAttributes(parameter.GetAttributes(), appliedTo: AttributeTargets.Parameter));
 			}
 			IType parameterType;
 			if (parameter.Type.Kind == TypeKind.ByReference)
@@ -2470,7 +2470,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			}
 			if (ShowAttributes)
 			{
-				decl.Attributes.AddRange(ConvertAttributes(field.GetAttributes()));
+				decl.Attributes.AddRange(ConvertAttributes(field.GetAttributes(), appliedTo: AttributeTargets.Field));
 			}
 			if (AddResolveResultAnnotations)
 			{
@@ -2600,11 +2600,11 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				decl.Attributes.AddRange(ConvertAttributes(owner == null
 					? accessor.GetAttributes()
-					: RemoveCompilerProjectedPropertyAttributes(owner, accessor)));
-				decl.Attributes.AddRange(ConvertAttributes(accessor.GetReturnTypeAttributes(), "return"));
+					: RemoveCompilerProjectedPropertyAttributes(owner, accessor), appliedTo: AttributeTargets.Method));
+				decl.Attributes.AddRange(ConvertAttributes(accessor.GetReturnTypeAttributes(), "return", appliedTo: AttributeTargets.ReturnValue));
 				if (addParameterAttribute && accessor.Parameters.Count > 0)
 				{
-					decl.Attributes.AddRange(ConvertAttributes(accessor.Parameters.Last().GetAttributes(), "param"));
+					decl.Attributes.AddRange(ConvertAttributes(accessor.Parameters.Last().GetAttributes(), "param", appliedTo: AttributeTargets.Parameter));
 				}
 			}
 			// An explicit accessor modifier is only legal when it is strictly more restrictive
@@ -2653,7 +2653,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			decl.Modifiers = GetMemberModifiers(property);
 			if (ShowAttributes)
 			{
-				decl.Attributes.AddRange(ConvertAttributes(property.GetAttributes()));
+				decl.Attributes.AddRange(ConvertAttributes(property.GetAttributes(), appliedTo: AttributeTargets.Property));
 			}
 			if (AddResolveResultAnnotations)
 			{
@@ -2695,7 +2695,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			decl.Modifiers = GetMemberModifiers(indexer);
 			if (ShowAttributes)
 			{
-				decl.Attributes.AddRange(ConvertAttributes(indexer.GetAttributes()));
+				decl.Attributes.AddRange(ConvertAttributes(indexer.GetAttributes(), appliedTo: AttributeTargets.Property));
 			}
 			if (AddResolveResultAnnotations)
 			{
@@ -2725,7 +2725,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				decl.Modifiers = GetMemberModifiers(ev);
 				if (ShowAttributes)
 				{
-					decl.Attributes.AddRange(ConvertAttributes(ev.GetAttributes()));
+					decl.Attributes.AddRange(ConvertAttributes(ev.GetAttributes(), appliedTo: AttributeTargets.Event));
 				}
 				if (AddResolveResultAnnotations)
 				{
@@ -2745,7 +2745,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				decl.Modifiers = GetMemberModifiers(ev);
 				if (ShowAttributes)
 				{
-					decl.Attributes.AddRange(ConvertAttributes(ev.GetAttributes()));
+					decl.Attributes.AddRange(ConvertAttributes(ev.GetAttributes(), appliedTo: AttributeTargets.Event));
 				}
 				if (AddResolveResultAnnotations)
 				{
@@ -2770,8 +2770,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			decl.Modifiers = GetMemberModifiers(method);
 			if (ShowAttributes)
 			{
-				decl.Attributes.AddRange(ConvertAttributes(method.GetAttributes()));
-				decl.Attributes.AddRange(ConvertAttributes(method.GetReturnTypeAttributes(), "return"));
+				decl.Attributes.AddRange(ConvertAttributes(method.GetAttributes(), appliedTo: AttributeTargets.Method));
+				decl.Attributes.AddRange(ConvertAttributes(method.GetReturnTypeAttributes(), "return", appliedTo: AttributeTargets.ReturnValue));
 			}
 			if (AddResolveResultAnnotations)
 			{
@@ -2853,8 +2853,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			}
 			if (ShowAttributes)
 			{
-				decl.Attributes.AddRange(ConvertAttributes(op.GetAttributes()));
-				decl.Attributes.AddRange(ConvertAttributes(op.GetReturnTypeAttributes(), "return"));
+				decl.Attributes.AddRange(ConvertAttributes(op.GetAttributes(), appliedTo: AttributeTargets.Method));
+				decl.Attributes.AddRange(ConvertAttributes(op.GetReturnTypeAttributes(), "return", appliedTo: AttributeTargets.ReturnValue));
 			}
 			if (AddResolveResultAnnotations)
 			{
@@ -2908,7 +2908,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		{
 			DestructorDeclaration decl = new DestructorDeclaration();
 			if (ShowAttributes)
-				decl.Attributes.AddRange(ConvertAttributes(dtor.GetAttributes()));
+				decl.Attributes.AddRange(ConvertAttributes(dtor.GetAttributes(), appliedTo: AttributeTargets.Method));
 			if (dtor.DeclaringTypeDefinition != null)
 				decl.Name = dtor.DeclaringTypeDefinition.Name;
 			if (AddResolveResultAnnotations)

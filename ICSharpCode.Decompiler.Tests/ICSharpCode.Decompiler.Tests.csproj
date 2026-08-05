@@ -119,6 +119,7 @@
     <None Include="TestCases\ILPretty\ConstrainedCallOnRefStruct.il" />
     <None Include="TestCases\ILPretty\OutParameterWithUnresolvedSignatureType.il" />
     <None Include="TestCases\ILPretty\AttributeNotValidOnConstructor.il" />
+    <None Include="TestCases\ILPretty\AttributeNotValidOnMember.il" />
     <None Include="TestCases\ILPretty\DuplicateParameterNames.il" />
     <None Include="TestCases\ILPretty\FakeMethodOnGenericInstance.il" />
     <None Include="TestCases\ILPretty\ExtensionEncodingV2.il" />
@@ -244,6 +245,8 @@
     <None Include="TestCases\ILPretty\OutParameterWithUnresolvedSignatureType.cs" />
     <Compile Remove="TestCases\ILPretty\AttributeNotValidOnConstructor.cs" />
     <None Include="TestCases\ILPretty\AttributeNotValidOnConstructor.cs" />
+    <Compile Remove="TestCases\ILPretty\AttributeNotValidOnMember.cs" />
+    <None Include="TestCases\ILPretty\AttributeNotValidOnMember.cs" />
     <Compile Remove="TestCases\ILPretty\DuplicateParameterNames.cs" />
     <None Include="TestCases\ILPretty\DuplicateParameterNames.cs" />
     <Compile Remove="TestCases\ILPretty\FakeMethodOnGenericInstance.cs" />
