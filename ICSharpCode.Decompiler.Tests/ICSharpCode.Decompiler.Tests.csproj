@@ -361,6 +361,9 @@
     <Compile Remove="TestCases\ILPretty\WindowsRuntimeEventSubscription.cs" />
     <None Include="TestCases\ILPretty\WindowsRuntimeEventSubscription.cs" />
     <None Include="TestCases\ILPretty\WindowsRuntimeEventSubscription.il" />
+    <Compile Remove="TestCases\ILPretty\FileLocalTypes.cs" />
+    <None Include="TestCases\ILPretty\FileLocalTypes.cs" />
+    <None Include="TestCases\ILPretty\FileLocalTypes.il" />
     <Compile Remove="TestCases\Pretty\IndexRangeTest.cs" />
     <None Include="TestCases\Pretty\IndexRangeTest.cs" />
     <Compile Remove="TestCases\Pretty\MetadataAttributes.cs" />

@@ -74,6 +74,32 @@ public sealed class WholeProjectDecompilerTests
 		}
 	}
 
+	[Test]
+	public async Task FileLocalTypesFromOneFileShareOneOutputFile()
+	{
+		// File-local types are only visible inside their declaring file, so the pair the
+		// config-binder generator emits (the interceptor class and the attribute it carries)
+		// must come out in one file - split apart, the attribute reference cannot resolve.
+		// Which file that was is recorded in the <file>F<hash>__Name mangling: same hash,
+		// same file.
+		string ilFile = Path.Combine(Tester.TestCasePath, "ILPretty", "FileLocalTypes.il");
+		string assemblyPath = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
+		string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
+		TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(assemblyPath, false, null));
+		using PEFile module = new(assemblyPath);
+		decompiler.DecompileProject(module, targetDirectory);
+		AssertDirectoryDoesntExist(targetDirectory);
+
+		string mergedFile = Path.Combine(targetDirectory, "Helpers_g.AB12CD34.cs");
+		using (Assert.EnterMultipleScope())
+		{
+			Assert.That(decompiler.Files.ContainsKey(mergedFile), Is.True);
+			string source = decompiler.Files[mergedFile].ToString();
+			Assert.That(source, Does.Contain("file class Holder"));
+			Assert.That(source, Does.Contain("file static class Support"));
+		}
+	}
+
 	[TestCase(true, true)]
 	[TestCase(true, false)]
 	[TestCase(false, true)]

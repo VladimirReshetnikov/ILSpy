@@ -304,7 +304,22 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			string GetFileFileNameForHandle(TypeDefinitionHandle h)
 			{
 				var type = metadata.GetTypeDefinition(h);
-				string file = CleanUpFileName(metadata.GetString(type.Name), ".cs");
+				string metadataName = metadata.GetString(type.Name);
+				if (FileLocalTypeName.TryParse(metadataName, out _, out string? fileHash))
+				{
+					// Every file-local type carrying the same hash was declared in one source
+					// file, and only inside that file can they see each other - the config
+					// binder generator emits its interceptor class and the
+					// InterceptsLocationAttribute it is decorated with as one such pair. They
+					// have to come out in one file again, and because the members of that file
+					// may span namespaces, the group cannot take part in the per-namespace
+					// directory layout either.
+					int filePartEnd = fileHash.IndexOf('>');
+					string filePart = filePartEnd > 1 ? fileHash.Substring(1, filePartEnd - 1) : "FileLocal";
+					string hashPart = fileHash.Substring(filePartEnd + 2);
+					return CleanUpFileName(filePart + "." + hashPart.Substring(0, Math.Min(8, hashPart.Length)), ".cs");
+				}
+				string file = CleanUpFileName(metadataName, ".cs");
 				string ns = metadata.GetString(type.Namespace);
 				if (string.IsNullOrEmpty(ns))
 				{

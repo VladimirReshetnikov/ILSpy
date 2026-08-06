@@ -378,7 +378,11 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		public EntityHandle MetadataToken => handle;
 		public string MetadataName { get; }
 		public FullTypeName FullTypeName => fullTypeName;
-		public string Name => fullTypeName.Name;
+		// A file-local type carries the mangling that keeps same-named declarations in different
+		// files apart. Name is what gets written and what a simple-name lookup sees, so it is the
+		// name the source declared; FullTypeName and MetadataName keep the mangled form, which is
+		// what metadata lookups match on.
+		public string Name => FileLocalTypeName.Unmangle(fullTypeName.Name);
 
 		public IModule ParentModule => module;
 

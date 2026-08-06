@@ -2207,6 +2207,15 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				modifiers |= ModifierFromAccessibility(typeDefinition.Accessibility, UsePrivateProtectedAccessibility);
 			}
+			if (this.ShowModifiers && FileLocalTypeName.TryParse(typeDefinition.MetadataName, out _, out _))
+			{
+				// Only the mangled metadata name records that the source wrote 'file'. Without the
+				// modifier the type would be visible to the whole project, which can make its
+				// members collide with names the original never saw. 'file' replaces the
+				// accessibility keyword rather than joining it, which C# rejects (CS9052).
+				modifiers &= ~Modifiers.VisibilityMask;
+				modifiers |= Modifiers.File;
+			}
 			if (this.ShowModifiers)
 			{
 				if (typeDefinition.IsStatic || IsVisualBasicModule(typeDefinition))

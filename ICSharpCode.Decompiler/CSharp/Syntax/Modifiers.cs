@@ -59,6 +59,12 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		Async = 0x10000,
 		Ref = 0x20000,
 		Required = 0x40000,
+		/// <summary>
+		/// The 'file' modifier on a type declaration (C# 11). Not part of VisibilityMask: it
+		/// restricts a declaration to its own file but is orthogonal to the accessibility keyword,
+		/// which the declaration still carries.
+		/// </summary>
+		File = 0x80000,
 
 		VisibilityMask = Private | Internal | Protected | Public,
 
@@ -73,6 +79,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		// Not worth using a dictionary for such few elements.
 		// This table is sorted in the order that modifiers should be output when generating code.
 		public static ImmutableArray<Modifiers> AllModifiers { get; } = ImmutableArray.Create(
+			Modifiers.File,
 			Modifiers.Public, Modifiers.Private, Modifiers.Protected, Modifiers.Internal,
 			Modifiers.New,
 			Modifiers.Unsafe,
@@ -126,6 +133,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					return "ref";
 				case Modifiers.Required:
 					return "required";
+				case Modifiers.File:
+					return "file";
 				case Modifiers.Any:
 					// even though it's used for pattern matching only, 'any' needs to be in this list to be usable in the AST
 					return "any";
