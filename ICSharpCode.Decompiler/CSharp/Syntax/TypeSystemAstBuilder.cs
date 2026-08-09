@@ -2200,6 +2200,33 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return false;
 		}
 
+		/// <summary>
+		/// Gets whether the type declares an interceptor, i.e. a method carrying
+		/// InterceptsLocationAttribute.
+		/// </summary>
+		/// <remarks>
+		/// Such a method is called from the file whose location the attribute names, which is never
+		/// the file the method itself lives in - that is what interception is for. A file-local
+		/// type declaring one is therefore reachable from outside its own file in the IL and
+		/// nowhere in C#, so writing 'file' on it produces a declaration its own callers cannot
+		/// see. Worse than the error is the case where the intercepted name also exists on a real
+		/// API: the call then binds to that instead, quietly, and the output compiles while calling
+		/// something else. Leaving the accessibility the metadata gives keeps such a call bound to
+		/// the method the IL names, or failing that reports the collision.
+		/// </remarks>
+		static bool DeclaresInterceptor(ITypeDefinition typeDefinition)
+		{
+			foreach (var method in typeDefinition.Methods)
+			{
+				foreach (var attribute in method.GetAttributes())
+				{
+					if (attribute.AttributeType.Name == "InterceptsLocationAttribute")
+						return true;
+				}
+			}
+			return false;
+		}
+
 		EntityDeclaration ConvertTypeDefinition(ITypeDefinition typeDefinition)
 		{
 			Modifiers modifiers = Modifiers.None;
@@ -2207,7 +2234,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				modifiers |= ModifierFromAccessibility(typeDefinition.Accessibility, UsePrivateProtectedAccessibility);
 			}
-			if (this.ShowModifiers && FileLocalTypeName.TryParse(typeDefinition.MetadataName, out _, out _))
+			if (this.ShowModifiers && FileLocalTypeName.TryParse(typeDefinition.MetadataName, out _, out _)
+				&& !DeclaresInterceptor(typeDefinition))
 			{
 				// Only the mangled metadata name records that the source wrote 'file'. Without the
 				// modifier the type would be visible to the whole project, which can make its
