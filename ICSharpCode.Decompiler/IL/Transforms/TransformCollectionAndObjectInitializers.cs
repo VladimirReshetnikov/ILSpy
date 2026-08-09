@@ -222,6 +222,16 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					context.RequestRerun(pos);
 					return;
 				}
+				// A member whose value is impure - a property read, say - blocks the planner below,
+				// which will not move such a value past a statement that is impure in its turn.
+				// Evaluate it into a temporary where it already stands instead. Nothing then moves
+				// except the allocation: every side effect still happens in its original order, and
+				// the value the initializer carries is a plain load the planner can relocate.
+				if (TryHoistBlockedInitializerValue(block, pos, v, instType, context))
+				{
+					context.RequestRerun(pos);
+					return;
+				}
 			}
 			if (initInst is NewObj newObjForInitializer2 && v.IsSingleDefinition
 				&& TryPlanDetachedObjectInitializer(block, pos, v, instType, newObjForInitializer2, context, out var objectItemPositions))
@@ -322,6 +332,74 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		/// with <paramref name="v"/> itself, provided the alias is used for nothing but member
 		/// assignments. Returns true if such an alias was found and removed.
 		/// </summary>
+		/// <summary>
+		/// Evaluates the first member value that keeps the initializer from being reassembled into
+		/// a temporary, in the place it already occupies, and leaves the member assignment reading
+		/// that temporary. Returns false when no member is blocked this way.
+		/// </summary>
+		/// <remarks>
+		/// The planner refuses to carry an impure value past an impure statement, and rightly so:
+		/// doing that would swap two side effects. Naming the value first sidesteps the question
+		/// entirely - the read stays exactly where the original put it, and what travels into the
+		/// initializer is a load of the temporary, which reorders with anything. Only the allocation
+		/// is left to move, which is the one reordering this transform already accepts.
+		/// </remarks>
+		static bool TryHoistBlockedInitializerValue(Block block, int pos, ILVariable v, IType instType, StatementTransformContext context)
+		{
+			var itemPositions = new List<int>();
+			bool sawFillerAfterLastItem = false;
+			int blockedItem = -1;
+			for (int i = pos + 1; i < block.Instructions.Count; i++)
+			{
+				ILInstruction current = block.Instructions[i];
+				var (kind, path, values, target, _) = AccessPathElement.GetAccessPath(current, instType, context.Settings, context.CSharpResolver);
+				if (kind == AccessPathKind.Setter && target == v && path.Count == 1 && values?.Count == 1)
+				{
+					// A member reached only after some other statement, while an earlier member is
+					// still carrying an impure value, is what the planner cannot place.
+					if (sawFillerAfterLastItem && blockedItem >= 0)
+						return HoistValueOfSetter(block, blockedItem, context);
+					if (!SemanticHelper.IsPure(values[0].Flags))
+						blockedItem = i;
+					itemPositions.Add(i);
+					sawFillerAfterLastItem = false;
+					continue;
+				}
+				if (current.Descendants.OfType<IInstructionWithVariableOperand>().Any(load => load.Variable == v))
+					break;
+				sawFillerAfterLastItem = true;
+			}
+			return false;
+		}
+
+		/// <summary>
+		/// Rewrites the member assignment at <paramref name="setterPos"/> so its value is computed
+		/// by a preceding store into a fresh temporary.
+		/// </summary>
+		static bool HoistValueOfSetter(Block block, int setterPos, StatementTransformContext context)
+		{
+			if (block.Instructions[setterPos] is not CallInstruction setter)
+				return false;
+			ILInstruction value = setter.Arguments[setter.Arguments.Count - 1];
+			if (value is LdLoc)
+				return false; // already a plain load: hoisting it again would not terminate
+							  // The member's own type, so the temporary prints with the type the source would have
+							  // written rather than a raw stack type.
+			IType valueType = setter.Method.Parameters[setter.Method.Parameters.Count - 1].Type;
+			// Name the temporary after the member it feeds, in the casing a local would use, so the
+			// two do not read as the same entity where both appear on one line.
+			string? memberName = setter.Method.AccessorOwner?.Name;
+			string? localName = string.IsNullOrEmpty(memberName)
+				? null
+				: char.ToLowerInvariant(memberName![0]) + memberName.Substring(1);
+			var temporary = context.Function.RegisterVariable(VariableKind.StackSlot, valueType, localName);
+			context.Step("Evaluate blocked initializer value into a temporary", setter);
+			value.ReplaceWith(new LdLoc(temporary));
+			block.Instructions.Insert(setterPos, new StLoc(temporary, value));
+			context.EndStep(setter);
+			return true;
+		}
+
 		/// <summary>
 		/// Gets whether the object stored in <paramref name="v"/> is copied into another variable
 		/// which is then assigned a member only after some unrelated statement. That is the shape
