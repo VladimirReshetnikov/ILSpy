@@ -58,6 +58,23 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public required int X { get; set; }
 		}
 
+		internal class Prompt
+		{
+			public required uint DefaultIndex { get; init; }
+
+			public required string IconName { get; init; }
+		}
+
+		private static int? Icon => 1;
+
+		private static Prompt Build(int defaultIndex)
+		{
+			return new Prompt {
+				DefaultIndex = (uint)defaultIndex,
+				IconName = Icon?.ToString()
+			};
+		}
+
 		private static void Use(Data d)
 		{
 		}

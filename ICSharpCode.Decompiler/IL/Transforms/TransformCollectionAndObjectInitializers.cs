@@ -197,6 +197,49 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					return;
 				}
 			}
+			// The same shape for an ordinary object initializer: the scan below only follows a
+			// contiguous run, so a member whose value took statements to compute ends the
+			// initializer and takes every later member with it. Where the type has init-only or
+			// required members that is not a matter of style, so move the allocation down to where
+			// the members are contiguous, exactly as the with-expression case does.
+			if (initInst is NewObj newObjForInitializer && v.IsSingleDefinition
+				&& TypeContainsInitOnlyOrRequiredMembers(newObjForInitializer.Method.DeclaringTypeDefinition, context.Settings.RequiredMembers))
+			{
+				// The allocation lands in a stack slot and is copied into a local partway through
+				// the member assignments, so the members before and after that copy name different
+				// variables and the scan below stops at the copy. Unify them first: both are single
+				// definitions holding the same reference, so replacing one by the other is a
+				// rename. Unlike the clone case this does not require every use to be a setter
+				// target - the local is typically returned as well, and a rename is safe either way.
+				//
+				// Only worth doing when a member assignment is actually stranded behind an
+				// intervening statement. Propagating whenever an alias exists would rename the
+				// local in every ordinary debug build, where the alias IS the variable the source
+				// declared and the scan handles the members perfectly well without help.
+				if (HasSetterSeparatedFromAlias(block, pos, v, instType, context)
+					&& TryPropagateCloneAlias(block, pos, v, instType, context, requireSetterTargetsOnly: false))
+				{
+					context.RequestRerun(pos);
+					return;
+				}
+			}
+			if (initInst is NewObj newObjForInitializer2 && v.IsSingleDefinition
+				&& TryPlanDetachedObjectInitializer(block, pos, v, instType, newObjForInitializer2, context, out var objectItemPositions))
+			{
+				context.Step("Move object creation down to its initializer", inst);
+				int landingPos = objectItemPositions[objectItemPositions.Count - 1] - objectItemPositions.Count;
+				var moved = new List<ILInstruction>(objectItemPositions.Count + 1) { inst };
+				foreach (int itemPos in objectItemPositions)
+					moved.Add(block.Instructions[itemPos]);
+				for (int i = objectItemPositions.Count - 1; i >= 0; i--)
+					block.Instructions.RemoveAt(objectItemPositions[i]);
+				block.Instructions.RemoveAt(pos);
+				for (int i = 0; i < moved.Count; i++)
+					block.Instructions.Insert(landingPos + i, moved[i]);
+				context.RequestRerun(landingPos);
+				context.EndStep(inst);
+				return;
+			}
 			int initializerItemsCount = 0;
 			bool initializerContainsInitOnlyItems = false;
 			possibleIndexVariables.Clear();
@@ -279,14 +322,57 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		/// with <paramref name="v"/> itself, provided the alias is used for nothing but member
 		/// assignments. Returns true if such an alias was found and removed.
 		/// </summary>
-		static bool TryPropagateCloneAlias(Block block, int pos, ILVariable v, IType instType, StatementTransformContext context)
+		/// <summary>
+		/// Gets whether the object stored in <paramref name="v"/> is copied into another variable
+		/// which is then assigned a member only after some unrelated statement. That is the shape
+		/// where unifying the two variables buys something: the member is stranded behind the
+		/// intervening statement and would otherwise fall out of the initializer.
+		/// </summary>
+		static bool HasSetterSeparatedFromAlias(Block block, int pos, ILVariable v, IType instType, StatementTransformContext context)
+		{
+			ILVariable? alias = null;
+			bool sawInterveningStatement = false;
+			for (int i = pos + 1; i < block.Instructions.Count; i++)
+			{
+				ILInstruction current = block.Instructions[i];
+				if (alias == null)
+				{
+					if (current is StLoc { Variable: { IsSingleDefinition: true, AddressCount: 0, LoadCount: > 0 } candidate } aliasStore
+						&& aliasStore.Value.MatchLdLoc(v))
+					{
+						alias = candidate;
+						continue;
+					}
+					// Before the copy, only the object's own member assignments may intervene;
+					// anything else means this is not one initializer being split.
+					var (kindBefore, pathBefore, _, targetBefore, _) = AccessPathElement.GetAccessPath(current, instType, context.Settings, context.CSharpResolver);
+					if (kindBefore != AccessPathKind.Setter || targetBefore != v || pathBefore.Count != 1)
+						return false;
+					continue;
+				}
+				var (kind, path, _, target, _) = AccessPathElement.GetAccessPath(current, instType, context.Settings, context.CSharpResolver);
+				if (kind == AccessPathKind.Setter && target == alias && path.Count == 1)
+				{
+					if (sawInterveningStatement)
+						return true;
+					continue;
+				}
+				if (current.Descendants.OfType<IInstructionWithVariableOperand>().Any(load => load.Variable == alias))
+					return false;
+				sawInterveningStatement = true;
+			}
+			return false;
+		}
+
+		static bool TryPropagateCloneAlias(Block block, int pos, ILVariable v, IType instType, StatementTransformContext context,
+			bool requireSetterTargetsOnly = true)
 		{
 			for (int i = pos + 1; i < block.Instructions.Count; i++)
 			{
 				ILInstruction current = block.Instructions[i];
 				if (current is StLoc { Variable: { IsSingleDefinition: true, AddressCount: 0, LoadCount: > 0 } alias } aliasStore
 					&& aliasStore.Value.MatchLdLoc(v)
-					&& alias.LoadInstructions.All(IsPropertySetterTarget))
+					&& (!requireSetterTargetsOnly || alias.LoadInstructions.All(IsPropertySetterTarget)))
 				{
 					CopyPropagation.Propagate(aliasStore, context);
 					return true;
@@ -325,6 +411,51 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			ILInstruction source = cloneCall.Arguments[0];
 			if (!SemanticHelper.IsPure(source.Flags))
 				return false;
+			return TryPlanDetachedInitializer(block, pos, v, instType, source, context, out itemPositions);
+		}
+
+		/// <summary>
+		/// The same plan for an object initializer: the allocation stored in <paramref name="v"/>
+		/// moves down to where its member assignments are contiguous, so that members whose values
+		/// took statements to compute still land inside the initializer.
+		/// </summary>
+		/// <remarks>
+		/// Only attempted for a type carrying init-only or required members, where the detached form
+		/// is unwritable rather than merely ugly: an init-only member assigned outside an
+		/// initializer is CS8852, and a required member left out of one is CS9035, which no later
+		/// statement can satisfy.
+		///
+		/// Unlike the clone call above, the allocation cannot be shown harmless - the constructor
+		/// usually belongs to another assembly, whose method bodies are never loaded - so what is
+		/// checked instead is that nothing user-written travels with it (the constructor arguments
+		/// are pure) and that nothing it passes can observe it. The constructor running later is
+		/// accepted on the same ground the with-case accepts a mutating copy: the alternative does
+		/// not compile at all.
+		/// </remarks>
+		static bool TryPlanDetachedObjectInitializer(Block block, int pos, ILVariable v, IType instType,
+			NewObj newObjInst, StatementTransformContext context, [NotNullWhen(true)] out List<int>? itemPositions)
+		{
+			itemPositions = null;
+			if (!TypeContainsInitOnlyOrRequiredMembers(newObjInst.Method.DeclaringTypeDefinition, context.Settings.RequiredMembers))
+				return false;
+			foreach (var argument in newObjInst.Arguments)
+			{
+				if (!SemanticHelper.IsPure(argument.Flags))
+					return false;
+			}
+			return TryPlanDetachedInitializer(block, pos, v, instType, source: null, context, out itemPositions);
+		}
+
+		/// <summary>
+		/// Shared body of the two planners above. <paramref name="source"/> is the instruction that
+		/// travels down with the initializer target and must be reorderable with everything it
+		/// passes; null where the travelling instruction is the allocation itself, which is impure
+		/// by construction and so could never satisfy that test (see the remarks above).
+		/// </summary>
+		static bool TryPlanDetachedInitializer(Block block, int pos, ILVariable v, IType instType,
+			ILInstruction? source, StatementTransformContext context, [NotNullWhen(true)] out List<int>? itemPositions)
+		{
+			itemPositions = null;
 			var items = new List<int>();
 			var itemValues = new List<ILInstruction>();
 			var fillersBeforeItem = new List<int>();
@@ -354,7 +485,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				// assigns an init-only member outside any initializer and cannot compile
 				// (CS8852). The receiver expression itself must still be reorderable, so writes
 				// to the receiver local are caught.
-				if (!SemanticHelper.MayReorder(source, current))
+				if (source != null && !SemanticHelper.MayReorder(source, current))
 					break;
 				// The values of the member assignments found so far move past this statement, too.
 				if (itemValues.Any(value => !SemanticHelper.MayReorder(value, current)))
