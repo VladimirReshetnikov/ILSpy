@@ -187,7 +187,12 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				// to match the base member's ref-kind (CS0115). When the contract declares the parameter
 				// 'ref', follow the contract. The [Out] flag itself is then dropped rather than written out,
 				// because [Out] without [In] on a byref parameter is not valid C# either (see GetAttributes).
-				if (ContractParameterIs(ReferenceKind.Ref))
+				// Only when the contracts AGREE on 'ref'. A type can reach several contracts that
+				// disagree - an interface declaring the parameter 'ref' and a base class declaring
+				// it 'out' - and then the metadata flag is the only statement about this member
+				// itself, so it stands.
+				var contracts = GetContractReferenceKinds();
+				if (contracts == ContractKinds.Ref)
 					return ReferenceKind.Ref;
 				return ReferenceKind.Out;
 			}
@@ -210,51 +215,67 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			// ParameterAttributes.Out flag, because the VB compiler does not emit one. Without the flag it
 			// would render as 'ref' and no longer match the overridden/implemented 'out' member, so the
 			// override fails to bind (CS0115/CS0534/CS0539). Recover the direction from the contract.
-			if (ContractParameterIs(ReferenceKind.Out))
+			// Same rule in the other direction: recover 'out' from the contracts only where they
+			// agree on it.
+			if (GetContractReferenceKinds() == ContractKinds.Out)
 				return ReferenceKind.Out;
 			return ReferenceKind.Ref;
 		}
 
+		[Flags]
+		enum ContractKinds
+		{
+			None = 0,
+			Ref = 1,
+			Out = 2,
+		}
+
 		/// <summary>
-		/// Returns true if the corresponding parameter of a member that this parameter's owning method
-		/// implements or overrides is declared with the given <paramref name="kind"/>. 'out' and 'ref'
-		/// share the same byref signature, so the contract is what distinguishes them when the
-		/// implementation's own [Out] flag disagrees with the base member.
+		/// Returns which reference kinds the corresponding parameter carries across every member that
+		/// this parameter's owning method implements or overrides. 'out' and 'ref' share the same byref
+		/// signature, so the contracts are what distinguish them when the implementation's own [Out]
+		/// flag disagrees. Several contracts can apply at once and can contradict each other, so all of
+		/// them are collected: only a unanimous answer is allowed to overrule the metadata flag.
 		/// </summary>
-		bool ContractParameterIs(ReferenceKind kind)
+		ContractKinds GetContractReferenceKinds()
 		{
 			if (Owner is not IMethod method || handle.IsNil)
-				return false;
+				return ContractKinds.None;
 			// Reading a contract parameter's ReferenceKind asks this same question of that parameter,
 			// and metadata can name an interface that inherits from one inheriting it back. The base
 			// type walk is finite, but the question would keep bouncing between the two members, so
 			// stop as soon as it comes back around: an unanswerable contract constrains nothing.
 			using var busyLock = BusyManager.Enter(this);
 			if (!busyLock.Success)
-				return false;
+				return ContractKinds.None;
 			int parameterIndex = module.metadata.GetParameter(handle).SequenceNumber - 1;
 			if (parameterIndex < 0)
-				return false;
-			bool ParameterHasKind(IMember contract)
+				return ContractKinds.None;
+			ContractKinds found = ContractKinds.None;
+			ContractKinds KindOf(IMember contract)
 			{
-				return contract is IMethod contractMethod
-					&& parameterIndex < contractMethod.Parameters.Count
-					&& contractMethod.Parameters[parameterIndex].ReferenceKind == kind;
+				if (contract is not IMethod contractMethod || parameterIndex >= contractMethod.Parameters.Count)
+					return ContractKinds.None;
+				return contractMethod.Parameters[parameterIndex].ReferenceKind switch {
+					ReferenceKind.Ref => ContractKinds.Ref,
+					ReferenceKind.Out => ContractKinds.Out,
+					_ => ContractKinds.None
+				};
 			}
 			// Direct interface-implementation links cover Visual Basic 'Implements' (renamed or not)
 			// and C#-style explicit implementations; they name the implemented member outright, so
 			// they are authoritative.
 			foreach (var contract in method.ExplicitlyImplementedInterfaceMembers)
 			{
-				if (ParameterHasKind(contract))
-					return true;
+				found |= KindOf(contract);
 			}
 			// GetBaseMembers additionally covers overrides and implicit same-signature interface
 			// implementations. It matches by name and byref-insensitive signature alone, so each
 			// candidate still has to be checked for actually constraining this method.
 			foreach (var contract in InheritanceHelper.GetBaseMembers(method, includeImplementedInterfaces: true))
 			{
-				if (!ParameterHasKind(contract))
+				var kind = KindOf(contract);
+				if (kind == ContractKinds.None)
 					continue;
 				if (contract.DeclaringType.Kind == TypeKind.Interface)
 				{
@@ -268,7 +289,8 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 						continue;
 					if (IsExplicitlyImplementedInDeclaringType(contract))
 						continue;
-					return true;
+					found |= kind;
+					continue;
 				}
 				// GetBaseMembers also returns a base class member that this method merely hides
 				// (a 'new' member). Hiding does not require a matching ref-kind, so a hidden
@@ -276,9 +298,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				// constrains the parameter direction. Skip a hidden non-interface base member.
 				if (!method.IsOverride)
 					continue;
-				return true;
+				found |= kind;
 			}
-			return false;
+			return found;
 		}
 
 		/// <summary>
