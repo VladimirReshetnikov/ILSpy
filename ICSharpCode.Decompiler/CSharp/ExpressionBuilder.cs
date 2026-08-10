@@ -542,16 +542,44 @@ namespace ICSharpCode.Decompiler.CSharp
 			};
 		}
 
+		/// <summary>
+		/// Matches a stackalloc size argument of the form 'count * sizeof(T)', in either operand
+		/// order and through any width conversion wrapping the product or the sizeof.
+		/// </summary>
+		internal static bool MatchStackAllocSize(ILInstruction size, [NotNullWhen(true)] out IType? elementType, [NotNullWhen(true)] out ILInstruction? count)
+		{
+			elementType = null;
+			count = null;
+			size = size.UnwrapConv(ConversionKind.ZeroExtend).UnwrapConv(ConversionKind.SignExtend);
+			if (!size.MatchBinaryNumericInstruction(BinaryNumericOperator.Mul, out var left, out var right))
+				return false;
+			if (right.UnwrapConv(ConversionKind.SignExtend).UnwrapConv(ConversionKind.ZeroExtend).MatchSizeOf(out elementType))
+			{
+				count = left;
+				return true;
+			}
+			if (left.UnwrapConv(ConversionKind.SignExtend).UnwrapConv(ConversionKind.ZeroExtend).MatchSizeOf(out elementType))
+			{
+				count = right;
+				return true;
+			}
+			return false;
+		}
+
 		StackAllocExpression TranslateLocAlloc(LocAlloc inst, IType typeHint, out IType elementType)
 		{
 			TranslatedExpression countExpression;
 			PointerType? pointerType;
-			if (inst.Argument.MatchBinaryNumericInstruction(BinaryNumericOperator.Mul, out var left, out var right)
-				&& right.UnwrapConv(ConversionKind.SignExtend).UnwrapConv(ConversionKind.ZeroExtend).MatchSizeOf(out var sizeOfElementType))
+			// The size argument is 'count * sizeof(T)', but neither the operand order nor the width
+			// conversion around it is fixed: the pre-Roslyn compiler writes the sizeof first, and
+			// the product reaches localloc through a conv.u/conv.i that has to come off before the
+			// multiplication is visible at all. Missing either shape loses the element type, and
+			// the fallback then stackallocs bytes and assigns them to a T* (CS8346).
+			if (MatchStackAllocSize(inst.Argument, out var sizeOfElementType, out var countInstruction))
 			{
 				// Determine the element type from the sizeof
 				elementType = sizeOfElementType;
-				countExpression = Translate(left.UnwrapConv(ConversionKind.ZeroExtend));
+				countExpression = Translate(countInstruction.UnwrapConv(ConversionKind.ZeroExtend));
 				pointerType = new PointerType(elementType);
 			}
 			else

@@ -105,8 +105,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			// declaring the pointer as T* is what lets the stackalloc be written without a cast, which
 			// C# does not allow on one. A size that says nothing gives a byte buffer, which the size
 			// is measured in anyway.
-			var elementType = allocation.Argument.MatchBinaryNumericInstruction(BinaryNumericOperator.Mul, out _, out var right)
-				&& right.UnwrapConv(ConversionKind.SignExtend).UnwrapConv(ConversionKind.ZeroExtend).MatchSizeOf(out var sizeOfElementType)
+			// Shares the matcher with ExpressionBuilder.TranslateLocAlloc: the two decide the same
+			// question and disagreeing means declaring a pointer of one type and stackallocating
+			// another.
+			var elementType = CSharp.ExpressionBuilder.MatchStackAllocSize(allocation.Argument, out var sizeOfElementType, out _)
 					? sizeOfElementType
 					: context.TypeSystem.FindType(KnownTypeCode.Byte);
 			return new PointerType(elementType);
