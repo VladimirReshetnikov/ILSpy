@@ -152,7 +152,19 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 						// and using the main assembly can cause a stack overflow if there
 						// are internal assembly attributes.
 					}
-					anyTypeDef = typeDef;
+					// Several modules can declare the same non-public name in one merged namespace,
+					// and the last one scanned used to win. Which one that is depends on module
+					// order, so the name resolves to a type the assembly being decompiled may not
+					// even see, and the output is then either ambiguous (CS0104) or qualified
+					// against a type it never meant. The module under decompilation is the one
+					// whose declaration its own code refers to, so prefer it. Module identity
+					// only: calling InternalsVisibleTo here is what the note above warns against.
+					if (anyTypeDef == null
+						|| (typeDef.ParentModule == compilation.MainModule
+							&& anyTypeDef.ParentModule != compilation.MainModule))
+					{
+						anyTypeDef = typeDef;
+					}
 				}
 			}
 			return anyTypeDef;
