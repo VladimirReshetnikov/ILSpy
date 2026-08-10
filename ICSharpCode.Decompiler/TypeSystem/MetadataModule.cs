@@ -50,6 +50,32 @@ namespace ICSharpCode.Decompiler.TypeSystem
 
 		internal readonly MetadataReader metadata;
 		readonly TypeSystemOptions options;
+
+		// The source names of file-local types that more than one type in this module declares.
+		// Their mangling is what keeps them apart, so those are the ones whose declarations must
+		// keep it: unmangling them would give several types one name, and the references would
+		// have nothing to bind to. Built once, on first use.
+		volatile HashSet<string> ambiguousFileLocalNames;
+
+		internal bool IsAmbiguousFileLocalName(string sourceName)
+		{
+			var names = ambiguousFileLocalNames;
+			if (names == null)
+			{
+				var seen = new HashSet<string>();
+				var ambiguous = new HashSet<string>();
+				foreach (var handle in metadata.TypeDefinitions)
+				{
+					string metadataName = metadata.GetString(metadata.GetTypeDefinition(handle).Name);
+					if (!FileLocalTypeName.TryParse(metadataName, out string name, out _))
+						continue;
+					if (!seen.Add(name))
+						ambiguous.Add(name);
+				}
+				ambiguousFileLocalNames = names = ambiguous;
+			}
+			return names.Contains(sourceName);
+		}
 		internal readonly TypeProvider TypeProvider;
 		internal readonly Nullability NullableContext;
 

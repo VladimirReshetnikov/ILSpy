@@ -2237,7 +2237,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				modifiers |= ModifierFromAccessibility(typeDefinition.Accessibility, UsePrivateProtectedAccessibility);
 			}
-			if (this.ShowModifiers && FileLocalTypeName.TryParse(typeDefinition.MetadataName, out _, out _)
+			if (this.ShowModifiers && typeDefinition is ICSharpCode.Decompiler.TypeSystem.Implementation.MetadataTypeDefinition { IsFileLocal: true }
 				&& !DeclaresInterceptor(typeDefinition))
 			{
 				// Only the mangled metadata name records that the source wrote 'file'. Without the

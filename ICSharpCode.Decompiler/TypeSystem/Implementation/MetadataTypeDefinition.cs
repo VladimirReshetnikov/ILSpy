@@ -386,7 +386,18 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		// files apart. Name is what gets written and what a simple-name lookup sees, so it is the
 		// name the source declared; FullTypeName and MetadataName keep the mangled form, which is
 		// what metadata lookups match on.
-		public string Name => FileLocalTypeName.Unmangle(fullTypeName.Name);
+		public string Name => IsFileLocal ? FileLocalTypeName.Unmangle(fullTypeName.Name) : fullTypeName.Name;
+
+		/// <summary>
+		/// True when this is a file-local type whose source name is unique in the module, so the
+		/// mangling can be dropped and the declaration written with 'file'. A source name several
+		/// file-local types share - the per-interface helpers a COM interop generator emits, for
+		/// instance - has to keep its mangled name: unmangling would collapse them onto one name
+		/// that no reference could resolve.
+		/// </summary>
+		internal bool IsFileLocal =>
+			FileLocalTypeName.TryParse(MetadataName, out string sourceName, out _)
+			&& !module.IsAmbiguousFileLocalName(sourceName);
 
 		public IModule ParentModule => module;
 
