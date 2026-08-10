@@ -278,8 +278,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				case TypeKind.Tuple:
 					tupleCardinality = ((TupleType)type).ElementTypes.Length;
 					return true;
-				case TypeKind.Class:
 				case TypeKind.Struct:
+					// C# requires System.ValueTuple to be a struct, so a class of that name is
+					// some other type that happens to share it and must not become tuple syntax.
 					if (type.Namespace == "System" && type.Name == "ValueTuple")
 					{
 						int tpc = type.TypeParameterCount;
@@ -310,7 +311,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		public static TupleType FromUnderlyingType(ICompilation compilation, IType type)
 		{
 			var elementTypes = GetTupleElementTypes(type);
-			if (elementTypes.Length > 0)
+			if (!elementTypes.IsDefaultOrEmpty)
 			{
 				return new TupleType(
 					compilation,

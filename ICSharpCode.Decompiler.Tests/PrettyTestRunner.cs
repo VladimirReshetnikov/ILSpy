@@ -1029,7 +1029,7 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
-		public async Task InterfaceTests([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
+		public async Task InterfaceTests([ValueSource(nameof(defaultOptionsWithMcs))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
 		}

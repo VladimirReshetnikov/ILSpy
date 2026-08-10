@@ -168,6 +168,7 @@
     <None Include="TestCases\ILPretty\FSharpUsing.fs" />
     <None Include="TestCases\ILPretty\FSharpUsing_Debug.il" />
     <None Include="TestCases\ILPretty\DirectCallToExplicitInterfaceImpl.il" />
+    <None Include="TestCases\ILPretty\TruncatedAccessorBody.il" />
     <None Include="TestCases\ILPretty\FSharpUsing_Release.il" />
     <None Include="TestCases\Correctness\BitNot.il" />
     <None Include="TestCases\Correctness\Readme.txt" />
@@ -180,6 +181,7 @@
     <None Include="TestCases\VBPretty\Issue1906.vb" />
     <None Include="TestCases\VBPretty\Issue2192.vb" />
     <None Include="TestCases\VBPretty\Select.vb" />
+    <None Include="TestCases\VBPretty\VBAnonymousTypes.vb" />
     <None Include="TestCases\VBPretty\ParameterizedProperties.vb" />
     <None Include="TestCases\ILPretty\Unsafe.il" />
     <None Include="TestCases\ILPretty\Issue1389.il" />
@@ -316,6 +318,10 @@
     <None Include="TestCases\ILPretty\OrderByThenByRangeVariable.cs" />
     <Compile Remove="TestCases\ILPretty\EmptyBodies.cs" />
     <None Include="TestCases\ILPretty\EmptyBodies.cs" />
+    <Compile Remove="TestCases\ILPretty\TruncatedAccessorBody.cs" />
+    <None Include="TestCases\ILPretty\TruncatedAccessorBody.cs" />
+    <Compile Remove="TestCases\ILPretty\SealedRecordProtectedCopyCtor.cs" />
+    <None Include="TestCases\ILPretty\SealedRecordProtectedCopyCtor.cs" />
     <Compile Remove="TestCases\ILPretty\FSharpLoops_Debug.cs" />
     <None Include="TestCases\ILPretty\FSharpLoops_Debug.cs" />
     <Compile Remove="TestCases\ILPretty\FSharpLoops_Release.cs" />
@@ -392,6 +398,16 @@
     <None Include="TestCases\Ugly\NoNewOfT.Expected.cs" />
     <Compile Remove="TestCases\Ugly\NoPropertiesAndEvents.Expected.cs" />
     <None Include="TestCases\Ugly\NoPropertiesAndEvents.Expected.cs" />
+    <!-- top-level statements: neither the input nor the expected output can be compiled
+         into the test assembly, which is a library and has its own entry point rules -->
+    <Compile Remove="TestCases\Ugly\TopLevelProgram.cs" />
+    <None Include="TestCases\Ugly\TopLevelProgram.cs" />
+    <Compile Remove="TestCases\Ugly\TopLevelProgram.Expected.cs" />
+    <None Include="TestCases\Ugly\TopLevelProgram.Expected.cs" />
+    <Compile Remove="TestCases\Ugly\TopLevelProgramAsync.cs" />
+    <None Include="TestCases\Ugly\TopLevelProgramAsync.cs" />
+    <Compile Remove="TestCases\Ugly\TopLevelProgramAsync.Expected.cs" />
+    <None Include="TestCases\Ugly\TopLevelProgramAsync.Expected.cs" />
     <Compile Remove="TestCases\VBPretty\VBCompoundAssign.cs" />
     <None Include="TestCases\VBPretty\VBCompoundAssign.cs" />
   </ItemGroup>

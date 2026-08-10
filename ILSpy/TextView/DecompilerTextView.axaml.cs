@@ -617,8 +617,9 @@ namespace ICSharpCode.ILSpy.TextView
 
 		void ApplyAllDisplaySettings(DisplaySettings s)
 		{
-			ApplyDisplaySetting(s, nameof(DisplaySettings.SelectedFont));
-			ApplyDisplaySetting(s, nameof(DisplaySettings.SelectedFontSize));
+			// Font family/size and the themed background/selection are not handled here:
+			// DecompilerTextEditor itself follows those settings, shared with every other
+			// surface hosting the editor (metadata row details).
 			ApplyDisplaySetting(s, nameof(DisplaySettings.ShowLineNumbers));
 			ApplyDisplaySetting(s, nameof(DisplaySettings.EnableWordWrap));
 			ApplyDisplaySetting(s, nameof(DisplaySettings.HighlightCurrentLine));
@@ -631,14 +632,6 @@ namespace ICSharpCode.ILSpy.TextView
 		{
 			switch (propertyName)
 			{
-				case nameof(DisplaySettings.SelectedFont):
-					if (!string.IsNullOrEmpty(s.SelectedFont))
-						Editor.FontFamily = new FontFamily(s.SelectedFont);
-					break;
-				case nameof(DisplaySettings.SelectedFontSize):
-					if (s.SelectedFontSize > 0)
-						Editor.FontSize = s.SelectedFontSize;
-					break;
 				case nameof(DisplaySettings.ShowLineNumbers):
 					Editor.ShowLineNumbers = s.ShowLineNumbers;
 					break;
@@ -850,6 +843,13 @@ namespace ICSharpCode.ILSpy.TextView
 			return false;
 		}
 
+		// The last line the one-shot navigation highlight was played on in this view, or null when
+		// none has played yet. The adorner itself self-dismisses after its ~800 ms lifetime, so an
+		// observer polling the renderer collection can miss the entire play when the dispatcher
+		// stalls (a headless test on a loaded CI runner); this record is the persistent evidence
+		// that the highlight ran, and where.
+		internal int? LastHighlightPlayedLine { get; private set; }
+
 		void ScrollToLine(int line, Bookmarks.BookmarkViewState? viewState = null)
 		{
 			var document = Editor.Document;
@@ -869,6 +869,7 @@ namespace ICSharpCode.ILSpy.TextView
 					RestoreBookmarkFoldings(viewState);
 				CenterLineInView(document, line);
 				LineHighlightAdorner.DisplayLineHighlight(Editor.TextArea, line);
+				LastHighlightPlayedLine = line;
 				bookmarkMargin?.PulseLine(line);
 			}, DispatcherPriority.Background);
 		}

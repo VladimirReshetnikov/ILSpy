@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017 Daniel Grunwald
+﻿// Copyright (c) 2014-2017 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -980,8 +980,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			// Exactly one of resultVariable/leaveTarget must be null
 			if ((resultVariable == null) == (leaveTarget == null))
 				return;
-			// C# has no ref switch expression: a switch whose sections yield managed references has
-			// to stay a statement, each section returning by reference on its own.
+			// C# has no ref-returning switch expression: an arm cannot be `0 => ref x`.
 			if (resultType == StackType.Ref)
 				return;
 			if (switchInst.Value is StringToInt str2int)

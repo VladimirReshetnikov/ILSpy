@@ -703,6 +703,13 @@ namespace ICSharpCode.Decompiler.CSharp
 				return new CastExpression(ConvertType(type), expr.WithRR(crr))
 					.WithRR(new ConversionResolveResult(type, crr, Conversion.NullLiteralConversion));
 			}
+			else if (type.IsKnownType(KnownTypeCode.Decimal))
+			{
+				expr = new PrimitiveExpression(0m);
+				constantType = type;
+				constantValue = 0m;
+				return expr.WithRR(new ConstantResolveResult(constantType, constantValue));
+			}
 			else
 			{
 				expr = new DefaultValueExpression(ConvertType(type));
@@ -5307,6 +5314,12 @@ namespace ICSharpCode.Decompiler.CSharp
 		{
 			IType rhsType = inst.Pattern.Variable.Type;
 			var rhs = Translate(inst.Pattern.TestedOperand, rhsType);
+			if (rhs.Expression is DirectionExpression dirExpr)
+			{
+				// Deconstructing a value type takes the address of the deconstructed value:
+				// (ref x) => x
+				rhs = rhs.UnwrapChild(dirExpr.Expression);
+			}
 			rhs = rhs.ConvertTo(rhsType, this); // TODO allowImplicitConversion
 			var assignments = inst.Assignments.Instructions;
 			var inits = inst.Init;

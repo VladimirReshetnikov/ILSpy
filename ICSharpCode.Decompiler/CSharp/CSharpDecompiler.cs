@@ -268,6 +268,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				new CombineQueryExpressions(),
 				new NormalizeBlockStatements(),
 				new FlattenSwitchBlocks(),
+				new RenameVisualBasicAnonymousTypes(), // must run before FixNameCollisions
 				new FixNameCollisions(),
 				new RemoveRepeatedAttributes(), // must run after the decompiler's own attribute removals
 				new AddXmlDocumentationTransform(),
@@ -510,25 +511,38 @@ namespace ICSharpCode.Decompiler.CSharp
 				return false;
 			signature.Reset();
 
+			// The shortest possible forwarding stub loads every argument with a one-byte
+			// ldarg.N; the longest uses the four-byte ldarg form. Both end in call + ret.
+			int minimumMethodSize = 1 * (parameterCount + 1) + 5 + 1;
 			int maximumMethodSize = 4 * (parameterCount + 1) + 5 + 1;
 
 			var body = module.Reader.GetMethodBody(method.RelativeVirtualAddress);
 			var reader = body.GetILReader();
 
-			if (reader.RemainingBytes > maximumMethodSize)
+			// Reference assemblies keep the method RVA but strip the body, so a body far
+			// too short for the stub must be rejected before any of the reads below.
+			if (reader.RemainingBytes < minimumMethodSize || reader.RemainingBytes > maximumMethodSize)
 				return false;
 
 			for (int i = 0; i < parameterCount + 1; i++)
 			{
 				int index;
+				// The long ldarg forms are wider than the one byte per argument that the
+				// minimum size accounts for, so the body can still run out mid-loop.
+				if (reader.RemainingBytes < 1)
+					return false;
 				switch (reader.DecodeOpCode())
 				{
 					case ILOpCode.Ldarg:
+						if (reader.RemainingBytes < 2)
+							return false;
 						index = reader.ReadUInt16();
 						if (index != i)
 							return false;
 						break;
 					case ILOpCode.Ldarg_s:
+						if (reader.RemainingBytes < 1)
+							return false;
 						index = reader.ReadByte();
 						if (index != i)
 							return false;
@@ -553,6 +567,10 @@ namespace ICSharpCode.Decompiler.CSharp
 						return false;
 				}
 			}
+
+			// call <4-byte token> + ret
+			if (reader.RemainingBytes < 6)
+				return false;
 
 			if (reader.DecodeOpCode() != ILOpCode.Call)
 				return false;
@@ -662,8 +680,13 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		internal static bool IsTransparentIdentifier(string identifier)
 		{
-			return identifier.StartsWith("<>", StringComparison.Ordinal)
-				&& (identifier.Contains("TransparentIdentifier") || identifier.Contains("TranspIdent"));
+			if (identifier.StartsWith("<>", StringComparison.Ordinal))
+			{
+				return identifier.Contains("TransparentIdentifier") || identifier.Contains("TranspIdent");
+			}
+			// The VB compiler names the carriers of its query range variables
+			// $VB$It, $VB$It1, $VB$It2 and $VB$ItAnonymous.
+			return identifier.StartsWith("$VB$It", StringComparison.Ordinal);
 		}
 		#endregion
 
@@ -1450,8 +1473,6 @@ namespace ICSharpCode.Decompiler.CSharp
 
 			bool first = true;
 			ITypeDefinition? parentTypeDef = null;
-			ExtensionInfo? parentExtensionInfo = null;
-
 			foreach (var entity in definitions)
 			{
 				switch (entity.Kind)
@@ -1470,8 +1491,7 @@ namespace ICSharpCode.Decompiler.CSharp
 						break;
 					case HandleKind.MethodDefinition:
 						IMethod method = module.GetDefinition((MethodDefinitionHandle)entity);
-						parentExtensionInfo = method.ResolveExtensionInfo();
-						syntaxTree.Members.Add(DoDecompile(method, decompileRun, new SimpleTypeResolveContext(method), parentExtensionInfo));
+						syntaxTree.Members.Add(DoDecompile(method, decompileRun, new SimpleTypeResolveContext(method), method.ResolveExtensionInfo()));
 						if (first)
 						{
 							parentTypeDef = method.DeclaringTypeDefinition;
@@ -1488,14 +1508,14 @@ namespace ICSharpCode.Decompiler.CSharp
 						break;
 					case HandleKind.PropertyDefinition:
 						IProperty property = module.GetDefinition((PropertyDefinitionHandle)entity);
-						parentExtensionInfo = property.ResolveExtensionInfo();
+						var propertyExtensionInfo = property.ResolveExtensionInfo();
 						if (property.IsParameterizedProperty())
 						{
-							syntaxTree.Members.AddRange(DecompileParameterizedProperty(property, decompileRun, new SimpleTypeResolveContext(property), parentExtensionInfo));
+							syntaxTree.Members.AddRange(DecompileParameterizedProperty(property, decompileRun, new SimpleTypeResolveContext(property), propertyExtensionInfo));
 						}
 						else
 						{
-							syntaxTree.Members.Add(DoDecompile(property, decompileRun, new SimpleTypeResolveContext(property), parentExtensionInfo));
+							syntaxTree.Members.Add(DoDecompile(property, decompileRun, new SimpleTypeResolveContext(property), propertyExtensionInfo));
 						}
 						if (first)
 						{
@@ -2405,6 +2425,35 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 		}
 
+		/// <summary>
+		/// Gets whether the method is the managed entry point of the module, or - for an async
+		/// top-level program - the method holding the top-level statements, which the
+		/// compiler-generated entry point only awaits.
+		/// </summary>
+		bool IsEntryPoint(IMethod method)
+		{
+			var corHeader = module.MetadataFile.CorHeader;
+			if (corHeader == null)
+				return false;
+			// the entry point of a multi-module assembly is in another module, and the token is
+			// then a File token instead of a method definition
+			var entryPoint = MetadataTokenHelpers.EntityHandleOrNil(corHeader.EntryPointTokenOrRelativeVirtualAddress);
+			if (entryPoint.IsNil || entryPoint.Kind != HandleKind.MethodDefinition)
+				return false;
+			if (method.MetadataToken == entryPoint)
+				return true;
+			// An async top-level program compiles to '<Main>$' holding the statements plus a
+			// '<Main>' entry point that awaits it. The latter is hidden, so the name has to be
+			// given to the former; without AsyncAwait it stays visible and keeps the name.
+			if (!settings.AsyncAwait
+				|| !AsyncAwaitDecompiler.IsCompilerGeneratedMainMethod(module.MetadataFile, (MethodDefinitionHandle)entryPoint))
+			{
+				return false;
+			}
+			return method.Name == "<Main>$"
+				&& method.DeclaringTypeDefinition?.MetadataToken == metadata.GetMethodDefinition((MethodDefinitionHandle)entryPoint).GetDeclaringType();
+		}
+
 		void FixParameterNames(EntityDeclaration entity)
 		{
 			var usedNames = new HashSet<string>(StringComparer.Ordinal);
@@ -2894,6 +2943,13 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (methodDecl is not OperatorDeclaration && method.IsExplicitInterfaceImplementation && lastDot >= 0)
 				{
 					methodDecl.Name = method.Name.Substring(lastDot + 1);
+				}
+				if (method.HasGeneratedName() && IsEntryPoint(method))
+				{
+					// Roslyn names the entry point of a top-level program '<Main>$', which cannot be
+					// declared in C#. Only a method called 'Main' is accepted as an entry point, so
+					// without this the decompiled program does not compile (CS5001).
+					methodDecl.Name = "Main";
 				}
 				FixParameterNames(methodDecl);
 				var methodDefinition = metadata.GetMethodDefinition((MethodDefinitionHandle)method.MetadataToken);

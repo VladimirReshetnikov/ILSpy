@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Siegfried Pammer
+﻿// Copyright (c) 2018 Siegfried Pammer
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -691,8 +691,20 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		static bool HasOnlyReadOnlyProperties(TypeDefinition type, MetadataReader metadata)
+		{
+			foreach (var handle in type.GetProperties())
+			{
+				if (!metadata.GetPropertyDefinition(handle).GetAccessors().Setter.IsNil)
+					return false;
+			}
+			return true;
+		}
+
 		/// <summary>
 		/// Determines whether a type definition matches the compiler's anonymous-type naming and attribute pattern.
+		/// An anonymous type with a settable property cannot be written as a C# anonymous type, so its
+		/// declaration must not be hidden.
 		/// </summary>
 		/// <param name="type">The type definition to inspect.</param>
 		/// <param name="metadata">The metadata reader that owns <paramref name="type"/>.</param>
@@ -703,7 +715,7 @@ namespace ICSharpCode.Decompiler
 			if (type.Namespace.IsNil && type.HasGeneratedName(metadata)
 				&& (name.Contains("AnonType") || name.Contains("AnonymousType")))
 			{
-				return type.IsCompilerGenerated(metadata);
+				return type.IsCompilerGenerated(metadata) && HasOnlyReadOnlyProperties(type, metadata);
 			}
 			return false;
 		}
@@ -721,9 +733,20 @@ namespace ICSharpCode.Decompiler
 		/// <returns><see langword="true"/> when the decoded name resembles a compiler-generated identifier.</returns>
 		public static bool IsGeneratedName(this StringHandle handle, MetadataReader metadata)
 		{
-			return !handle.IsNil
-				&& (metadata.GetString(handle).StartsWith("<", StringComparison.Ordinal)
-				|| metadata.GetString(handle).Contains("$"));
+			return !handle.IsNil && IsGeneratedName(metadata.GetString(handle));
+		}
+
+		/// <summary>
+		/// Detects the mangled names compilers give to entities that have no user-written
+		/// declaration. The C# compiler prefixes them with '&lt;', the VB compiler separates
+		/// the parts with '$' (VB$AnonymousType_0, VB$StateMachine_1_Foo). Neither character
+		/// is legal in a C# or VB identifier.
+		/// Note that a name may legitimately contain '&lt;' without being generated: explicit
+		/// implementations of generic interface members are named after the interface.
+		/// </summary>
+		internal static bool IsGeneratedName(string name)
+		{
+			return name.StartsWith("<", StringComparison.Ordinal) || name.Contains("$");
 		}
 
 		/// <summary>
