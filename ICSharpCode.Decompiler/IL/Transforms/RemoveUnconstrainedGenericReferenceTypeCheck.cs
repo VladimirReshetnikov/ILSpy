@@ -61,7 +61,16 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return;
 			if (!defaultValue.MatchDefaultValue(out var type))
 				return;
-			if (temp.StoreCount != 2 || temp.LoadCount != 1 || temp.AddressCount != 1)
+			// One instance of the pattern stores the temp twice (the default and the dereferenced
+			// value), loads it once for the null test and takes its address once. The compiler
+			// reuses a single local for every constrained call in a method, so a method with k of
+			// them multiplies all three counts by k; requiring exactly one instance leaves those
+			// methods with the raw pattern, which is a 'ref' local rebound inside an if - not
+			// C# (CS8374). Accept any k: each instance opens by overwriting the temp with
+			// default.value, so no instance can observe what another left in it, and the
+			// structural checks below still verify THIS instance in full. The transform rewrites
+			// one instance per run, and the rest collapse on the following runs.
+			if (temp.LoadCount < 1 || temp.StoreCount != 2 * temp.LoadCount || temp.AddressCount != temp.LoadCount)
 				return;
 			pos++;
 			// if (comp.o(ldloc temp == ldnull)) Block IL_002a {
