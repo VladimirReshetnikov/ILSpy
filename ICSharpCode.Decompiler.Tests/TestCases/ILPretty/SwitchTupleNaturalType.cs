@@ -34,9 +34,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 			double item = obj.Item1;
 			double item2 = obj.Item2;
 			double item3 = obj.Item3;
-			item += 1.0;
-			item2 += 1.0;
-			item3 += 1.0;
+			item++;
+			item2++;
+			item3++;
 			return item + item2 + item3;
 		}
 	}
