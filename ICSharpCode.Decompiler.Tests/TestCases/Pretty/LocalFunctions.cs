@@ -626,6 +626,30 @@ namespace LocalFunctions
 			}
 		}
 
+		public static void NestedDelegateCapturesEnclosingParameter()
+		{
+			Action<int> completed = null;
+			Action<int> starting = null;
+			int outerState = 1;
+			starting = (Action<int>)Delegate.Combine(starting, new Action<int>(Starting));
+			starting(0);
+
+			void Starting(int startingArgs)
+			{
+				completed = (Action<int>)Delegate.Combine(completed, new Action<int>(Completed));
+
+				void Completed(int completedArgs)
+				{
+					if (startingArgs == completedArgs)
+					{
+						completed = (Action<int>)Delegate.Remove(completed, new Action<int>(Completed));
+						starting = (Action<int>)Delegate.Remove(starting, new Action<int>(Starting));
+						Console.WriteLine(outerState);
+					}
+				}
+			}
+		}
+
 		public static int Fib(int i)
 		{
 			return FibHelper(i);

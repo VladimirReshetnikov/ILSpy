@@ -140,6 +140,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 					foreach (var useSite in info.UseSites)
 					{
+						// A recursive reference is always in scope. Until declaration scopes are applied,
+						// the local-function ILAst is attached directly to the root function, so treating
+						// its own body as an ordinary use-site would falsely widen the declaration.
+						if (useSite.IsDescendantOf(localFunction))
+							continue;
 						DetermineCaptureAndDeclarationScope(info, useSite);
 
 						var useSiteScope = FindDeclarationScopeAtUseSite(localFunction, useSite);
@@ -147,7 +152,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						// the use-site. Moving a function that every caller can see would churn the output
 						// of methods that decompile correctly today.
 						bool useSiteOutOfScope = useSiteScope != null && localFunction.DeclarationScope != null
-							&& !useSiteScope.Ancestors.Contains(localFunction.DeclarationScope);
+							&& !useSiteScope.IsDescendantOf(localFunction.DeclarationScope);
 						if (context.Function.Method.IsConstructor || useSiteOutOfScope)
 						{
 							var scope = useSiteScope;
