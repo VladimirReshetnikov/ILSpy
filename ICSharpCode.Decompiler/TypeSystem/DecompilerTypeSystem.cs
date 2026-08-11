@@ -368,6 +368,16 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			"System.Threading.Thread"
 		};
 
+		// A modern assembly that directly references WindowsBase is compiled through the WPF framework
+		// reference even when it never names a PresentationFramework type. PresentationFramework still
+		// contributes namespaces to C# lookup in that project: notably Microsoft.Windows, which can make
+		// a metadata type such as global::Windows.Win32.PInvoke bind incorrectly when emitted without the
+		// global alias. Load it only for WindowsBase consumers so unrelated decompilations do not pay for
+		// the much larger Windows Desktop name surface.
+		static readonly string[] windowsDesktopNamespaceCompletionReferences = new[] {
+			"PresentationFramework"
+		};
+
 		sealed class NameLookupOnlyModuleReference : IModuleReference
 		{
 			readonly MetadataFile file;
@@ -481,7 +491,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 						case TargetFrameworkIdentifier.NETCoreApp:
 						case TargetFrameworkIdentifier.NETStandard:
 						case TargetFrameworkIdentifier.NET:
-							foreach (var item in implicitReferences.Concat(namespaceCompletionReferences))
+							var namespaceCompletionReferencesForModule = new List<string>(namespaceCompletionReferences);
+							if (declaredAssemblyReferenceNames.Contains("WindowsBase"))
+							{
+								namespaceCompletionReferencesForModule.AddRange(windowsDesktopNamespaceCompletionReferences);
+							}
+							foreach (var item in implicitReferences.Concat(namespaceCompletionReferencesForModule))
 							{
 								var existing = referencedAssemblies.FirstOrDefault(asm => asm.Name == item);
 								if (existing == null)
@@ -490,7 +505,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 									// Demote to name-lookup-only just those assemblies the module does not
 									// declare a reference to; a declared-but-unresolved reference stays a
 									// full reference when the fallback load finds it.
-									if (Array.IndexOf(namespaceCompletionReferences, item) >= 0
+									if (namespaceCompletionReferencesForModule.Contains(item)
 										&& !declaredAssemblyReferenceNames.Contains(item))
 									{
 										nameLookupOnlyAssemblyNames.Add(item);

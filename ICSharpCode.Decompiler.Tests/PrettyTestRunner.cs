@@ -1011,6 +1011,36 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task NamespacePrefixShadowing()
+		{
+			var tempDirectory = Path.Combine(Path.GetTempPath(), "ILSpy-NamespacePrefixShadowing-" + Guid.NewGuid().ToString("N"));
+			Directory.CreateDirectory(tempDirectory);
+			string decompiled = null;
+			try
+			{
+				var cscOptions = CompilerOptions.UseRoslynLatest | CompilerOptions.Library;
+				var presentationFramework = await Tester.CompileCSharp(
+					Path.Combine(TestCasePath, "NamespacePrefixShadowing.PresentationFramework.dep.cs"),
+					cscOptions, Path.Combine(tempDirectory, "PresentationFramework.dll")).ConfigureAwait(false);
+				var windowsBase = await Tester.CompileCSharp(
+					Path.Combine(TestCasePath, "NamespacePrefixShadowing.WindowsBase.dep.cs"),
+					cscOptions, Path.Combine(tempDirectory, "WindowsBase.dll")).ConfigureAwait(false);
+				var csFile = Path.Combine(TestCasePath, "NamespacePrefixShadowing.cs");
+				var output = await Tester.CompileCSharp(
+					csFile, cscOptions, Path.Combine(tempDirectory, "NamespacePrefixShadowing.dll"),
+					new[] { presentationFramework.PathToAssembly, windowsBase.PathToAssembly }).ConfigureAwait(false);
+				decompiled = await Tester.DecompileCSharp(output.PathToAssembly, Tester.GetSettings(cscOptions)).ConfigureAwait(false);
+				CodeAssert.FilesAreEqual(csFile, decompiled, Tester.GetPreprocessorSymbols(cscOptions).Append("EXPECTED_OUTPUT").ToArray());
+			}
+			finally
+			{
+				if (decompiled != null)
+					Tester.RepeatOnIOError(() => File.Delete(decompiled));
+				Tester.RepeatOnIOError(() => Directory.Delete(tempDirectory, recursive: true));
+			}
+		}
+
+		[Test]
 		public async Task MemberTests([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);

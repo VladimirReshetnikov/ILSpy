@@ -632,7 +632,8 @@ namespace System.Runtime.CompilerServices
 			return preprocessorSymbols;
 		}
 
-		public static async Task<CompilerResults> CompileCSharp(string sourceFileName, CompilerOptions flags = CompilerOptions.UseDebug, string outputFileName = null)
+		public static async Task<CompilerResults> CompileCSharp(string sourceFileName, CompilerOptions flags = CompilerOptions.UseDebug,
+			string outputFileName = null, IEnumerable<string> additionalReferences = null)
 		{
 			List<string> sourceFileNames = new List<string> { sourceFileName };
 			foreach (Match match in Regex.Matches(File.ReadAllText(sourceFileName), @"#include ""([\w\d./]+)"""))
@@ -728,6 +729,13 @@ namespace System.Runtime.CompilerServices
 				foreach (var dependency in dependencyAssemblies)
 				{
 					references = references.Append($"-r:\"{dependency}\"");
+				}
+				if (additionalReferences != null)
+				{
+					foreach (var reference in additionalReferences)
+					{
+						references = references.Append($"-r:\"{Path.GetFullPath(reference)}\"");
+					}
 				}
 
 				string otherOptions = $"-nologo -noconfig " +
