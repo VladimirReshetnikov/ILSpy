@@ -18,6 +18,7 @@
 
 #nullable enable
 
+using System;
 using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
@@ -38,7 +39,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			{
 				if (!declaration.HasModifier(Modifiers.File)
 					|| declaration.GetSymbol() is not ITypeDefinition type
-					|| !type.IsCompilerGenerated())
+					|| (!type.IsCompilerGenerated() && !ComesFromPrivateImplementationDetailsFile(type)))
 				{
 					continue;
 				}
@@ -52,6 +53,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				declaration.Modifiers |= TypeSystemAstBuilder.ModifierFromAccessibility(
 					type.Accessibility, context.Settings.IntroducePrivateProtectedAccessibility);
 			}
+		}
+
+		static bool ComesFromPrivateImplementationDetailsFile(ITypeDefinition type)
+		{
+			return FileLocalTypeName.TryParse(type.MetadataName, out _, out string? fileHash)
+				&& fileHash.StartsWith("<PrivateImplementationDetails>", StringComparison.Ordinal);
 		}
 	}
 }

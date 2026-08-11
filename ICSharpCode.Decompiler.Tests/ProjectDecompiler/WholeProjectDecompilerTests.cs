@@ -227,7 +227,10 @@ public sealed class WholeProjectDecompilerTests
 			{
 				Assert.That(helperSource, Does.Contain("internal sealed class BytesToStringHelper"));
 				Assert.That(helperSource, Does.Not.Contain("file sealed class BytesToStringHelper"));
+				Assert.That(helperSource, Does.Contain("internal sealed class SourceDeclaredHelper"));
+				Assert.That(helperSource, Does.Not.Contain("file sealed class SourceDeclaredHelper"));
 				Assert.That(consumerSource, Does.Contain("BytesToStringHelper.GetValue()"));
+				Assert.That(consumerSource, Does.Contain("SourceDeclaredHelper.GetValue()"));
 			}
 		}
 		finally
