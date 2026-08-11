@@ -22,6 +22,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
+using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Tests.Helpers;
 
 using NUnit.Framework;
@@ -1008,6 +1009,38 @@ namespace ICSharpCode.Decompiler.Tests
 		public async Task SystemNamespaceConflicts([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task AssemblyHashAlgorithmConflict()
+		{
+			var tempDirectory = Path.Combine(Path.GetTempPath(), "ILSpy-AssemblyHashAlgorithmConflict-" + Guid.NewGuid().ToString("N"));
+			Directory.CreateDirectory(tempDirectory);
+			string decompiled = null;
+			try
+			{
+				var cscOptions = CompilerOptions.UseRoslynLatest | CompilerOptions.Library;
+				var csFile = Path.Combine(TestCasePath, "AssemblyHashAlgorithmConflict.cs");
+				var metadataReference = Path.Combine(
+					Tester.RefAssembliesToolset.GetPath(Tester.CurrentNetCoreAppVersion),
+					"System.Reflection.Metadata.dll");
+				var output = await Tester.CompileCSharp(
+					csFile, cscOptions, Path.Combine(tempDirectory, "AssemblyHashAlgorithmConflict.dll"),
+					new[] { metadataReference }).ConfigureAwait(false);
+				using (var module = new PEFile(output.PathToAssembly))
+				{
+					Assert.That(module.AssemblyReferences.Select(reference => reference.Name),
+						Does.Not.Contain("System.Reflection.Metadata"));
+				}
+				decompiled = await Tester.DecompileCSharp(output.PathToAssembly, Tester.GetSettings(cscOptions)).ConfigureAwait(false);
+				CodeAssert.FilesAreEqual(csFile, decompiled, Tester.GetPreprocessorSymbols(cscOptions).ToArray());
+			}
+			finally
+			{
+				if (decompiled != null)
+					Tester.RepeatOnIOError(() => File.Delete(decompiled));
+				Tester.RepeatOnIOError(() => Directory.Delete(tempDirectory, recursive: true));
+			}
 		}
 
 		[Test]

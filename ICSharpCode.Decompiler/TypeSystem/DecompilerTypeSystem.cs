@@ -368,6 +368,21 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			"System.Threading.Thread"
 		};
 
+		static bool ReferencesType(MetadataFile module, string @namespace, string name)
+		{
+			var metadata = module.Metadata;
+			foreach (var handle in metadata.TypeReferences)
+			{
+				var type = metadata.GetTypeReference(handle);
+				if (metadata.StringComparer.Equals(type.Namespace, @namespace)
+					&& metadata.StringComparer.Equals(type.Name, name))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
 		// A modern assembly that directly references WindowsBase is compiled through the WPF framework
 		// reference even when it never names a PresentationFramework type. PresentationFramework still
 		// contributes namespaces to C# lookup in that project: notably Microsoft.Windows, which can make
@@ -492,6 +507,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 						case TargetFrameworkIdentifier.NETStandard:
 						case TargetFrameworkIdentifier.NET:
 							var namespaceCompletionReferencesForModule = new List<string>(namespaceCompletionReferences);
+							// The reference pack also contributes System.Reflection.AssemblyHashAlgorithm from
+							// System.Reflection.Metadata. Load that name surface only when the input actually uses
+							// the identically named System.Configuration.Assemblies enum from System.Runtime; this
+							// keeps the common type-system initialization path free of an otherwise unused module.
+							if (ReferencesType(mainModule, "System.Configuration.Assemblies", "AssemblyHashAlgorithm"))
+							{
+								namespaceCompletionReferencesForModule.Add("System.Reflection.Metadata");
+							}
 							if (declaredAssemblyReferenceNames.Contains("WindowsBase"))
 							{
 								namespaceCompletionReferencesForModule.AddRange(windowsDesktopNamespaceCompletionReferences);
