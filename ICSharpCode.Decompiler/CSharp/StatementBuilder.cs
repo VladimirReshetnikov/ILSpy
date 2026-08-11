@@ -907,9 +907,12 @@ namespace ICSharpCode.Decompiler.CSharp
 				useVar = true;
 
 			// Construct the foreach loop.
+			AstType variableType = useVar ? new SimpleType("var") : exprBuilder.ConvertType(foreachVariable!.Type);
+			if (singleGetter.Method.ReturnTypeIsRefReadOnly && variableType is ComposedType composedType && composedType.HasRefSpecifier)
+				composedType.HasReadOnlySpecifier = true;
 			var foreachStmt = new ForeachStatement {
 				IsAsync = isAsync,
-				VariableType = useVar ? new SimpleType("var") : exprBuilder.ConvertType(foreachVariable!.Type),
+				VariableType = variableType,
 				VariableDesignation = designation,
 				InExpression = collectionExpr.Detach(),
 				EmbeddedStatement = foreachBody

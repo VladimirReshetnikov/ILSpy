@@ -51,6 +51,80 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
+		public class RefEnumerable
+		{
+			public struct Enumerator
+			{
+				private readonly int[] values;
+
+				private int index;
+
+				public ref int Current => ref values[index];
+
+				public Enumerator(int[] values)
+				{
+					this.values = values;
+					index = -1;
+				}
+
+				public bool MoveNext()
+				{
+					return ++index < values.Length;
+				}
+			}
+
+			public Enumerator GetEnumerator()
+			{
+				return new Enumerator(new int[1]);
+			}
+
+			public static void Increment(RefEnumerable values)
+			{
+				foreach (ref int value in values)
+				{
+					value++;
+				}
+			}
+		}
+
+		public class RefReadonlyEnumerable
+		{
+			public struct Enumerator
+			{
+				private readonly int[] values;
+
+				private int index;
+
+				public ref readonly int Current => ref values[index];
+
+				public Enumerator(int[] values)
+				{
+					this.values = values;
+					index = -1;
+				}
+
+				public bool MoveNext()
+				{
+					return ++index < values.Length;
+				}
+			}
+
+			public Enumerator GetEnumerator()
+			{
+				return new Enumerator(new int[1]);
+			}
+
+			public static int Sum(RefReadonlyEnumerable values)
+			{
+				int num = 0;
+				foreach (ref readonly int value in values)
+				{
+					num += value;
+				}
+				return num;
+			}
+		}
+
 		public struct Issue1630
 		{
 			private object data;
