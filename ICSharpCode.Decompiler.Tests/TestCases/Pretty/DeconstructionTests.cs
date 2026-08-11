@@ -22,6 +22,10 @@ using System.Runtime.InteropServices;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
+	public sealed class AmbiguousDeconstructionSource<TKey, TValue>
+	{
+	}
+
 	public class DeconstructionBase
 	{
 	}
@@ -963,6 +967,45 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			{
 				Console.WriteLine(text + ": " + num);
 			}
+		}
+
+		public void AmbiguousExtensionMethodMustStayExplicit(AmbiguousDeconstructionSource<int, string> source)
+		{
+#if EXPECTED_OUTPUT
+			FirstAmbiguousDeconstructionExt.Deconstruct(source, out var first, out var second);
+			int value = first;
+			string value2 = second;
+			Console.WriteLine(value);
+			Console.WriteLine(value2);
+#else
+			int first;
+			string second;
+			int deconstructedFirst;
+			string deconstructedSecond;
+			FirstAmbiguousDeconstructionExt.Deconstruct(source, out deconstructedFirst, out deconstructedSecond);
+			first = deconstructedFirst;
+			second = deconstructedSecond;
+			Console.WriteLine(first);
+			Console.WriteLine(second);
+#endif
+		}
+	}
+
+	public static class FirstAmbiguousDeconstructionExt
+	{
+		public static void Deconstruct<TKey, TValue>(this AmbiguousDeconstructionSource<TKey, TValue> source, out TKey first, out TValue second)
+		{
+			first = default(TKey);
+			second = default(TValue);
+		}
+	}
+
+	public static class SecondAmbiguousDeconstructionExt
+	{
+		public static void Deconstruct<TKey, TValue>(this AmbiguousDeconstructionSource<TKey, TValue> source, out TKey first, out TValue second)
+		{
+			first = default(TKey);
+			second = default(TValue);
 		}
 	}
 }

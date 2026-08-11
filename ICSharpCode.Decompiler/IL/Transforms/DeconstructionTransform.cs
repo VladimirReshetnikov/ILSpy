@@ -25,6 +25,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Resolver;
+using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.Util;
 
@@ -494,12 +495,42 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					return null;
 				results[i] = v;
 			}
+			if (call.Method.IsStatic && !CanUseDeconstructionSyntax(call, results))
+				return null;
 			testedOperand = call.Arguments[0];
 			return new DeconstructionCall {
 				Method = call.Method,
 				Results = results,
 				NestedCalls = new DeconstructionCall[results.Length]
 			};
+		}
+
+		/// <summary>
+		/// A deconstruction expression cannot name the particular <c>Deconstruct</c> method that
+		/// produced the IL. Re-run member lookup with implicitly typed <c>out var</c> placeholders
+		/// and only use the sugar when C# binds it back to that same method unambiguously.
+		/// </summary>
+		bool CanUseDeconstructionSyntax(CallInstruction call, ILVariable[] results)
+		{
+			IType targetType = call.Arguments[0].InferType(context.TypeSystem);
+			if (targetType is ByReferenceType byReferenceType)
+				targetType = byReferenceType.ElementType;
+			var resolver = context.CSharpResolver;
+			if (resolver.ResolveMemberAccess(
+				new ResolveResult(targetType), call.Method.Name, EmptyList<IType>.Instance,
+				NameLookupMode.InvocationTarget) is not MethodGroupResolveResult methodGroup)
+			{
+				return false;
+			}
+			var arguments = results
+				.Select(v => (ResolveResult)new OutVarResolveResult(v.Type))
+				.ToArray();
+			var overloadResolution = methodGroup.PerformOverloadResolution(
+				resolver.CurrentTypeResolveContext.Compilation, arguments,
+				argumentNames: null, allowExtensionMethods: true);
+			return overloadResolution != null
+				&& !overloadResolution.IsAmbiguous
+				&& call.Method.Equals(overloadResolution.GetBestCandidateWithSubstitutedTypeArguments());
 		}
 
 		/// <summary>

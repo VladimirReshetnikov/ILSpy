@@ -260,7 +260,8 @@ namespace ICSharpCode.Decompiler.IL
 					return false;
 			}
 
-			// TODO : check whether the method is ambigious
+			// Static-call ambiguity is checked by DeconstructionTransform, where the
+			// receiver type and emitted using scope are available.
 
 			if (method.Parameters.Count < firstOutParam)
 				return false;
