@@ -1338,7 +1338,9 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		private bool IsPrimitiveValueThatShouldBeNamedArgument(TranslatedExpression arg, IMethod method, IParameter p)
 		{
-			if (!arg.ResolveResult.IsCompileTimeConstant || method.DeclaringType.IsKnownType(KnownTypeCode.NullableOfT))
+			if (method.IsOperator
+				|| !arg.ResolveResult.IsCompileTimeConstant
+				|| method.DeclaringType.IsKnownType(KnownTypeCode.NullableOfT))
 				return false;
 			return p.Type.IsKnownType(KnownTypeCode.Boolean);
 		}

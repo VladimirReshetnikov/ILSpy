@@ -168,6 +168,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return false;
 		}
 
+		public static bool operator ==(AllOperators a, bool b)
+		{
+			return false;
+		}
+
+		public static bool operator !=(AllOperators a, bool b)
+		{
+			return false;
+		}
+
 		public static bool operator <(AllOperators a, AllOperators b)
 		{
 			return false;
@@ -269,6 +279,10 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			if (a != b)
 			{
 				Console.WriteLine("a != b");
+			}
+			if (a == false)
+			{
+				Console.WriteLine("a == false");
 			}
 			if (a < b)
 			{
