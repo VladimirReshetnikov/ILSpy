@@ -279,6 +279,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			decompiler.DebugInfoProvider = DebugInfoProvider;
 			decompiler.AstTransforms.Add(new EscapeInvalidIdentifiers());
 			decompiler.AstTransforms.Add(new RemoveCLSCompliantAttribute());
+			decompiler.AstTransforms.Add(new PrepareGeneratedRegexForProjectExport());
 			return decompiler;
 		}
 
