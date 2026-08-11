@@ -10,11 +10,24 @@ public class BaseType
 	{
 	}
 
+	public BaseType(string label, int mode)
+	{
+	}
+
 	public BaseType(int mode)
 	{
 	}
 
 	public BaseType(Func<int> factory)
+	{
+	}
+}
+public class BranchAssignedPatternArgument : BaseType
+{
+	public BranchAssignedPatternArgument(ConstructorArgumentOwner owner)
+		: base("branch", (owner is SpecialConstructorArgumentOwner specialConstructorArgumentOwner) ? specialConstructorArgumentOwner.Value : (owner.Parent switch {
+			var parent => ((parent != null && parent.Enabled) ? parent.Value : 0) + owner.Value,
+		}))
 	{
 	}
 }
@@ -26,6 +39,14 @@ public class Closure
 	{
 		return X;
 	}
+}
+public class ConstructorArgumentOwner
+{
+	public bool Enabled;
+
+	public ConstructorArgumentOwner Parent;
+
+	public int Value;
 }
 public class DoubleUseTemporary : BaseType
 {
@@ -74,10 +95,20 @@ public class InitializedObjectTemporary : BaseType
 		Copy = x;
 	}
 }
+public class SharedFallbackConstructorArgument : BaseType
+{
+	public SharedFallbackConstructorArgument(bool first, bool second)
+		: base(first ? ((!second) ? 3 : 1) : ((!second) ? 3 : 2))
+	{
+	}
+}
 public class SingleUseTemporary : BaseType
 {
 	public SingleUseTemporary(Holder h)
 		: base(h.Name)
 	{
 	}
+}
+public class SpecialConstructorArgumentOwner : ConstructorArgumentOwner
+{
 }

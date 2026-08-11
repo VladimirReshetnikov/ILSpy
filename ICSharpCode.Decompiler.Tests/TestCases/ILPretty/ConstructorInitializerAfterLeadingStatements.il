@@ -35,6 +35,15 @@
     }
 
     .method public hidebysig specialname rtspecialname
+        instance void .ctor (string label, int32 mode) cil managed
+    {
+        .maxstack 8
+        ldarg.0
+        call instance void [CORE_ASSEMBLY]System.Object::.ctor()
+        ret
+    }
+
+    .method public hidebysig specialname rtspecialname
         instance void .ctor (int32 mode) cil managed
     {
         .maxstack 8
@@ -49,6 +58,62 @@
         .maxstack 8
         ldarg.0
         call instance void [CORE_ASSEMBLY]System.Object::.ctor()
+        ret
+    }
+}
+
+// The result temporary is assigned on both sides of a type-pattern branch. The
+// false arm also has a local member read that is consumed multiple times, so the
+// member read must be bound once when the whole region moves into the base call.
+.class public auto ansi beforefieldinit BranchAssignedPatternArgument
+    extends BaseType
+{
+    .method public hidebysig specialname rtspecialname
+        instance void .ctor (class ConstructorArgumentOwner owner) cil managed
+    {
+        .maxstack 3
+        .locals init (
+            class SpecialConstructorArgumentOwner V_0,
+            class ConstructorArgumentOwner V_1,
+            int32 V_2
+        )
+
+        ldarg.1
+        isinst SpecialConstructorArgumentOwner
+        stloc.0
+        ldloc.0
+        brfalse.s NOT_SPECIAL
+
+        ldloc.0
+        ldfld int32 ConstructorArgumentOwner::Value
+        stloc.2
+        br.s ARGUMENT_DONE
+
+    NOT_SPECIAL:
+        ldarg.1
+        ldfld class ConstructorArgumentOwner ConstructorArgumentOwner::Parent
+        stloc.1
+        ldloc.1
+        brfalse.s NO_ENABLED_PARENT
+        ldloc.1
+        ldfld bool ConstructorArgumentOwner::Enabled
+        brfalse.s NO_ENABLED_PARENT
+        ldloc.1
+        ldfld int32 ConstructorArgumentOwner::Value
+        br.s PARENT_VALUE_DONE
+    NO_ENABLED_PARENT:
+        ldc.i4.0
+    PARENT_VALUE_DONE:
+        ldarg.1
+        ldfld int32 ConstructorArgumentOwner::Value
+        add
+        stloc.2
+
+    ARGUMENT_DONE:
+        ldarg.0
+        ldstr "branch"
+        ldloc.2
+        call instance void BaseType::.ctor(string, int32)
         ret
     }
 }
@@ -151,6 +216,14 @@
     .field public string Name
 }
 
+.class public auto ansi beforefieldinit ConstructorArgumentOwner
+    extends [CORE_ASSEMBLY]System.Object
+{
+    .field public bool Enabled
+    .field public class ConstructorArgumentOwner Parent
+    .field public int32 Value
+}
+
 // A single-use temporary feeds the base-ctor argument.
 .class public auto ansi beforefieldinit SingleUseTemporary
     extends BaseType
@@ -171,6 +244,50 @@
 
         ret
     }
+}
+
+// Both false edges share one assignment block. Folding the decision DAG into the
+// constructor argument must duplicate only that value expression, not statements
+// or evaluations that occur before the branch.
+.class public auto ansi beforefieldinit SharedFallbackConstructorArgument
+    extends BaseType
+{
+    .method public hidebysig specialname rtspecialname
+        instance void .ctor (bool first, bool second) cil managed
+    {
+        .maxstack 2
+        .locals init (int32 V_0)
+
+        ldarg.1
+        brfalse.s FIRST_FALSE
+        ldarg.2
+        brfalse.s SHARED_FALLBACK
+        ldc.i4.1
+        stloc.0
+        br.s ARGUMENT_DONE
+
+    FIRST_FALSE:
+        ldarg.2
+        brfalse.s SHARED_FALLBACK
+        ldc.i4.2
+        stloc.0
+        br.s ARGUMENT_DONE
+
+    SHARED_FALLBACK:
+        ldc.i4.3
+        stloc.0
+
+    ARGUMENT_DONE:
+        ldarg.0
+        ldloc.0
+        call instance void BaseType::.ctor(int32)
+        ret
+    }
+}
+
+.class public auto ansi beforefieldinit SpecialConstructorArgumentOwner
+    extends ConstructorArgumentOwner
+{
 }
 
 .class public auto ansi beforefieldinit Closure

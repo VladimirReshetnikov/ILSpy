@@ -612,7 +612,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			/// so the arguments only reference parameters and fields once the call becomes an initializer.
 			/// Returns <c>false</c> (bail) if a referenced local cannot be folded safely.
 			/// </summary>
-			private static bool TryFoldLeadingTemporariesIntoConstructorCall(BlockStatement body, Statement callStatement, AstNode invocation)
+			private bool TryFoldLeadingTemporariesIntoConstructorCall(BlockStatement body, Statement callStatement, AstNode invocation)
 			{
 				// Collect the local variables referenced inside the call arguments.
 				var argumentUses = new Dictionary<ILVariable, List<IdentifierExpression>>();
@@ -637,6 +637,29 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					// The call reads no locals; any preceding statements (field initializers, guard
 					// clauses) keep running in the body and the call lifts to an initializer unchanged.
 					return true;
+				}
+
+				// A value selected by control flow has no declaration initializer for the
+				// ordinary fold below to inline. Handle one such constructor argument as a
+				// closed region before mutating any of its statements. Multiple independent
+				// regions would need an ordering proof between them; keep that case in the
+				// body instead of guessing.
+				var branchAssigned = argumentUses
+					.Select(pair => (pair.Key, pair.Value,
+						Declaration: FindSingleDeclaratorDeclaration(body, callStatement, pair.Key)))
+					.Where(item => item.Declaration?.Variables.Single().Initializer == null)
+					.ToArray();
+				if (branchAssigned.Length > 1)
+					return false;
+				if (branchAssigned.Length == 1)
+				{
+					var (variable, uses, declaration) = branchAssigned[0];
+					if (declaration == null
+						|| !TryFoldBranchAssignedTemporary(body, callStatement, invocation, variable, uses, declaration))
+					{
+						return false;
+					}
+					argumentUses.Remove(variable);
 				}
 
 				foreach (var (variable, uses) in argumentUses)
@@ -696,6 +719,449 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 
 				return true;
+			}
+
+			/// <summary>
+			/// Turns an acyclic, statement-shaped value selection immediately before a
+			/// chained constructor call into one argument expression. The source region is
+			/// left untouched until the complete expression, local scopes and evaluation
+			/// order have all been validated.
+			/// </summary>
+			private bool TryFoldBranchAssignedTemporary(BlockStatement body, Statement callStatement, AstNode invocation,
+				ILVariable variable, List<IdentifierExpression> uses, VariableDeclarationStatement declaration)
+			{
+				if (uses.Count != 1 || variable.LoadCount != 1 || variable.AddressCount != 0
+					|| variable.UsesInitialValue || variable.CaptureScope != null
+					|| variable.Kind is not (VariableKind.Local or VariableKind.StackSlot)
+					|| IsUnsupportedBinderType(variable.Type))
+				{
+					return false;
+				}
+
+				var arguments = invocation.GetChildren(Slots.Argument).OfType<Expression>().ToArray();
+				var use = uses[0];
+				int argumentIndex = Array.FindIndex(arguments, argument => argument == use);
+				if (argumentIndex < 0 || use.Ancestors.OfType<DirectionExpression>().Any())
+					return false;
+
+				var topLevel = body.Statements.ToList();
+				int callIndex = topLevel.IndexOf(callStatement);
+				int declarationIndex = topLevel.IndexOf(declaration);
+				if (declarationIndex < 0 || callIndex <= declarationIndex)
+					return false;
+
+				// Pull in only contiguous declarations whose values feed the selection.
+				// This captures compiler spills evaluated before the result declaration,
+				// without crossing a guard, field store or unrelated body local.
+				int regionStart = declarationIndex;
+				while (regionStart > 0
+					&& topLevel[regionStart - 1] is VariableDeclarationStatement {
+						Variables: [{ Initializer: not null } previous]
+					} previousDeclaration
+					&& previous.GetILVariable() is { } previousVariable
+					&& topLevel.Skip(regionStart).Take(callIndex - regionStart)
+						.SelectMany(statement => statement.DescendantsAndSelf.OfType<IdentifierExpression>())
+						.Any(identifier => identifier.GetILVariable() == previousVariable))
+				{
+					Debug.Assert(previousDeclaration.Parent == body);
+					regionStart--;
+				}
+
+				var region = topLevel.Skip(regionStart).Take(callIndex - regionStart).ToArray();
+				if (region.Length == 0
+					|| !ValidateClosedConstructorArgumentRegion(body, region, variable, declaration, uses))
+				{
+					return false;
+				}
+
+				var builder = new ConstructorArgumentRegionBuilder(region, variable,
+					context.Settings.PatternMatching && context.Settings.SwitchExpressions);
+				if (!builder.TryBuild(out var replacement)
+					|| !PreservesConstructorArgumentEvaluationOrder(topLevel, regionStart,
+						arguments, argumentIndex, region, replacement)
+					|| !IsLegalConstructorInitializerExpression(replacement, builder.BoundVariables))
+				{
+					return false;
+				}
+
+				context.Step("Fold branch-assigned constructor argument", declaration);
+				use.ReplaceWith(replacement);
+				foreach (var statement in region)
+					statement.Remove();
+				context.EndStep(replacement);
+				return true;
+			}
+
+			private static bool ValidateClosedConstructorArgumentRegion(BlockStatement body, Statement[] region,
+				ILVariable target, VariableDeclarationStatement targetDeclaration, List<IdentifierExpression> callUses)
+			{
+				var labels = new Dictionary<string, int>(StringComparer.Ordinal);
+				for (int i = 0; i < region.Length; i++)
+				{
+					if (region[i] is LabelStatement label)
+					{
+						if (labels.ContainsKey(label.Label))
+							return false;
+						labels.Add(label.Label, i);
+					}
+				}
+
+				var materialStatements = new HashSet<Statement>();
+				var assignments = new List<ExpressionStatement>();
+				var declaredVariables = new HashSet<ILVariable>();
+				foreach (var statement in region.SelectMany(statement => statement.DescendantsAndSelf.OfType<Statement>()))
+				{
+					switch (statement)
+					{
+						case BlockStatement:
+							break;
+						case LabelStatement label:
+							if (label.Parent != body)
+								return false;
+							break;
+						case GotoStatement goTo:
+							if (goTo.Label == null || !labels.TryGetValue(goTo.Label, out int targetIndex))
+								return false;
+							int sourceIndex = Array.FindIndex(region,
+								candidate => candidate.DescendantsAndSelf.Contains(goTo));
+							if (sourceIndex < 0 || targetIndex <= sourceIndex)
+								return false;
+							break;
+						case IfElseStatement ifElse:
+							materialStatements.Add(ifElse);
+							if (!ifElse.Condition.GetResolveResult().Type.IsKnownType(KnownTypeCode.Boolean)
+								|| ifElse.Condition.DescendantsAndSelf.OfType<IdentifierExpression>()
+									.Any(identifier => identifier.GetILVariable() == target))
+							{
+								return false;
+							}
+							foreach (var designation in ifElse.Condition.DescendantsAndSelf.OfType<SingleVariableDesignation>())
+							{
+								if (designation.Annotation<ILVariableResolveResult>()?.Variable is not { } patternVariable)
+									continue;
+								var patternUses = body.DescendantsAndSelf.OfType<IdentifierExpression>()
+									.Where(identifier => identifier.GetILVariable() == patternVariable).ToArray();
+								bool confinedToTrue = patternUses.Length > 0
+									&& patternUses.All(identifier => ifElse.TrueStatement.DescendantsAndSelf.Contains(identifier));
+								bool confinedToFalse = ifElse.FalseStatement != null && patternUses.Length > 0
+									&& patternUses.All(identifier => ifElse.FalseStatement.DescendantsAndSelf.Contains(identifier));
+								if (!confinedToTrue && !confinedToFalse)
+									return false;
+								if (!declaredVariables.Add(patternVariable)
+									|| patternVariable.AddressCount != 0 || patternVariable.CaptureScope != null
+									|| IsUnsupportedBinderType(patternVariable.Type)
+									|| string.IsNullOrEmpty(patternVariable.Name))
+								{
+									return false;
+								}
+							}
+							break;
+						case VariableDeclarationStatement { Variables: { Count: 1 } } localDeclaration:
+							materialStatements.Add(localDeclaration);
+							var declarator = localDeclaration.Variables.Single();
+							if (declarator.GetILVariable() is not { } local || !declaredVariables.Add(local))
+								return false;
+							if (local == target)
+							{
+								if (localDeclaration != targetDeclaration || declarator.Initializer != null)
+									return false;
+								break;
+							}
+							if (declarator.Initializer is not { } initializer
+								|| local.Kind is not (VariableKind.Local or VariableKind.StackSlot)
+								|| local.AddressCount != 0 || local.UsesInitialValue || local.CaptureScope != null
+								|| local.StoreInstructions.Count != 1 || IsUnsupportedBinderType(local.Type)
+								|| string.IsNullOrEmpty(local.Name)
+								|| !initializer.GetResolveResult().Type.Equals(local.Type)
+								|| initializer.DescendantsAndSelf.OfType<IdentifierExpression>()
+									.Any(identifier => identifier.GetILVariable() == local))
+							{
+								return false;
+							}
+							var allUses = body.DescendantsAndSelf.OfType<IdentifierExpression>()
+								.Where(identifier => identifier.GetILVariable() == local).ToArray();
+							if (allUses.Length == 0 || allUses.Any(identifier => !region.Any(
+								regionStatement => regionStatement.DescendantsAndSelf.Contains(identifier))))
+							{
+								return false;
+							}
+							break;
+						case ExpressionStatement {
+							Expression: AssignmentExpression {
+								Operator: AssignmentOperatorType.Assign,
+								Left: IdentifierExpression assigned,
+								Right: var value
+							}
+						} assignment when assigned.GetILVariable() == target:
+							materialStatements.Add(assignment);
+							assignments.Add(assignment);
+							if (!value.GetResolveResult().Type.Equals(target.Type)
+								|| value.DescendantsAndSelf.OfType<IdentifierExpression>()
+									.Any(identifier => identifier.GetILVariable() == target))
+							{
+								return false;
+							}
+							break;
+						default:
+							return false;
+					}
+				}
+
+				if (assignments.Count < 2 || target.StoreInstructions.Count != assignments.Count
+					|| target.StoreInstructions.Any(store => store is not StLoc))
+				{
+					return false;
+				}
+				var targetIdentifiers = body.DescendantsAndSelf.OfType<IdentifierExpression>()
+					.Where(identifier => identifier.GetILVariable() == target).ToArray();
+				if (targetIdentifiers.Length != callUses.Count + assignments.Count
+					|| targetIdentifiers.Any(identifier => !callUses.Contains(identifier)
+						&& !(identifier.Parent is AssignmentExpression { Left: var left }
+							&& left == identifier
+							&& region.Any(statement => statement.DescendantsAndSelf.Contains(identifier)))))
+				{
+					return false;
+				}
+
+				// A label in the region may not be an entry point from the rest of the body.
+				foreach (var label in labels.Keys)
+				{
+					if (body.DescendantsAndSelf.OfType<GotoStatement>()
+						.Any(goTo => goTo.Label == label && !region.Any(
+							statement => statement.DescendantsAndSelf.Contains(goTo))))
+					{
+						return false;
+					}
+				}
+				return materialStatements.Contains(targetDeclaration);
+			}
+
+			private static bool PreservesConstructorArgumentEvaluationOrder(List<Statement> topLevel,
+				int regionStart, Expression[] arguments, int argumentIndex,
+				Statement[] region, Expression replacement)
+			{
+				if (GetILRange(region) is not { } regionRange)
+					return false;
+				for (int i = 0; i < arguments.Length; i++)
+				{
+					if (i == argumentIndex)
+						continue;
+					Expression evaluated = arguments[i];
+					while (evaluated is NamedArgumentExpression namedArgument)
+						evaluated = namedArgument.Expression;
+					int declarationIndex = -1;
+					if (evaluated is IdentifierExpression identifier
+						&& identifier.GetILVariable() is { Kind: not VariableKind.Parameter } argumentVariable
+						&& topLevel.Take(regionStart).OfType<VariableDeclarationStatement>()
+							.FirstOrDefault(candidate => candidate.Variables.Count == 1
+								&& candidate.Variables.Single().GetILVariable() == argumentVariable)
+							is { Variables: [{ Initializer: { } initializer }] } argumentDeclaration)
+					{
+						declarationIndex = topLevel.IndexOf(argumentDeclaration);
+						evaluated = initializer;
+					}
+
+					if (IsStableValue(evaluated))
+						continue;
+					if (i < argumentIndex && declarationIndex >= 0 && declarationIndex < regionStart)
+						continue;
+					if (i > argumentIndex && declarationIndex >= 0 && declarationIndex < regionStart)
+						return false;
+					if (GetILRange(evaluated) is not { } argumentRange)
+						return false;
+					if (i < argumentIndex ? argumentRange.End > regionRange.Start : argumentRange.Start < regionRange.End)
+						return false;
+				}
+				return replacement.GetResolveResult().Type.Kind != TypeKind.Unknown;
+			}
+
+			private static (int Start, int End)? GetILRange(IEnumerable<AstNode> nodes)
+			{
+				var instructions = nodes.SelectMany(node => node.DescendantsAndSelf.OfType<Expression>())
+					.SelectMany(node => node.Annotations.OfType<ILInstruction>())
+					.Where(instruction => !instruction.ILRangeIsEmpty).ToArray();
+				if (instructions.Length == 0)
+					return null;
+				return (instructions.Min(instruction => instruction.StartILOffset),
+					instructions.Max(instruction => instruction.EndILOffset));
+			}
+
+			private static (int Start, int End)? GetILRange(AstNode node)
+			{
+				return GetILRange([node]);
+			}
+
+			private static bool IsLegalConstructorInitializerExpression(Expression expression,
+				HashSet<ILVariable> boundVariables)
+			{
+				if (expression.DescendantsAndSelf.Any(node => node is ThisReferenceExpression
+					or BaseReferenceExpression or DirectionExpression or StackAllocExpression
+					or AnonymousMethodExpression or LambdaExpression or QueryExpression))
+				{
+					return false;
+				}
+				foreach (var identifier in expression.DescendantsAndSelf.OfType<IdentifierExpression>())
+				{
+					if (identifier.GetILVariable() is not { } local)
+						continue;
+					if (local.Kind == VariableKind.Parameter)
+					{
+						if (local.Index < 0)
+							return false;
+						continue;
+					}
+					if (!boundVariables.Contains(local))
+						return false;
+				}
+				return true;
+			}
+
+			private static bool IsUnsupportedBinderType(IType type)
+			{
+				return type.Kind is TypeKind.ByReference or TypeKind.Pointer or TypeKind.ArgList
+					or TypeKind.Unknown or TypeKind.None;
+			}
+
+			private sealed class ConstructorArgumentRegionBuilder
+			{
+				readonly Statement[] region;
+				readonly ILVariable target;
+				readonly bool canBindLocals;
+				readonly Dictionary<string, int> labels = new(StringComparer.Ordinal);
+				readonly HashSet<Statement> active = [];
+				readonly HashSet<Statement> visitedMaterialStatements = [];
+				int remainingBudget = 256;
+
+				public HashSet<ILVariable> BoundVariables { get; } = [];
+
+				public ConstructorArgumentRegionBuilder(Statement[] region,
+					ILVariable target, bool canBindLocals)
+				{
+					this.region = region;
+					this.target = target;
+					this.canBindLocals = canBindLocals;
+					for (int i = 0; i < region.Length; i++)
+					{
+						if (region[i] is LabelStatement label)
+							labels.Add(label.Label, i);
+					}
+					foreach (var designation in region.SelectMany(statement => statement.DescendantsAndSelf
+						.OfType<SingleVariableDesignation>()))
+					{
+						if (designation.Annotation<ILVariableResolveResult>()?.Variable is { } variable)
+							BoundVariables.Add(variable);
+					}
+				}
+
+				public bool TryBuild([NotNullWhen(true)] out Expression? expression)
+				{
+					expression = BuildTopLevel(0);
+					if (expression == null)
+						return false;
+					var material = region.SelectMany(statement => statement.DescendantsAndSelf.OfType<Statement>())
+						.Where(statement => statement is VariableDeclarationStatement
+							or IfElseStatement or ExpressionStatement);
+					return material.All(visitedMaterialStatements.Contains);
+				}
+
+				Expression? BuildTopLevel(int index)
+				{
+					if (index >= region.Length)
+						return null;
+					return BuildStatement(region[index], index, () => BuildTopLevel(index + 1));
+				}
+
+				Expression? BuildStatements(IReadOnlyList<Statement> statements, int index,
+					int topLevelIndex, Func<Expression?> continuation)
+				{
+					if (index >= statements.Count)
+						return continuation();
+					return BuildStatement(statements[index], topLevelIndex,
+						() => BuildStatements(statements, index + 1, topLevelIndex, continuation));
+				}
+
+				Expression? BuildEmbedded(Statement statement, int topLevelIndex, Func<Expression?> continuation)
+				{
+					if (statement is BlockStatement block)
+						return BuildStatements(block.Statements.ToList(), 0, topLevelIndex, continuation);
+					return BuildStatement(statement, topLevelIndex, continuation);
+				}
+
+				Expression? BuildStatement(Statement statement, int topLevelIndex, Func<Expression?> continuation)
+				{
+					if (--remainingBudget < 0 || !active.Add(statement))
+						return null;
+					try
+					{
+						switch (statement)
+						{
+							case BlockStatement block:
+								return BuildStatements(block.Statements.ToList(), 0, topLevelIndex, continuation);
+							case LabelStatement:
+								return continuation();
+							case GotoStatement goTo when goTo.Label != null
+									&& labels.TryGetValue(goTo.Label, out int targetIndex)
+									&& targetIndex > topLevelIndex:
+								return BuildTopLevel(targetIndex);
+							case VariableDeclarationStatement { Variables: { Count: 1 } } declaration:
+								visitedMaterialStatements.Add(declaration);
+								var declarator = declaration.Variables.Single();
+								if (declarator.GetILVariable() is not { } local)
+									return null;
+								if (local == target)
+									return declarator.Initializer == null ? continuation() : null;
+								if (!canBindLocals || declarator.Initializer is not { } initializer)
+									return null;
+								var bodyExpression = continuation();
+								if (bodyExpression == null || !bodyExpression.DescendantsAndSelf
+									.OfType<IdentifierExpression>().Any(identifier => identifier.GetILVariable() == local))
+								{
+									return null;
+								}
+								BoundVariables.Add(local);
+								var designation = new SingleVariableDesignation { Identifier = local.Name! };
+								designation.AddAnnotation(new ILVariableResolveResult(local, local.Type));
+								var pattern = new DeclarationExpression {
+									Type = new SimpleType("var"),
+									Designation = designation
+								};
+								var switchExpression = new SwitchExpression { Expression = initializer.Clone() };
+								switchExpression.SwitchSections.Add(new SwitchExpressionSection {
+									Pattern = pattern,
+									Body = bodyExpression
+								});
+								switchExpression.AddAnnotation(new ResolveResult(target.Type));
+								return switchExpression;
+							case IfElseStatement ifElse:
+								visitedMaterialStatements.Add(ifElse);
+								var trueExpression = BuildEmbedded(ifElse.TrueStatement, topLevelIndex, continuation);
+								var falseExpression = ifElse.FalseStatement != null
+									? BuildEmbedded(ifElse.FalseStatement, topLevelIndex, continuation)
+									: continuation();
+								if (trueExpression == null || falseExpression == null)
+									return null;
+								var conditional = new ConditionalExpression(ifElse.Condition.Clone(),
+									trueExpression, falseExpression);
+								conditional.AddAnnotation(new ResolveResult(target.Type));
+								return conditional;
+							case ExpressionStatement {
+								Expression: AssignmentExpression {
+									Operator: AssignmentOperatorType.Assign,
+									Left: IdentifierExpression assigned,
+									Right: var value
+								}
+							} assignment when assigned.GetILVariable() == target:
+								visitedMaterialStatements.Add(assignment);
+								return value.Clone();
+							default:
+								return null;
+						}
+					}
+					finally
+					{
+						active.Remove(statement);
+					}
+				}
 			}
 
 			/// <summary>
