@@ -309,6 +309,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return t?.Int();
 		}
 
+		private static bool GenericUnconstrainedSharedNullPropagationTemporary<T>(T left, T right)
+		{
+			return left?.GetHashCode() != right?.GetHashCode();
+		}
+
 		public int? Issue1709(object obj)
 		{
 			return (obj as ICollection)?.Count + (obj as ICollection<int>)?.Count;

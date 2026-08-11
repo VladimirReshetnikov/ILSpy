@@ -578,8 +578,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			// stloc defaultTemporary(default.value type)
 			if (!(block.Instructions[pos + 1].MatchStLoc(out var defaultTemporary, out var defaultExpression) && defaultExpression.MatchDefaultValue(out var type)))
 				return false;
-			// In the above pattern the defaultTemporary variable is used two times in stloc and ldloc instructions and once in a ldloca instruction
-			if (!(defaultTemporary.Kind == VariableKind.Local && defaultTemporary.LoadCount == 2 && defaultTemporary.StoreCount == 2 && defaultTemporary.AddressCount == 1))
+			// One instance of the above pattern loads and stores the default temporary twice and
+			// takes its address once. Roslyn can reuse that temporary for several null-propagations
+			// in the same method, multiplying all three counts. Each instance starts by overwriting
+			// the temporary with default(T), so the instances cannot observe one another's value.
+			if (!(defaultTemporary.Kind == VariableKind.Local && defaultTemporary.LoadCount >= 2
+				&& defaultTemporary.StoreCount == defaultTemporary.LoadCount
+				&& defaultTemporary.LoadCount == 2 * defaultTemporary.AddressCount))
 				return false;
 			// if (logic.not(comp.o(box `0(ldloc defaultTemporary) != ldnull))) Block fallbackBlock
 			if (!(block.Instructions[pos + 2].MatchIfInstruction(out var condition, out var fallbackBlock1) && condition.MatchCompEqualsNull(out var arg) && arg.MatchLdLoc(defaultTemporary)))
