@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection.PortableExecutable;
 using System.Resources;
 using System.Threading.Tasks;
 
@@ -283,6 +284,66 @@ public sealed class WholeProjectDecompilerTests
 		finally
 		{
 			Tester.RepeatOnIOError(() => File.Delete(assemblyPath));
+		}
+	}
+
+	[Test]
+	public async Task ProjectAssemblyInfoDropsUsingsForRemovedCompilerGeneratedAttributes()
+	{
+		string targetIlFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "ForwarderUsingTarget.il");
+		string projectIlFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "ForwarderUsingProject.il");
+		string targetAssembly = null;
+		string projectAssembly = null;
+		CompilerResults rebuilt = null;
+		string decompiledSourceFile = null;
+		try
+		{
+			targetAssembly = await Tester.AssembleIL(targetIlFile, AssemblerOptions.Library);
+			projectAssembly = await Tester.AssembleIL(projectIlFile, AssemblerOptions.Library);
+			UniversalAssemblyResolver resolver = new(projectAssembly, false, null,
+				streamOptions: PEStreamOptions.PrefetchEntireImage);
+			string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
+			TestFriendlyProjectDecompiler projectDecompiler = new(resolver);
+			using PEFile module = new(projectAssembly);
+			projectDecompiler.DecompileProject(module, targetDirectory);
+			AssertDirectoryDoesntExist(targetDirectory);
+
+			string assemblyInfoPath = Path.Combine(targetDirectory, "Properties", "AssemblyInfo.cs");
+			Assert.That(projectDecompiler.Files.ContainsKey(assemblyInfoPath), Is.True);
+			string projectAssemblyInfo = projectDecompiler.Files[assemblyInfoPath].ToString();
+
+			CSharpDecompiler singleFileDecompiler = new(projectAssembly, resolver, new DecompilerSettings());
+			string singleFileSource = singleFileDecompiler.DecompileWholeModuleAsString();
+
+			decompiledSourceFile = Path.Combine(Path.GetTempPath(), $"ForwarderUsingProject-{Guid.NewGuid():N}.cs");
+			File.WriteAllText(decompiledSourceFile, projectAssemblyInfo);
+			rebuilt = await Tester.CompileCSharp(decompiledSourceFile,
+				CompilerOptions.UseRoslynLatest | CompilerOptions.Library,
+				additionalReferences: [targetAssembly, typeof(System.Diagnostics.Process).Assembly.Location]);
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(projectAssemblyInfo, Does.Not.Contain("using System.Diagnostics;"));
+				Assert.That(projectAssemblyInfo, Does.Not.Contain("[assembly: Debuggable("));
+				Assert.That(projectAssemblyInfo, Does.Contain("using System.Reflection;"));
+				Assert.That(projectAssemblyInfo, Does.Contain("using System.Runtime.CompilerServices;"));
+				Assert.That(projectAssemblyInfo, Does.Contain("using Forwarded;"));
+				Assert.That(projectAssemblyInfo, Does.Contain("[assembly: AssemblyTitle(\"keep\")]"));
+				Assert.That(projectAssemblyInfo, Does.Contain("[assembly: TypeForwardedTo(typeof(Process))]"));
+
+				Assert.That(singleFileSource, Does.Contain("using System.Diagnostics;"));
+				Assert.That(singleFileSource, Does.Contain("[assembly: Debuggable("));
+			}
+		}
+		finally
+		{
+			rebuilt?.DeleteTempFiles();
+			if (projectAssembly != null)
+				Tester.RepeatOnIOError(() => File.Delete(projectAssembly));
+			if (targetAssembly != null)
+				Tester.RepeatOnIOError(() => File.Delete(targetAssembly));
+			if (decompiledSourceFile != null && File.Exists(decompiledSourceFile))
+				File.Delete(decompiledSourceFile);
 		}
 	}
 

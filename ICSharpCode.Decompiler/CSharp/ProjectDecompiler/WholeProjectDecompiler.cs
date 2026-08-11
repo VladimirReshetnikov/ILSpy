@@ -291,7 +291,10 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		{
 			var decompiler = CreateDecompiler(ts);
 			decompiler.CancellationToken = cancellationToken;
-			decompiler.AstTransforms.Add(new RemoveCompilerGeneratedAssemblyAttributes());
+			var introduceUsingDeclarations = decompiler.AstTransforms.Single(t => t is IntroduceUsingDeclarations);
+			decompiler.AstTransforms.Insert(
+				decompiler.AstTransforms.IndexOf(introduceUsingDeclarations),
+				new RemoveCompilerGeneratedAssemblyAttributes());
 			SyntaxTree syntaxTree = decompiler.DecompileModuleAndAssemblyAttributes();
 
 			const string prop = "Properties";
