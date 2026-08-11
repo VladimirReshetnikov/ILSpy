@@ -130,6 +130,34 @@ public sealed class WholeProjectDecompilerTests
 		}
 	}
 
+	[Test]
+	public async Task CompilerGeneratedFileLocalHelperReferencedAcrossFilesIsEmitted()
+	{
+		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "CompilerGeneratedFileLocalProject.il");
+		string assemblyPath = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
+		try
+		{
+			string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
+			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(assemblyPath, false, null));
+			using PEFile module = new(assemblyPath);
+			decompiler.DecompileProject(module, targetDirectory);
+			AssertDirectoryDoesntExist(targetDirectory);
+
+			string helperSource = decompiler.SourceContaining("class BytesToStringHelper");
+			string consumerSource = decompiler.SourceContaining("class Consumer");
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(helperSource, Does.Contain("internal sealed class BytesToStringHelper"));
+				Assert.That(helperSource, Does.Not.Contain("file sealed class BytesToStringHelper"));
+				Assert.That(consumerSource, Does.Contain("BytesToStringHelper.GetValue()"));
+			}
+		}
+		finally
+		{
+			Tester.RepeatOnIOError(() => File.Delete(assemblyPath));
+		}
+	}
+
 	[TestCase(true, true)]
 	[TestCase(true, false)]
 	[TestCase(false, true)]

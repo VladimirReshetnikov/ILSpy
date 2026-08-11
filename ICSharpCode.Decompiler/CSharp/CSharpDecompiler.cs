@@ -393,6 +393,7 @@ namespace ICSharpCode.Decompiler.CSharp
 					var typeHandle = (TypeDefinitionHandle)member;
 					var type = metadata.GetTypeDefinition(typeHandle);
 					name = metadata.GetString(type.Name);
+					bool isFileLocalType = FileLocalTypeName.TryParse(name, out _, out _);
 					if (!type.GetDeclaringType().IsNil)
 					{
 						if (settings.LocalFunctions && LocalFunctionDecompiler.IsLocalFunctionDisplayClass(module, typeHandle))
@@ -414,7 +415,8 @@ namespace ICSharpCode.Decompiler.CSharp
 					}
 					else if (type.IsCompilerGenerated(metadata))
 					{
-						if (settings.ArrayInitializers && name.StartsWith("<PrivateImplementationDetails>", StringComparison.Ordinal))
+						if (settings.ArrayInitializers && !isFileLocalType
+							&& name.StartsWith("<PrivateImplementationDetails>", StringComparison.Ordinal))
 							return true;
 						if (settings.AnonymousTypes && type.IsAnonymousType(metadata))
 							return true;
@@ -425,7 +427,8 @@ namespace ICSharpCode.Decompiler.CSharp
 						if (settings.CollectionExpressions && (name.StartsWith("<>z__ReadOnlyArray", StringComparison.Ordinal) || name.StartsWith("<>z__ReadOnlySingleElementList", StringComparison.Ordinal)))
 							return true;
 					}
-					if (settings.ArrayInitializers && settings.SwitchStatementOnString && name.StartsWith("<PrivateImplementationDetails>", StringComparison.Ordinal))
+					if (settings.ArrayInitializers && settings.SwitchStatementOnString && !isFileLocalType
+						&& name.StartsWith("<PrivateImplementationDetails>", StringComparison.Ordinal))
 						return true;
 					return false;
 				case HandleKind.FieldDefinition:
