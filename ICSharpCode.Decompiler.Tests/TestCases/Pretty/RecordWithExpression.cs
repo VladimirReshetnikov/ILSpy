@@ -4,6 +4,33 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
 	internal class RecordWithExpression
 	{
+		public enum InitializerMode
+		{
+			None,
+			Enabled
+		}
+
+		public sealed class InitializerSource
+		{
+			public bool Enabled { get; }
+		}
+
+		public sealed class InitOnlyOptions
+		{
+			public int First { get; init; }
+
+			public InitializerMode Mode { get; init; }
+
+			public int Last { get; init; }
+
+			public InitOnlyOptions(InitOnlyOptions old)
+			{
+				First = old.First;
+				Mode = old.Mode;
+				Last = old.Last;
+			}
+		}
+
 		public record Request
 		{
 			public IReadOnlyList<string> Context { get; init; }
@@ -86,6 +113,38 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #else
 			return request with { Name = name, Context = [.. request.Context, entry] };
 #endif
+		}
+
+		// Both calls are potentially impure: construction, First, the nullable value and Last must
+		// keep this order even when the compiler lowers the nullable access through a temporary.
+		public InitOnlyOptions CopyWithNullableValue(InitOnlyOptions old, int first, int last)
+		{
+#if EXPECTED_OUTPUT
+			InitOnlyOptions obj = new InitOnlyOptions(GetOldOptions(old)) {
+				First = first,
+				Mode = GetInitializerSource() switch {
+					var initializerSource => (initializerSource != null && initializerSource.Enabled) ? InitializerMode.Enabled : InitializerMode.None,
+				},
+				Last = last
+			};
+			return obj;
+#else
+			return new InitOnlyOptions(GetOldOptions(old)) {
+				First = first,
+				Mode = ((GetInitializerSource()?.Enabled == true) ? InitializerMode.Enabled : InitializerMode.None),
+				Last = last
+			};
+#endif
+		}
+
+		private InitializerSource GetInitializerSource()
+		{
+			return null;
+		}
+
+		private InitOnlyOptions GetOldOptions(InitOnlyOptions old)
+		{
+			return old;
 		}
 	}
 }

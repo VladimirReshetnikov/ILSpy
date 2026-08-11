@@ -99,7 +99,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 			}
 			var absorbed = new List<(Statement Statement, string MemberName, Expression Value, Statement? Hoisted,
-				Expression? HoistedValue, IdentifierExpression? HoistedRead)>();
+				Expression? HoistedValue, IdentifierExpression[]? HoistedReads)>();
 			bool sawInitOnly = false;
 			Statement current = statement;
 			while (current.GetNextSibling(n => n is Statement) is Statement next)
@@ -128,30 +128,37 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				// everything after it stay behind as statements.
 				if (!usedMemberNames.Add(member))
 					break;
-				IdentifierExpression? hoistedRead = null;
+				IdentifierExpression[]? hoistedReads = null;
 				if (hoisted != null)
 				{
 					// The temporary disappears with the assignment, so the initializer has to carry the
-					// value the temporary held rather than a reference to it. Reading it more than once
-					// would mean evaluating that value more than once, so only a single read folds, and
-					// a read left anywhere else would be looking at a local that no longer exists.
+					// value the temporary held rather than a reference to it. A read left anywhere else
+					// would be looking at a local that no longer exists.
 					var reads = value.DescendantsAndSelf.OfType<IdentifierExpression>()
 						.Where(identifier => identifier.GetILVariable() == hoistedVariable)
 						.ToArray();
-					if (reads.Length != 1)
+					if (reads.Length == 0)
 						break;
 					if (IsReadAnywhere(hoistedVariable!, statement.Ancestors.OfType<BlockStatement>().Last(),
-						except: reads[0]))
+						except: reads))
 					{
 						break;
 					}
-					hoistedRead = reads[0];
+					// A single read can be replaced directly. Multiple reads need a one-arm switch
+					// expression so that an impure value is still evaluated exactly once, at this
+					// member's original position. Only do that when var preserves the local's type.
+					if (reads.Length > 1 && (!context.Settings.PatternMatching || !context.Settings.SwitchExpressions
+						|| !hoistedValue!.GetResolveResult().Type.Equals(hoistedVariable!.Type)))
+					{
+						break;
+					}
+					hoistedReads = reads;
 					if (ReadsTarget(hoistedValue!, target, aliases))
 						break;
 				}
 				if (ReadsTarget(value, target, aliases))
 					break;
-				absorbed.Add((candidate, member, value, hoisted, hoistedValue, hoistedRead));
+				absorbed.Add((candidate, member, value, hoisted, hoistedValue, hoistedReads));
 				sawInitOnly |= isInitOnly;
 				current = candidate;
 			}
@@ -180,18 +187,34 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					Initializer = initializer
 				};
 			}
-			foreach (var (assignment, memberName, value, hoisted, hoistedValue, hoistedRead) in absorbed)
+			foreach (var (assignment, memberName, value, hoisted, hoistedValue, hoistedReads) in absorbed)
 			{
 				Expression element = value;
 				if (hoistedValue != null)
 				{
-					if (hoistedRead == element)
+					if (hoistedReads!.Length > 1)
+					{
+						var boundVariable = hoistedReads[0].GetILVariable()!;
+						var designation = new SingleVariableDesignation { Identifier = boundVariable.Name! };
+						designation.AddAnnotation(new ILVariableResolveResult(boundVariable, boundVariable.Type));
+						var declaration = new DeclarationExpression {
+							Type = new SimpleType("var"),
+							Designation = designation
+						};
+						var switchExpression = new SwitchExpression { Expression = hoistedValue.Detach() };
+						switchExpression.SwitchSections.Add(new SwitchExpressionSection {
+							Pattern = declaration,
+							Body = element.Detach()
+						});
+						element = switchExpression;
+					}
+					else if (hoistedReads[0] == element)
 					{
 						element = hoistedValue;
 					}
 					else
 					{
-						hoistedRead!.ReplaceWith(hoistedValue.Detach());
+						hoistedReads[0].ReplaceWith(hoistedValue.Detach());
 					}
 				}
 				element.Remove();
@@ -272,10 +295,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return true;
 		}
 
-		static bool IsReadAnywhere(ILVariable variable, AstNode scope, IdentifierExpression? except = null)
+		static bool IsReadAnywhere(ILVariable variable, AstNode scope,
+			IReadOnlyCollection<IdentifierExpression>? except = null)
 		{
 			return scope.DescendantsAndSelf.OfType<IdentifierExpression>()
-				.Any(identifier => identifier != except && identifier.GetILVariable() == variable);
+				.Any(identifier => (except == null || !except.Contains(identifier))
+					&& identifier.GetILVariable() == variable);
 		}
 
 		static bool ReadsTarget(Expression value, ILVariable target, HashSet<ILVariable> aliases)
