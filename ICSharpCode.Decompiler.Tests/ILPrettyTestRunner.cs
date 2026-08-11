@@ -716,6 +716,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task FieldSignatureAccessibility()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task FSharpLoops_Debug()
 		{
 			CopyFSharpCoreDll();

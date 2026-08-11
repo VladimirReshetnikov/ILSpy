@@ -156,6 +156,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 			}
 
+			foreach (var fieldDecl in rootNode.DescendantsAndSelf.OfType<FieldDeclaration>())
+			{
+				if (fieldDecl.Parent is not TypeDeclaration || fieldDecl.GetSymbol() is not IField field)
+					continue;
+				MakeFieldSignatureTypeAccessible(fieldDecl, field);
+			}
+
 			foreach (var methodDecl in rootNode.DescendantsAndSelf.OfType<MethodDeclaration>())
 			{
 				if (methodDecl.GetSymbol() is not IMethod method)
@@ -458,6 +465,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				if (first is ITypeDefinition firstType && second is ITypeDefinition secondType)
 					return firstType.TypeParameterCount != secondType.TypeParameterCount;
 				return false;
+			}
+
+			void MakeFieldSignatureTypeAccessible(FieldDeclaration fieldDecl, IField field)
+			{
+				Accessibility requiredAccessibility = AccessibilityFromModifiers(fieldDecl.Modifiers)
+					.Intersect(field.EffectiveAccessibility());
+				MakeTypeAccessible(field.Type, requiredAccessibility);
 			}
 
 			void MakeSignatureTypesAccessible(MethodDeclaration methodDecl, IMethod method)
