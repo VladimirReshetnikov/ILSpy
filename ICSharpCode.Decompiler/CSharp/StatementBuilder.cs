@@ -1269,7 +1269,8 @@ namespace ICSharpCode.Decompiler.CSharp
 		bool ParentIsCurrentGetter(ILInstruction inst)
 		{
 			return inst.Parent is CallInstruction cv && cv.Method.IsAccessor &&
-				cv.Method.AccessorKind == System.Reflection.MethodSemanticsAttributes.Getter;
+				cv.Method.AccessorKind == System.Reflection.MethodSemanticsAttributes.Getter &&
+				cv.Method.AccessorOwner is IProperty { Name: "Current" };
 		}
 		#endregion
 

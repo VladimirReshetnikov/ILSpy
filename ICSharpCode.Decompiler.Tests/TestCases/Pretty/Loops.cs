@@ -414,6 +414,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
+		public void SerializationInfoEnumeratorNameLoop(SerializationInfo info)
+		{
+			SerializationInfoEnumerator enumerator = info.GetEnumerator();
+			while (enumerator.MoveNext())
+			{
+				Console.WriteLine(enumerator.Name);
+			}
+		}
+
 		public void ForEachOnGenericCustomClassEnumerator<T>(CustomClassEnumerator<T> e)
 		{
 			foreach (T item in e)
