@@ -44,6 +44,42 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			span = ScopedSpan(span);
 			OutSpan(out span);
 		}
+
+		public int StackSpanAssignedThroughOut(bool slice)
+		{
+			Span<char> span = stackalloc char[4];
+			scoped ReadOnlySpan<char> output;
+			if (slice)
+			{
+				CopyToOut(span.Slice(1), out output);
+			}
+			else
+			{
+				CopyToOut(span, out output);
+			}
+			return output.Length;
+		}
+
+		public string StackSpanUsedInInterpolation(bool slice)
+		{
+			Span<char> span = stackalloc char[4];
+			scoped ReadOnlySpan<char> value;
+			if (slice)
+			{
+				Console.WriteLine("side effect");
+				value = span.Slice(1);
+			}
+			else
+			{
+				value = span;
+			}
+			return $"{value}";
+		}
+
+		private static void CopyToOut(ReadOnlySpan<char> input, out ReadOnlySpan<char> output)
+		{
+			output = input;
+		}
 	}
 
 	internal ref struct RefFields

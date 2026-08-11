@@ -1142,6 +1142,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				{
 					sawAssignmentOfStackReferringValue = true;
 				}
+				else if (identifier.Parent is DirectionExpression { FieldDirection: FieldDirection.Out } direction
+					&& direction.Expression == identifier
+					&& OutArgumentMayReceiveStackReferringValue(direction, methodBody))
+				{
+					sawAssignmentOfStackReferringValue = true;
+				}
 			}
 			if (!sawUse || !sawAssignmentOfStackReferringValue)
 				return false;
@@ -1156,9 +1162,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// to be <c>scoped</c>. Besides a direct <c>stackalloc</c>, a value provably derived from one
 		/// is recognized: a slice-like call of a stack-referring receiver, a copy of another local
 		/// that itself holds a stack-referring value, and a ref-struct-returning call that is handed a
-		/// stack-referring ref-struct argument (conservatively assumed to forward it). Only
-		/// stack-derived values are recognized; a wide value such as a span over an array or a field
-		/// stays unrecognized, so <c>scoped</c> is added only where it is genuinely required.
+		/// stack-referring ref-struct argument (conservatively assumed to forward it), and a scoped
+		/// ref-struct parameter whose safe-context is also the current method. A wide value such as a
+		/// span over an array or a field stays unrecognized, so <c>scoped</c> is added only where it is
+		/// genuinely required.
 		/// </summary>
 		bool IsStackReferringValue(Expression expression, BlockStatement methodBody)
 		{
@@ -1180,6 +1187,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					case StackAllocExpression:
 						return true;
 					case IdentifierExpression identifier:
+						if (IsScopedByRefLikeParameter(identifier.GetILVariable()))
+							return true;
 						// A copy of another ref-struct local: stack-referring if that local was itself
 						// assigned a stack-referring value somewhere in the method.
 						return LocalHoldsStackReferringValue(identifier.GetILVariable(), methodBody, visitedLocals);
@@ -1189,6 +1198,53 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						return false;
 				}
 			}
+		}
+
+		static bool IsScopedByRefLikeParameter(ILVariable? variable)
+		{
+			return variable is { Kind: VariableKind.Parameter, Index: >= 0 and int index, Function: { } function }
+				&& index < function.Parameters.Count
+				&& function.Parameters[index].Type.IsByRefLike
+				&& function.Parameters[index].Lifetime.ScopedRef;
+		}
+
+		/// <summary>
+		/// Whether an <c>out</c> argument may receive references from a stack-referring ref-struct
+		/// receiver or input argument of the same call. Because an output contract can forward an
+		/// input's safe-context, the receiving local needs the current-method safe-context.
+		/// </summary>
+		bool OutArgumentMayReceiveStackReferringValue(DirectionExpression output, BlockStatement methodBody)
+		{
+			if (output.Parent is not InvocationExpression invocation)
+				return false;
+			if (invocation.Target is MemberReferenceExpression member
+				&& member.Target.GetResolveResult().Type.IsByRefLike
+				&& IsStackReferringValue(member.Target, methodBody))
+			{
+				return true;
+			}
+			foreach (Expression argument in invocation.Arguments)
+			{
+				if (argument == output)
+					continue;
+				Expression value;
+				if (argument is DirectionExpression direction)
+				{
+					if (direction.FieldDirection == FieldDirection.Out)
+						continue;
+					value = direction.Expression;
+				}
+				else
+				{
+					value = argument;
+				}
+				if (value.GetResolveResult().Type.IsByRefLike
+					&& IsStackReferringValue(value, methodBody))
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		/// <summary>
@@ -1319,9 +1375,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				case ReturnStatement:
 				case YieldReturnStatement:
 					return true;
-				case DirectionExpression:
-					// Passed by ref/out/in: a reference is taken; conservatively an escape.
-					return true;
+				case DirectionExpression direction:
+					// An out argument replaces the local's value and cannot expose the value it
+					// contained on entry. Ref and in arguments may expose that existing value.
+					return direction.FieldDirection != FieldDirection.Out;
+				case Interpolation interpolation when interpolation.Parent is InterpolatedStringExpression interpolatedString:
+					// Formatting into a string consumes the value. A custom interpolated-string
+					// handler can itself carry references, so continue following that result.
+					if (TypeCarriesReferences(interpolatedString.GetResolveResult().Type))
+						return ReferenceMayEscape(interpolatedString, methodBody, visited);
+					return false;
 				case ExpressionStatement:
 					// The value is computed as a statement and discarded, so it cannot escape.
 					return false;
