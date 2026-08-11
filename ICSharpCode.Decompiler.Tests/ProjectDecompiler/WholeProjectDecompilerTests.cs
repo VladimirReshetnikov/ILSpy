@@ -23,6 +23,7 @@ using System.Linq;
 using System.Resources;
 using System.Threading.Tasks;
 
+using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.ProjectDecompiler;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Tests.Helpers;
@@ -122,6 +123,43 @@ public sealed class WholeProjectDecompilerTests
 				Assert.That(consumerSource, Does.Contain("GeneratedRegexHelper.Instance"));
 				Assert.That(consumerSource, Does.Not.Contain("[GeneratedRegex("));
 				Assert.That(consumerSource, Does.Contain("[GeneratedCode("));
+			}
+		}
+		finally
+		{
+			Tester.RepeatOnIOError(() => File.Delete(assemblyPath));
+		}
+	}
+
+	[Test]
+	public async Task LibraryImportProjectDoesNotReplayGeneratedImplementations()
+	{
+		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "LibraryImportProject.il");
+		string assemblyPath = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
+		try
+		{
+			UniversalAssemblyResolver resolver = new(assemblyPath, false, null);
+			string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
+			TestFriendlyProjectDecompiler projectDecompiler = new(resolver);
+			using PEFile module = new(assemblyPath);
+			projectDecompiler.DecompileProject(module, targetDirectory);
+			AssertDirectoryDoesntExist(targetDirectory);
+
+			string projectSource = projectDecompiler.SourceContaining("class NativeMethods");
+			CSharpDecompiler singleFileDecompiler = new(assemblyPath, resolver, new DecompilerSettings());
+			string singleFileSource = singleFileDecompiler.DecompileWholeModuleAsString();
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(projectSource, Does.Not.Contain("LibraryImport(\"materialized\")"));
+				Assert.That(projectSource, Does.Not.Contain("LibraryImport(\"native\")"));
+				Assert.That(projectSource, Does.Contain("[GeneratedCode(\"Microsoft.Interop.LibraryImportGenerator\", \"1.0\")]"));
+				Assert.That(projectSource, Does.Contain("[Marker(\"keep\")]"));
+				Assert.That(projectSource, Does.Contain("[DllImport(\"native\")]"));
+				Assert.That(projectSource, Does.Contain("[LibraryImport(\"ordinary\")]"));
+
+				Assert.That(singleFileSource, Does.Contain("[LibraryImport(\"materialized\")]"));
+				Assert.That(singleFileSource, Does.Contain("[LibraryImport(\"native\")]"));
+				Assert.That(singleFileSource, Does.Contain("[LibraryImport(\"ordinary\")]"));
 			}
 		}
 		finally
