@@ -1064,12 +1064,13 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 
 		protected bool LambdaNeedsParenthesis(LambdaExpression lambdaExpression)
 		{
-			if (lambdaExpression.Parameters.Count != 1)
+			if (lambdaExpression.Attributes.Any() || lambdaExpression.Parameters.Count != 1)
 			{
 				return true;
 			}
 			var p = lambdaExpression.Parameters.Single();
-			return !(p.Type is null && p.ParameterModifier == ReferenceKind.None && !p.IsParams);
+			return p.Attributes.Any()
+				|| !(p.Type is null && p.ParameterModifier == ReferenceKind.None && !p.IsParams);
 		}
 
 		public virtual void VisitMemberReferenceExpression(MemberReferenceExpression memberReferenceExpression)

@@ -562,6 +562,20 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 			return [My] (int x) => 0;
 		}
 
+		public static IEnumerable<int> LambdaWithAttributeAndAnonymousParameter(IEnumerable<int> values)
+		{
+			return values.Select((int value) => new {
+				Value = value
+			}).Select([My] (value) => value.Value);
+		}
+
+		public static IEnumerable<int> LambdaWithAttributeOnAnonymousParameter(IEnumerable<int> values)
+		{
+			return values.Select((int value) => new {
+				Value = value
+			}).Select(([My] value) => value.Value);
+		}
+
 		public static Func<int, int> LambdaWithAttributeOnParam()
 		{
 			return ([My] int x) => 0;
