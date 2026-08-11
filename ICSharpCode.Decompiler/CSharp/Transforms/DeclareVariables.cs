@@ -1102,19 +1102,21 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		}
 
 		/// <summary>
-		/// Determines whether a by-ref-like (ref struct) local that is emitted as a bare hoisted
-		/// declaration (assigned in multiple branches and merged, so it cannot be combined with a
-		/// single initializer) should carry the C# 11 <c>scoped</c> modifier.
+		/// Determines whether a by-ref-like (ref struct) local must be emitted as a separate
+		/// declaration carrying the C# 11 <c>scoped</c> modifier. This includes locals assigned in
+		/// multiple branches as well as a single out variable whose required modifier cannot be
+		/// expressed inline at the call site.
 		///
 		/// A bare ref-struct local's safe-context is the caller context (it may be returned), so
-		/// assigning it a stack-referring value such as the result of a <c>stackalloc</c> is a
-		/// compile error (CS8352/CS8353). <c>scoped</c> restricts the safe-context to the current
-		/// method and makes the narrow assignment legal - but only when the local genuinely does not
-		/// escape. This check is therefore deliberately asymmetric: it returns <see langword="true"/>
-		/// only when a stack-referring value is assigned <em>and</em> every use is provably confined
-		/// to the method. Any use whose confinement cannot be proven leaves the declaration bare
-		/// (the status quo), because a false "does not escape" would inject a new ref-safety error on
-		/// a legitimately escaping local, which is strictly worse than the missing modifier.
+		/// assigning it a stack-referring value such as the result of a <c>stackalloc</c>, or receiving
+		/// a value from a call that is also passed a ref-struct local by reference, is a compile error
+		/// (CS8168/CS8350/CS8352/CS8353). <c>scoped</c> restricts the safe-context to the current method
+		/// and makes the narrow assignment legal - but only when the local genuinely does not escape.
+		/// This check is therefore deliberately asymmetric: it returns <see langword="true"/> only
+		/// when an assignment requires method scope <em>and</em> every use is provably confined to the
+		/// method. Any use whose confinement cannot be proven leaves the declaration bare (the status
+		/// quo), because a false "does not escape" would inject a new ref-safety error on a legitimately
+		/// escaping local, which is strictly worse than the missing modifier.
 		/// </summary>
 		bool ShouldDeclareByRefLikeLocalScoped(VariableToDeclare v)
 		{
@@ -1127,7 +1129,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// assigned a stackalloc). Those helper locals may be declared in an enclosing block, so
 			// the search for their assignments spans the whole method body, not just this block.
 			BlockStatement methodBody = OutermostBlock(scope);
-			bool sawAssignmentOfStackReferringValue = false;
+			bool sawAssignmentRequiringScopedDeclaration = false;
 			bool sawUse = false;
 			foreach (AstNode node in scope.Descendants)
 			{
@@ -1140,16 +1142,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					&& assignment.Left == identifier
 					&& IsStackReferringValue(assignment.Right, methodBody))
 				{
-					sawAssignmentOfStackReferringValue = true;
+					sawAssignmentRequiringScopedDeclaration = true;
 				}
 				else if (identifier.Parent is DirectionExpression { FieldDirection: FieldDirection.Out } direction
 					&& direction.Expression == identifier
-					&& OutArgumentMayReceiveStackReferringValue(direction, methodBody))
+					&& OutArgumentMayReceiveMethodScopedValue(direction, methodBody))
 				{
-					sawAssignmentOfStackReferringValue = true;
+					sawAssignmentRequiringScopedDeclaration = true;
 				}
 			}
-			if (!sawUse || !sawAssignmentOfStackReferringValue)
+			if (!sawUse || !sawAssignmentRequiringScopedDeclaration)
 				return false;
 			// Every use of the local must be provably confined to the method. Confinement follows the
 			// value through copies into other locals, so track visited locals to guarantee termination.
@@ -1209,11 +1211,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		}
 
 		/// <summary>
-		/// Whether an <c>out</c> argument may receive references from a stack-referring ref-struct
-		/// receiver or input argument of the same call. Because an output contract can forward an
-		/// input's safe-context, the receiving local needs the current-method safe-context.
+		/// Whether an <c>out</c> argument may receive a value whose safe-context is limited to the
+		/// current method: either references from a stack-referring ref-struct receiver/input, or
+		/// references exposed by passing a ref-struct local itself by reference. Because an output
+		/// contract can forward an input's safe-context, the receiving local needs the same scope.
 		/// </summary>
-		bool OutArgumentMayReceiveStackReferringValue(DirectionExpression output, BlockStatement methodBody)
+		bool OutArgumentMayReceiveMethodScopedValue(DirectionExpression output, BlockStatement methodBody)
 		{
 			if (output.Parent is not InvocationExpression invocation)
 				return false;
@@ -1237,6 +1240,18 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				else
 				{
 					value = argument;
+				}
+				// Passing a ref-struct local itself by reference narrows the safe-context to this
+				// method even when the value currently points at heap storage. The callee may copy
+				// references reachable through that local into an out argument, so C# requires the
+				// receiving local to be scoped (CS8168/CS8350). This differs from passing the same
+				// ref-struct by value: in that case only a genuinely stack-referring value needs the
+				// narrower declaration.
+				if (argument is DirectionExpression { FieldDirection: not FieldDirection.Out }
+					&& value is IdentifierExpression identifier
+					&& ResolveVariableToDeclare(identifier.GetILVariable()) is { Type.IsByRefLike: true })
+				{
+					return true;
 				}
 				if (value.GetResolveResult().Type.IsByRefLike
 					&& IsStackReferringValue(value, methodBody))
@@ -1485,6 +1500,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return false;
 			if (v.DefaultInitialization != VariableInitKind.None)
 				return false;
+			// An out-variable declaration has no syntax for the scoped modifier. Keep a separate
+			// declaration when ref-safety inference needs that modifier; otherwise a valid
+			// `scoped T value; Call(ref input, out value);` is collapsed into an uncompilable
+			// `Call(ref input, out var value);`.
+			if (context.Settings.ScopedRef && v.Type.IsByRefLike
+				&& ShouldDeclareByRefLikeLocalScoped(v))
+			{
+				return false;
+			}
 			for (AstNode? node = v.FirstUse; node != null; node = node.Parent)
 			{
 				if (node.Slot?.Kind == Slots.EmbeddedStatement)

@@ -76,9 +76,29 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return $"{value}";
 		}
 
+		public string HeapSpanPassedThroughRef()
+		{
+			ReadOnlySpan<char> input = "value".AsSpan();
+			scoped ReadOnlySpan<char> output;
+			CopyByRefToOut(ref input, out output);
+			return output.ToString();
+		}
+
+		public string RefParameterPassedThroughOut(ref ReadOnlySpan<char> input)
+		{
+			CopyByRefToOut(ref input, out var output);
+			return output.ToString();
+		}
+
 		private static void CopyToOut(ReadOnlySpan<char> input, out ReadOnlySpan<char> output)
 		{
 			output = input;
+		}
+
+		private static void CopyByRefToOut(ref ReadOnlySpan<char> input, out ReadOnlySpan<char> output)
+		{
+			output = input;
+			input = default(ReadOnlySpan<char>);
 		}
 	}
 
