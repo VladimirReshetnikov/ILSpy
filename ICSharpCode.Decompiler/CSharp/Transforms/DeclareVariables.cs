@@ -166,6 +166,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				InsertDeconstructionVariableDeclarations();
 				InsertVariableDeclarations(context);
 				UpdateAnnotations(rootNode);
+				InferLegacyScopedInParameters(rootNode);
 			}
 			finally
 			{
@@ -173,6 +174,215 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				variableDict.Clear();
 			}
 		}
+
+		/// <summary>
+		/// Restores the narrow lifetime contract needed when recompiling methods produced before
+		/// C# 11 ref-safety metadata existed. An unannotated <c>in</c> parameter is treated by a
+		/// modern compiler as potentially exposed through a ref-struct return, which rejects calls
+		/// that pass a temporary or property value. Legacy compilers accepted those calls even when
+		/// the method body proves that the parameter's storage cannot reach the returned value.
+		/// </summary>
+		void InferLegacyScopedInParameters(AstNode rootNode)
+		{
+			if (!context.Settings.ScopedRef || ModuleUsesModernRefSafetyRules())
+				return;
+			foreach (var declaration in rootNode.DescendantsAndSelf.OfType<MethodDeclaration>())
+			{
+				if (declaration.GetSymbol() is not IMethod method)
+					continue;
+				BlockStatement? body = declaration.Body;
+				if (!method.IsStatic
+					|| method.IsAbstract
+					|| method.IsVirtual
+					|| method.IsOverride
+					|| method.IsExplicitInterfaceImplementation
+					|| !method.ReturnType.IsByRefLike
+					|| declaration.HasModifier(Modifiers.Unsafe)
+					|| body == null
+					|| declaration.Parameters.Count != method.Parameters.Count)
+				{
+					continue;
+				}
+
+				for (int i = 0; i < method.Parameters.Count; i++)
+				{
+					IParameter parameter = method.Parameters[i];
+					ParameterDeclaration parameterDeclaration = declaration.Parameters.ElementAt(i);
+					if (parameter.ReferenceKind != ReferenceKind.In
+						|| parameter.Lifetime.ScopedRef
+						|| parameterDeclaration.IsScopedRef
+						|| parameter.Type is not ByReferenceType byReference
+						|| byReference.ElementType.IsByRefLike
+						|| byReference.ElementType.IsReferenceType != false
+						|| HasExplicitUnscopedRefAttribute(parameter)
+						|| parameterDeclaration.Annotation<ResolveResult>() is not ILVariableResolveResult parameterResult)
+					{
+						continue;
+					}
+
+					bool sawUse = false;
+					bool storageMayEscape = false;
+					foreach (IdentifierExpression identifier in body.Descendants.OfType<IdentifierExpression>())
+					{
+						if (identifier.GetILVariable() != parameterResult.Variable)
+							continue;
+						sawUse = true;
+						if (ParameterStorageMayEscape(identifier))
+						{
+							storageMayEscape = true;
+							break;
+						}
+					}
+					if (sawUse && !storageMayEscape)
+					{
+						context.Step("Infer scoped lifetime for legacy in parameter", parameterDeclaration);
+						parameterDeclaration.IsScopedRef = true;
+					}
+				}
+			}
+		}
+
+		bool ModuleUsesModernRefSafetyRules()
+		{
+			return context.TypeSystem.MainModule.GetModuleAttributes().Any(attribute =>
+				attribute.AttributeType.FullName == "System.Runtime.CompilerServices.RefSafetyRulesAttribute");
+		}
+
+		static bool HasExplicitUnscopedRefAttribute(IParameter parameter)
+		{
+			return parameter.GetAttributes().Any(attribute =>
+				attribute.AttributeType.FullName == "System.Diagnostics.CodeAnalysis.UnscopedRefAttribute");
+		}
+
+		/// <summary>
+		/// Follows the reference to a legacy parameter's storage through the generated expression.
+		/// A by-value result whose type cannot carry managed references is a proof barrier; a ref-like,
+		/// byref, pointer, or unresolved result is followed until it is consumed or escapes.
+		/// </summary>
+		static bool ParameterStorageMayEscape(Expression expression)
+		{
+			while (true)
+			{
+				switch (expression.Parent)
+				{
+					case ParenthesizedExpression parenthesized:
+						expression = parenthesized;
+						continue;
+					case CastExpression cast:
+						if (!TypeCarriesStorageReference(cast.GetResolveResult().Type))
+							return false;
+						expression = cast;
+						continue;
+					case MemberReferenceExpression member when member.Target == expression:
+						if (member.Parent is InvocationExpression invocation && invocation.Target == member)
+						{
+							if (InvocationCanExposeStorage(invocation, null))
+								return true;
+							if (!ExpressionCarriesStorageReference(invocation))
+								return false;
+							expression = invocation;
+							continue;
+						}
+						if (!ExpressionCarriesStorageReference(member))
+							return false;
+						expression = member;
+						continue;
+					case IndexerExpression indexer when indexer.Target == expression:
+						if (!ExpressionCarriesStorageReference(indexer))
+							return false;
+						expression = indexer;
+						continue;
+					case DirectionExpression direction:
+						if (direction.Parent is InvocationExpression directionInvocation)
+						{
+							if (InvocationCanExposeStorage(directionInvocation, direction))
+								return true;
+							if (!ExpressionCarriesStorageReference(directionInvocation))
+								return false;
+							expression = directionInvocation;
+							continue;
+						}
+						if (direction.Parent is ObjectCreateExpression directionObjectCreate)
+						{
+							if (InvocationCanExposeStorage(directionObjectCreate.Arguments, direction))
+								return true;
+							if (!TypeCarriesStorageReference(directionObjectCreate.GetResolveResult().Type))
+								return false;
+							expression = directionObjectCreate;
+							continue;
+						}
+						return true;
+					case InvocationExpression nestedInvocation:
+						if (InvocationCanExposeStorage(nestedInvocation, null))
+							return true;
+						if (!ExpressionCarriesStorageReference(nestedInvocation))
+							return false;
+						expression = nestedInvocation;
+						continue;
+					case ObjectCreateExpression objectCreate:
+						if (InvocationCanExposeStorage(objectCreate.Arguments, null))
+							return true;
+						if (!TypeCarriesStorageReference(objectCreate.GetResolveResult().Type))
+							return false;
+						expression = objectCreate;
+						continue;
+					case ConditionalExpression conditional:
+						if (conditional.Condition == expression
+							|| !TypeCarriesStorageReference(conditional.GetResolveResult().Type))
+						{
+							return false;
+						}
+						expression = conditional;
+						continue;
+					case ReturnStatement:
+					case YieldReturnStatement:
+						return true;
+					case ExpressionStatement:
+						return false;
+					default:
+						return true;
+				}
+			}
+		}
+
+		static bool InvocationCanExposeStorage(InvocationExpression invocation, DirectionExpression? source)
+		{
+			return InvocationCanExposeStorage(invocation.Arguments, source);
+		}
+
+		static bool InvocationCanExposeStorage(AstNodeCollection<Expression> arguments, DirectionExpression? source)
+		{
+			foreach (Expression argument in arguments)
+			{
+				if (argument == source
+					|| argument is not DirectionExpression { FieldDirection: FieldDirection.Ref or FieldDirection.Out } direction)
+				{
+					continue;
+				}
+				IType type = direction.Expression.GetResolveResult().Type;
+				if (type is ByReferenceType byReference)
+					type = byReference.ElementType;
+				if (type.IsByRefLike || type.Kind is TypeKind.Unknown or TypeKind.None)
+					return true;
+			}
+			return false;
+		}
+
+		static bool TypeCarriesStorageReference(IType type)
+		{
+			return type.IsByRefLike
+				|| type.Kind is TypeKind.ByReference or TypeKind.Pointer or TypeKind.FunctionPointer
+					or TypeKind.Unknown or TypeKind.None;
+		}
+
+		static bool ExpressionCarriesStorageReference(Expression expression)
+		{
+			// ResolveResult.Type is the value type of a ref-return invocation/member and may omit the
+			// byref wrapper. Preserve that storage edge from the resolved member signature.
+			return expression.GetSymbol() is IMember { ReturnType.Kind: TypeKind.ByReference }
+				|| TypeCarriesStorageReference(expression.GetResolveResult().Type);
+		}
+
 		/// <summary>
 		/// Analyze the input AST (containing undeclared variables)
 		/// for where those variables would be declared by this transform.

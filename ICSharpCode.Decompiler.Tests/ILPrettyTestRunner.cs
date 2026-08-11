@@ -830,6 +830,18 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task LegacyScopedInParameter()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task ModernRefSafetyScopedInParameter()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task SelfReferencingDelegate()
 		{
 			await Run();
