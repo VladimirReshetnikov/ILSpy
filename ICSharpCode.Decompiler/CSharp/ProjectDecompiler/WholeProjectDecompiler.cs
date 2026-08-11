@@ -280,6 +280,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			decompiler.AstTransforms.Add(new EscapeInvalidIdentifiers());
 			decompiler.AstTransforms.Add(new RemoveCLSCompliantAttribute());
 			decompiler.AstTransforms.Add(new PrepareCompilerGeneratedFileLocalTypesForProjectExport());
+			decompiler.AstTransforms.Add(new PrepareGeneratedComForProjectExport());
 			decompiler.AstTransforms.Add(new PrepareGeneratedRegexForProjectExport());
 			decompiler.AstTransforms.Add(new PrepareLibraryImportsForProjectExport());
 			return decompiler;

@@ -169,6 +169,46 @@ public sealed class WholeProjectDecompilerTests
 	}
 
 	[Test]
+	public async Task GeneratedComProjectDoesNotReplayGeneratorScaffolding()
+	{
+		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "GeneratedComProject.il");
+		string assemblyPath = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
+		try
+		{
+			UniversalAssemblyResolver resolver = new(assemblyPath, false, null);
+			string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
+			TestFriendlyProjectDecompiler projectDecompiler = new(resolver);
+			using PEFile module = new(assemblyPath);
+			projectDecompiler.DecompileProject(module, targetDirectory);
+			AssertDirectoryDoesntExist(targetDirectory);
+
+			string generatedInterfaceSource = projectDecompiler.SourceContaining("interface MaterializedInterface");
+			string generatedClassSource = projectDecompiler.SourceContaining("class MaterializedClass");
+			string ordinaryInterfaceSource = projectDecompiler.SourceContaining("interface OrdinaryInterface");
+			string ordinaryClassSource = projectDecompiler.SourceContaining("class OrdinaryClass");
+			CSharpDecompiler singleFileDecompiler = new(assemblyPath, resolver, new DecompilerSettings());
+			string singleFileSource = singleFileDecompiler.DecompileWholeModuleAsString();
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(generatedInterfaceSource, Does.Not.Contain("[GeneratedComInterface]"));
+				Assert.That(generatedInterfaceSource, Does.Contain("[IUnknownDerived<InterfaceInformation, InterfaceImplementation>]"));
+				Assert.That(generatedInterfaceSource, Does.Contain("[Marker(\"interface\")]"));
+				Assert.That(generatedClassSource, Does.Not.Contain("[GeneratedComClass]"));
+				Assert.That(generatedClassSource, Does.Contain("[ComExposedClass<ComClassInformation>]"));
+				Assert.That(generatedClassSource, Does.Contain("[Marker(\"class\")]"));
+				Assert.That(ordinaryInterfaceSource, Does.Contain("[GeneratedComInterface]"));
+				Assert.That(ordinaryClassSource, Does.Contain("[GeneratedComClass]"));
+				Assert.That(singleFileSource, Does.Contain($"[GeneratedComInterface]{Environment.NewLine}public interface MaterializedInterface"));
+				Assert.That(singleFileSource, Does.Contain($"[GeneratedComClass]{Environment.NewLine}[Marker(\"class\")]{Environment.NewLine}public sealed class MaterializedClass"));
+			}
+		}
+		finally
+		{
+			Tester.RepeatOnIOError(() => File.Delete(assemblyPath));
+		}
+	}
+
+	[Test]
 	public async Task CompilerGeneratedFileLocalHelperReferencedAcrossFilesIsEmitted()
 	{
 		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "CompilerGeneratedFileLocalProject.il");
