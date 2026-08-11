@@ -482,6 +482,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task OperatorTrueOutsideDirectCondition()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task ParameterizedProperty()
 		{
 			await Run();

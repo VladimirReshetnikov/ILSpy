@@ -249,12 +249,27 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				context.EndStep(cast);
 				return;
 			}
-			if (method.Name == "op_True" && arguments.Length == 1 && invocationExpression.Slot?.Kind == Slots.Condition)
+			if (method.IsOperator && method.Name == "op_True" && arguments.Length == 1)
 			{
-				context.Step("Remove op_True from condition", invocationExpression);
-				var condition = arguments[0].UnwrapInDirectionExpression();
-				invocationExpression.ReplaceWith(condition);
-				context.EndStep(condition);
+				if (invocationExpression.Slot?.Kind == Slots.Condition)
+				{
+					context.Step("Remove op_True from condition", invocationExpression);
+					var condition = arguments[0].UnwrapInDirectionExpression();
+					invocationExpression.ReplaceWith(condition);
+					context.EndStep(condition);
+				}
+				else
+				{
+					context.Step("Replace op_True result with conditional", invocationExpression);
+					arguments[0].Remove();
+					var condition = new ConditionalExpression(
+						arguments[0].UnwrapInDirectionExpression(),
+						new PrimitiveExpression(true),
+						new PrimitiveExpression(false)
+					).CopyAnnotationsFrom(invocationExpression);
+					invocationExpression.ReplaceWith(condition);
+					context.EndStep(condition);
+				}
 				return;
 			}
 
