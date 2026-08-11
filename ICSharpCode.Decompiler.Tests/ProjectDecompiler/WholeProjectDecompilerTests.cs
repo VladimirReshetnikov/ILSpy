@@ -209,6 +209,53 @@ public sealed class WholeProjectDecompilerTests
 	}
 
 	[Test]
+	public async Task EmbeddedInteropEventInterfaceIsLegalizedForProjectExport()
+	{
+		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "EmbeddedInteropEventProject.il");
+		string assemblyPath = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
+		string rebuiltAssembly = Path.Combine(Path.GetTempPath(), $"EmbeddedInteropEventProject-{Guid.NewGuid():N}");
+		try
+		{
+			UniversalAssemblyResolver resolver = new(assemblyPath, false, null);
+			string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
+			TestFriendlyProjectDecompiler projectDecompiler = new(resolver);
+			using PEFile module = new(assemblyPath);
+			projectDecompiler.DecompileProject(module, targetDirectory);
+			AssertDirectoryDoesntExist(targetDirectory);
+
+			string eventWrapperSource = projectDecompiler.SourceContaining("interface EventWrapper");
+			string guidedEventWrapperSource = projectDecompiler.SourceContaining("interface GuidedEventWrapper");
+			string applicationSource = projectDecompiler.SourceContaining("interface Application");
+			CSharpDecompiler singleFileDecompiler = new(assemblyPath, resolver, new DecompilerSettings());
+			string singleFileSource = singleFileDecompiler.DecompileWholeModuleAsString();
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(eventWrapperSource, Does.Not.Contain("[ComImport]"));
+				Assert.That(eventWrapperSource, Does.Contain("[CompilerGenerated]"));
+				Assert.That(eventWrapperSource, Does.Contain("[ComEventInterface(typeof(EventSource), typeof(EventSource))]"));
+				Assert.That(eventWrapperSource, Does.Contain("[TypeIdentifier(\"fixture-scope\", \"Interop.EventWrapper\")]"));
+				Assert.That(guidedEventWrapperSource, Does.Contain("[ComImport]"));
+				Assert.That(guidedEventWrapperSource, Does.Contain("[Guid(\"22222222-2222-2222-2222-222222222222\")]"));
+				Assert.That(applicationSource, Does.Contain("[ComImport]"));
+				Assert.That(applicationSource, Does.Contain("[Guid(\"33333333-3333-3333-3333-333333333333\")]"));
+				Assert.That(applicationSource, Does.Contain("interface Application : EventWrapper"));
+				Assert.That(singleFileSource, Does.Contain($"[ComImport]{Environment.NewLine}[CompilerGenerated]{Environment.NewLine}[ComEventInterface(typeof(EventSource), typeof(EventSource))]{Environment.NewLine}[TypeIdentifier(\"fixture-scope\", \"Interop.EventWrapper\")]{Environment.NewLine}public interface EventWrapper"));
+			}
+
+			Dictionary<string, string> sourceFiles = projectDecompiler.Files
+				.Where(file => Path.GetExtension(file.Key) == ".cs")
+				.ToDictionary(file => file.Key, file => file.Value.ToString());
+			Tester.CompileCSharpWithPdb(rebuiltAssembly, sourceFiles, CompilerOptions.Library);
+		}
+		finally
+		{
+			Tester.RepeatOnIOError(() => File.Delete(assemblyPath));
+			Tester.RepeatOnIOError(() => File.Delete(rebuiltAssembly + ".dll"));
+			Tester.RepeatOnIOError(() => File.Delete(rebuiltAssembly + ".pdb"));
+		}
+	}
+
+	[Test]
 	public async Task CompilerGeneratedFileLocalHelperReferencedAcrossFilesIsEmitted()
 	{
 		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "CompilerGeneratedFileLocalProject.il");
