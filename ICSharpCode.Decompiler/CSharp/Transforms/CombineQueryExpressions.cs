@@ -35,6 +35,19 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 	{
 		[AllowNull] TransformContext context;
 
+		readonly struct QueryVariableReference
+		{
+			public string Identifier { get; }
+
+			public object? Annotation { get; }
+
+			public QueryVariableReference(string identifier, object? annotation)
+			{
+				Identifier = identifier;
+				Annotation = annotation;
+			}
+		}
+
 		public void Run(AstNode rootNode, TransformContext context)
 		{
 			if (!context.Settings.QueryExpressions)
@@ -42,7 +55,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			this.context = context;
 			try
 			{
-				CombineQueries(rootNode, new Dictionary<string, object?>());
+				CombineQueries(rootNode, new Dictionary<string, QueryVariableReference>());
 				RevertQueriesWithTransparentIdentifiers(rootNode);
 			}
 			finally
@@ -84,7 +97,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		};
 
-		void CombineQueries(AstNode node, Dictionary<string, object?> fromOrLetIdentifiers)
+		void CombineQueries(AstNode node, Dictionary<string, QueryVariableReference> fromOrLetIdentifiers)
 		{
 			AstNode? next;
 			for (AstNode? child = node.FirstChild; child != null; child = next)
@@ -150,7 +163,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		};
 
-		bool TryRemoveTransparentIdentifier(QueryExpression query, QueryFromClause fromClause, QueryExpression innerQuery, Dictionary<string, object?> letClauses)
+		bool TryRemoveTransparentIdentifier(QueryExpression query, QueryFromClause fromClause, QueryExpression innerQuery, Dictionary<string, QueryVariableReference> letClauses)
 		{
 			if (!CSharpDecompiler.IsTransparentIdentifier(fromClause.Identifier))
 				return false;
@@ -180,15 +193,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				switch (expr)
 				{
 					case IdentifierExpression identifier:
-						letClauses[identifier.Identifier] = identifier.Annotation<ILVariableResolveResult>();
+						letClauses[identifier.Identifier] = new QueryVariableReference(identifier.Identifier, identifier.Annotation<ILVariableResolveResult>());
 						break;
 					case MemberReferenceExpression member:
 						AddQueryLetClause(member.MemberName, member);
 						break;
 					case NamedExpression namedExpression:
-						if (namedExpression.Expression is IdentifierExpression identifierExpression && namedExpression.Name == identifierExpression.Identifier)
+						if (namedExpression.Expression is IdentifierExpression identifierExpression
+							&& (namedExpression.Name == identifierExpression.Identifier || IsRangeVariable(identifierExpression)))
 						{
-							letClauses[namedExpression.Name] = identifierExpression.Annotation<ILVariableResolveResult>();
+							letClauses[namedExpression.Name] = new QueryVariableReference(identifierExpression.Identifier, identifierExpression.Annotation<ILVariableResolveResult>());
 							continue;
 						}
 						AddQueryLetClause(namedExpression.Name, namedExpression.Expression);
@@ -197,12 +211,26 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 			return true;
 
+			bool IsRangeVariable(IdentifierExpression identifier)
+			{
+				var variable = identifier.Annotation<ILVariableResolveResult>()?.Variable;
+				if (variable == null)
+					return false;
+				return query.Clauses.OfType<QueryFromClause>()
+					.Any(clause => clause.Annotation<ILVariableResolveResult>()?.Variable == variable)
+					|| query.Clauses.OfType<QueryContinuationClause>()
+						.Any(clause => clause.Annotation<ILVariableResolveResult>()?.Variable == variable)
+					|| query.Clauses.OfType<QueryJoinClause>()
+						.Any(clause => clause.JoinIdentifierToken.Annotation<ILVariableResolveResult>()?.Variable == variable
+							|| clause.IntoIdentifierToken?.Annotation<ILVariableResolveResult>()?.Variable == variable);
+			}
+
 			void AddQueryLetClause(string name, Expression expression)
 			{
 				QueryLetClause letClause = new QueryLetClause { Identifier = name, Expression = expression.Detach() };
 				var annotation = new LetIdentifierAnnotation();
 				letClause.AddAnnotation(annotation);
-				letClauses[name] = annotation;
+				letClauses[name] = new QueryVariableReference(name, annotation);
 				query.Clauses.InsertAfter(insertionPos, letClause);
 			}
 		}
@@ -210,7 +238,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// <summary>
 		/// Removes all occurrences of transparent identifiers
 		/// </summary>
-		void RemoveTransparentIdentifierReferences(AstNode node, Dictionary<string, object?> fromOrLetIdentifiers)
+		void RemoveTransparentIdentifierReferences(AstNode node, Dictionary<string, QueryVariableReference> fromOrLetIdentifiers)
 		{
 			foreach (AstNode child in node.Children)
 			{
@@ -218,18 +246,18 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 			if (node is MemberReferenceExpression mre && mre.Target is IdentifierExpression ident
 				&& CSharpDecompiler.IsTransparentIdentifier(ident.Identifier)
-				&& fromOrLetIdentifiers.TryGetValue(mre.MemberName, out var annotation))
+				&& fromOrLetIdentifiers.TryGetValue(mre.MemberName, out var variableReference))
 			{
 				// Only strip the transparent-identifier qualifier from a member that was actually
 				// introduced as a range or let variable. A member of a transparent identifier that
 				// survives as an active range variable (its access was not unfolded into scope) must
 				// keep its qualifier, otherwise it becomes an undefined name.
-				IdentifierExpression newIdent = new IdentifierExpression(mre.MemberName);
+				IdentifierExpression newIdent = new IdentifierExpression(variableReference.Identifier);
 				mre.TypeArguments.MoveTo(newIdent.TypeArguments);
 				newIdent.CopyAnnotationsFrom(mre);
 				newIdent.RemoveAnnotations<Semantics.MemberResolveResult>(); // remove the reference to the property of the anonymous type
-				if (annotation != null)
-					newIdent.AddAnnotation(annotation);
+				if (variableReference.Annotation != null)
+					newIdent.AddAnnotation(variableReference.Annotation);
 				context.Step("Replace transparent query identifier reference", mre);
 				mre.ReplaceWith(newIdent);
 				context.EndStep(newIdent);

@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -45,6 +46,13 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 	public class QueryExpressions
 	{
+		public interface QueryNode : IEnumerable<QueryNode>, IEnumerable
+		{
+			QueryNode this[string name] { get; }
+
+			string Text { get; }
+		}
+
 		public class HbmParam
 		{
 			public string Name { get; set; }
@@ -128,6 +136,29 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 					   OrderID = o.OrderID,
 					   Total = t
 				   };
+		}
+
+		public IEnumerable<string> LetRangeVariableCollideWithInferredLocal(QueryNode root)
+		{
+#if EXPECTED_OUTPUT
+			QueryNode queryNode = root["items"];
+			if (queryNode == null)
+			{
+				return Enumerable.Empty<string>();
+			}
+			return from QueryNode queryNode2 in queryNode
+				   let text = queryNode2.Text
+#else
+			QueryNode items = root["items"];
+			if (items == null)
+			{
+				return Enumerable.Empty<string>();
+			}
+			return from QueryNode queryNode in items
+				   let text = queryNode.Text
+#endif
+				   where text != null
+				   select text;
 		}
 
 		public object MultipleLet()
