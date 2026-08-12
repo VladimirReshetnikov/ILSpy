@@ -9,6 +9,13 @@
 }
 .module StackAllocIntoNativeIntLocal.dll
 
+.class public sequential ansi sealed beforefieldinit EventData
+       extends [mscorlib]System.ValueType
+{
+  .field public uint64 DataPointer
+  .field public uint32 Size
+}
+
 .class public auto ansi beforefieldinit StackAllocTarget
        extends [mscorlib]System.Object
 {
@@ -40,6 +47,32 @@
     ldloc.0
     ldind.i4
     call void [mscorlib]System.Console::Write(int32)
+    ret
+  }
+
+  // The allocation is stored in a byte pointer even though its byte count preserves the
+  // EventData element type. C# cannot cast a typed stackalloc expression directly to byte*;
+  // it needs a temporary EventData* declaration whose initializer is the stackalloc.
+  .method public hidebysig static void FillEventData(int32 count) cil managed
+  {
+    .maxstack 2
+    .locals init (
+      [0] uint8* buffer,
+      [1] valuetype EventData* data
+    )
+
+    sizeof EventData
+    ldarg.0
+    mul
+    conv.u
+    localloc
+    stloc.0
+
+    ldloc.0
+    stloc.1
+    ldloc.1
+    ldc.i4.7
+    stfld uint32 EventData::Size
     ret
   }
 

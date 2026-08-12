@@ -52,16 +52,21 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					if (!IsPointerStackAlloc(store.Value))
 						continue;
 					var target = store.Variable;
+					if (target.Kind != VariableKind.Local && target.Kind != VariableKind.StackSlot)
+						continue;
+					if (GetStackAllocPointerType(store.Value, target, context) is not { } pointerType)
+						continue;
 					// A single-definition pointer local is normally declared together with this store,
 					// so the stackalloc lands in a declaration initializer. SplitVariables may, however,
 					// create another live variable for the same original IL local slot. Variable naming
 					// can merge those live ranges again, causing this store to become an assignment.
-					// Treat that case like a multi-store target as well.
-					if (target.IsSingleDefinition && !SharesOriginalLocalSlot(function, target))
-						continue;
-					if (target.Kind != VariableKind.Local && target.Kind != VariableKind.StackSlot)
-						continue;
-					if (GetStackAllocPointerType(store.Value, target, context) is not { } pointerType)
+					// Treat that case like a multi-store target as well. A single-definition target also
+					// needs splitting when its pointer type differs from the element type encoded by the
+					// allocation size: C# cannot cast a typed stackalloc expression directly to another
+					// pointer type (CS8346).
+					if (target.IsSingleDefinition
+						&& !SharesOriginalLocalSlot(function, target)
+						&& (target.Type.Kind != TypeKind.Pointer || target.Type.Equals(pointerType)))
 						continue;
 
 					context.Step($"Split pointer stackalloc store to '{target.Name}'", store);
@@ -88,18 +93,19 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 		/// <summary>
 		/// Returns the pointer type to declare the stackalloc under, or null where the store needs no
-		/// splitting. A target that is a pointer keeps its own type. A target typed as a native
-		/// integer - which happens where the buffer is only ever cast to the element type at each use
-		/// - takes a byte pointer: the allocation size is already in bytes, so the two are the same
-		/// buffer, and the casts at the uses are unaffected.
+		/// splitting. A bare allocation whose size is <c>count * sizeof(T)</c> takes a <c>T*</c>
+		/// declaration even when the receiving local has another pointer type. Otherwise a pointer
+		/// target keeps its own type, while a native-integer target takes a byte pointer: the allocation
+		/// size is already in bytes, so the two are the same buffer and casts at the uses are unaffected.
 		/// </summary>
 		static IType? GetStackAllocPointerType(ILInstruction value, ILVariable target, ILTransformContext context)
 		{
-			if (target.Type.Kind == TypeKind.Pointer)
-				return target.Type;
 			// An initializer block writes its elements through the target's own type, so it cannot be
-			// re-typed; only a bare allocation can.
-			if (value is not LocAlloc allocation || target.Type.GetStackType() != StackType.I)
+			// re-typed. A pointer target can still keep that type; only a native-integer target has no
+			// C# pointer declaration to use for the block.
+			if (value is not LocAlloc allocation)
+				return target.Type.Kind == TypeKind.Pointer ? target.Type : null;
+			if (target.Type.GetStackType() != StackType.I)
 				return null;
 			// The allocation size is a count times sizeof(T) where the buffer has an element type;
 			// declaring the pointer as T* is what lets the stackalloc be written without a cast, which
@@ -108,10 +114,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			// Shares the matcher with ExpressionBuilder.TranslateLocAlloc: the two decide the same
 			// question and disagreeing means declaring a pointer of one type and stackallocating
 			// another.
-			var elementType = CSharp.ExpressionBuilder.MatchStackAllocSize(allocation.Argument, out var sizeOfElementType, out _)
-					? sizeOfElementType
-					: context.TypeSystem.FindType(KnownTypeCode.Byte);
-			return new PointerType(elementType);
+			if (CSharp.ExpressionBuilder.MatchStackAllocSize(allocation.Argument, out var sizeOfElementType, out _))
+				return new PointerType(sizeOfElementType);
+			return target.Type.Kind == TypeKind.Pointer
+				? target.Type
+				: new PointerType(context.TypeSystem.FindType(KnownTypeCode.Byte));
 		}
 
 		static bool IsPointerStackAlloc(ILInstruction value)
