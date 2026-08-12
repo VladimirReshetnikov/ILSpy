@@ -1086,9 +1086,57 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				if (variable.Kind == VariableKind.Parameter)
 					return null;
 				if (type.Kind == TypeKind.Struct)
-					return Block.GetContainingStatement(variable.AddressInstructions.OrderBy(i => i.StartILOffset).First());
+				{
+					// The display struct's storage materializes at its first use in the reconstructed
+					// body, so pick the first address use in ILAst tree order. IL offsets cannot order
+					// these uses: an iterator's finally is stitched in from a separate compiler-generated
+					// method whose offsets restart at zero, so ordering by offset can pull the
+					// "initializer" into the finally and anchor the capture scope there.
+					return Block.GetContainingStatement(FirstInTreeOrder(variable.AddressInstructions));
+				}
 				else
 					return (StLoc)variable.StoreInstructions[0];
+			}
+		}
+
+		/// <summary>
+		/// Returns the instruction that comes first in the pre-order layout of the ILAst tree.
+		/// An ancestor counts as earlier than its descendants; instructions from different trees
+		/// keep the enumeration order (the earlier-enumerated one wins).
+		/// </summary>
+		static ILInstruction FirstInTreeOrder(IEnumerable<ILInstruction> instructions)
+		{
+			ILInstruction first = null;
+			foreach (var instruction in instructions)
+			{
+				if (first == null || ComesBeforeInTreeOrder(instruction, first))
+					first = instruction;
+			}
+			return first;
+		}
+
+		static bool ComesBeforeInTreeOrder(ILInstruction a, ILInstruction b)
+		{
+			var pathA = AncestorPath(a);
+			var pathB = AncestorPath(b);
+			if (pathA[0] != pathB[0])
+				return false;
+			int index = 1;
+			while (index < pathA.Count && index < pathB.Count && pathA[index] == pathB[index])
+				index++;
+			if (index == pathA.Count)
+				return true;
+			if (index == pathB.Count)
+				return false;
+			return pathA[index].ChildIndex < pathB[index].ChildIndex;
+
+			static List<ILInstruction> AncestorPath(ILInstruction instruction)
+			{
+				var path = new List<ILInstruction>();
+				for (var node = instruction; node != null; node = node.Parent)
+					path.Add(node);
+				path.Reverse();
+				return path;
 			}
 		}
 
