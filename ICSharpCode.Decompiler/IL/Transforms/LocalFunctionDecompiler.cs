@@ -46,6 +46,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			public List<ILInstruction> UseSites;
 			public IMethod Method;
 			public ILFunction Definition;
+			public HashSet<ILVariable> CapturedClosureVariables;
+			public HashSet<ILInstruction> UnresolvedClosureArguments;
 			/// <summary>
 			/// Used to store all synthesized call-site arguments grouped by the parameter index.
 			/// We use a dictionary instead of a simple array, because -1 is used for the this parameter
@@ -115,7 +117,15 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					ignoreStructure: true
 				);
 				if (compatibleArgument == null)
+				{
+					if (TransformDisplayClassUsage.IsPotentialClosure(context, thisVar.Type.GetDefinition()))
+					{
+						// The instance receiver is itself a compiler closure, but no use-site reveals the
+						// storage that owns it. Record opaque provenance so later widening fails closed.
+						info.UnresolvedClosureArguments.Add(localFunction);
+					}
 					continue;
+				}
 				context.Step($"Replace 'this' with {compatibleArgument}", localFunction);
 				localFunction.AcceptVisitor(new DelegateConstruction.ReplaceDelegateTargetVisitor(compatibleArgument, thisVar));
 				DetermineCaptureAndDeclarationScope(info, -1, compatibleArgument);
@@ -124,15 +134,58 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 		private void DetermineCaptureAndDeclarationScopes(Dictionary<MethodDefinitionHandle, LocalFunctionInfo>.ValueCollection localFunctions)
 		{
+			var resolvedLocalFunctions = localFunctions.Where(info => info.Definition != null).ToArray();
 			foreach (var info in localFunctions)
 			{
-				context.CancellationToken.ThrowIfCancellationRequested();
 				if (info.Definition == null)
 				{
 					context.Function.Warnings.Add($"Could not decode local function '{info.Method}'");
-					continue;
 				}
+			}
 
+			// Resolve every compiler-generated closure argument before deciding whether any function can
+			// be widened. A parent local function and all local functions declared within it move as one
+			// subtree, so parent-before-child discovery order must not hide a descendant's external scope.
+			foreach (var info in resolvedLocalFunctions)
+			{
+				context.CancellationToken.ThrowIfCancellationRequested();
+				foreach (var useSite in info.UseSites)
+				{
+					if (!useSite.IsDescendantOf(info.Definition))
+					{
+						DetermineCaptureAndDeclarationScope(info, useSite);
+					}
+				}
+			}
+			if (context.Function.Method.IsConstructor)
+			{
+				// A closure-free local function in a constructor gets its initial declaration scope from its
+				// first use site. Seed all such scopes before any relocation so a logically nested decoded
+				// function participates in its parent's moving-subtree safety checks even though all decoded
+				// local functions are still attached as siblings in the ILAst at this phase.
+				bool changed;
+				do
+				{
+					changed = false;
+					foreach (var info in resolvedLocalFunctions.Where(info => info.Definition.DeclarationScope == null))
+					{
+						foreach (var useSite in info.UseSites.Where(useSite => !useSite.IsDescendantOf(info.Definition)))
+						{
+							var scope = FindDeclarationScopeAtUseSite(info.Definition, useSite);
+							if (scope != null)
+							{
+								info.Definition.DeclarationScope = scope;
+								changed = true;
+								break;
+							}
+						}
+					}
+				} while (changed);
+			}
+
+			foreach (var info in resolvedLocalFunctions)
+			{
+				context.CancellationToken.ThrowIfCancellationRequested();
 				context.StepStartGroup($"Determine and move to declaration scope of " + info.Definition.Name, info.Definition);
 				try
 				{
@@ -145,8 +198,6 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						// its own body as an ordinary use-site would falsely widen the declaration.
 						if (useSite.IsDescendantOf(localFunction))
 							continue;
-						DetermineCaptureAndDeclarationScope(info, useSite);
-
 						var useSiteScope = FindDeclarationScopeAtUseSite(localFunction, useSite);
 						// Outside a constructor, only step in where the declaration does not already cover
 						// the use-site. Moving a function that every caller can see would churn the output
@@ -160,10 +211,23 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 							{
 								localFunction.DeclarationScope = scope;
 							}
-							else if (scope != null
-								&& (GetDeclaringFunction(localFunction) == context.Function || CapturesAtMostThis(localFunction)
-									|| ClosureLivesIn(localFunction, context.Function)))
+							else if (scope != null)
 							{
+								var widenedScope = FindCommonAncestorInstruction<BlockContainer>(scope, localFunction.DeclarationScope)
+									?? (BlockContainer)context.Function.Body;
+								if (!TryGetMovingLocalFunctions(info, resolvedLocalFunctions, out var movingFunctions))
+								{
+									continue;
+								}
+								bool canWidenByKind = GetDeclaringFunction(localFunction) == context.Function
+									|| CapturesAtMostThis(localFunction)
+									|| ClosureLivesIn(localFunction, context.Function);
+								if (!canWidenByKind
+									|| !MovingSubtreeCapturesOnlyFrom(movingFunctions, context.Function)
+									|| !CapturedClosuresRemainInScope(movingFunctions, resolvedLocalFunctions, widenedScope))
+								{
+									continue;
+								}
 								// Broaden the declaration scope to cover this use-site. A function that
 								// captures at most the enclosing 'this' has no display-class struct parameter,
 								// so closure analysis never anchors it to a particular scope; its scope comes
@@ -178,11 +242,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 								// struct), pulling the scope up to a common ancestor with a use-site would move
 								// it out of that function and leave the captured display-class fields without a
 								// declaration.
-								localFunction.DeclarationScope = FindCommonAncestorInstruction<BlockContainer>(scope, localFunction.DeclarationScope);
-								if (localFunction.DeclarationScope == null)
-								{
-									localFunction.DeclarationScope = (BlockContainer)context.Function.Body;
-								}
+								localFunction.DeclarationScope = widenedScope;
 							}
 						}
 					}
@@ -494,6 +554,77 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				.Any(f => f == owner) == true;
 		}
 
+		/// <summary>
+		/// Returns whether the local-function subtree captures variables only from the moving subtree
+		/// itself or from <paramref name="owner"/>. Nested lambdas and local functions move together
+		/// with their containing local function, so variables they own are internal to the move; any
+		/// other owner is an external scope that widening must not cross.
+		/// </summary>
+		private bool MovingSubtreeCapturesOnlyFrom(IReadOnlyCollection<ILFunction> movingLocalFunctions, ILFunction owner)
+		{
+			var movingFunctions = movingLocalFunctions.SelectMany(function => function.Descendants.OfType<ILFunction>())
+				.Concat(movingLocalFunctions).ToHashSet();
+			foreach (var instruction in movingLocalFunctions.SelectMany(function =>
+				function.Descendants.OfType<IInstructionWithVariableOperand>()))
+			{
+				var variableOwner = instruction.Variable.Function;
+				if (variableOwner != owner && !movingFunctions.Contains(variableOwner))
+					return false;
+			}
+			return true;
+		}
+
+		/// <summary>
+		/// Computes the decoded local functions that would move together with <paramref name="rootInfo"/>
+		/// from their inferred declaration scopes. At this transform phase decoded local functions are
+		/// still attached as siblings in the ILAst, so current parent pointers alone are insufficient.
+		/// Returns false when a function called from that logical subtree still has unresolved closure
+		/// provenance and no declaration scope with which to classify the move.
+		/// </summary>
+		private bool TryGetMovingLocalFunctions(LocalFunctionInfo rootInfo,
+			IReadOnlyCollection<LocalFunctionInfo> allInfos, out HashSet<ILFunction> movingFunctions)
+		{
+			var result = new HashSet<ILFunction> { rootInfo.Definition };
+			bool changed;
+			do
+			{
+				changed = false;
+				foreach (var info in allInfos)
+				{
+					if (result.Contains(info.Definition))
+						continue;
+					bool usedFromMovingSubtree = info.UseSites.Any(useSite => useSite.Ancestors.OfType<ILFunction>()
+						.Any(result.Contains));
+					if (usedFromMovingSubtree && info.Definition.DeclarationScope == null
+						&& info.UnresolvedClosureArguments.Count > 0)
+					{
+						movingFunctions = result;
+						return false;
+					}
+					if (info.Definition.DeclarationScope?.Ancestors.OfType<ILFunction>().Any(result.Contains) == true)
+					{
+						result.Add(info.Definition);
+						changed = true;
+					}
+				}
+			} while (changed);
+
+			movingFunctions = result;
+			return true;
+		}
+
+		private bool CapturedClosuresRemainInScope(IReadOnlyCollection<ILFunction> movingFunctions,
+			IReadOnlyCollection<LocalFunctionInfo> allInfos, BlockContainer proposedScope)
+		{
+			// An unrelated root-owned display class must not authorize widening a function whose own
+			// closure, or a moving descendant's closure, is built in a nested lexical scope. Known
+			// unresolved closure arguments and recorded variables without a capture scope fail closed.
+			return allInfos.Where(info => movingFunctions.Contains(info.Definition)).All(info =>
+				info.UnresolvedClosureArguments.Count == 0
+				&& info.CapturedClosureVariables.All(variable => variable.CaptureScope != null
+					&& (proposedScope == variable.CaptureScope || proposedScope.IsDescendantOf(variable.CaptureScope))));
+		}
+
 		private bool CapturesAtMostThis(ILFunction localFunction)
 		{
 			foreach (var parameter in localFunction.Method.Parameters)
@@ -588,6 +719,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					info = new LocalFunctionInfo() {
 						UseSites = new List<ILInstruction>() { inst },
 						LocalFunctionArguments = new Dictionary<int, List<ILInstruction>>(),
+						CapturedClosureVariables = new HashSet<ILVariable>(),
+						UnresolvedClosureArguments = new HashSet<ILInstruction>(),
 						Method = (IMethod)targetMethod.MemberDefinition,
 					};
 					var rootFunction = context.Function;
@@ -858,10 +991,23 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				closureVar = ResolveAncestorScopeReference(arg);
 				if (closureVar == null)
+				{
+					info.UnresolvedClosureArguments.Add(arg);
 					return false;
+				}
 			}
 			if (closureVar.Kind == VariableKind.NamedArgument)
+			{
+				info.UnresolvedClosureArguments.Add(arg);
 				return false;
+			}
+			if (closureVar.IsThis()
+				&& !TransformDisplayClassUsage.IsPotentialClosure(context, closureVar.Type.GetDefinition()))
+			{
+				// An ordinary enclosing 'this' is available throughout the owner function. It is not a
+				// compiler closure whose lexical origin must be recovered from an initializer.
+				return false;
+			}
 			if (closureVar.Kind == VariableKind.Parameter)
 			{
 				// The closure arrives only as a by-ref display-struct parameter of an enclosing
@@ -872,12 +1018,19 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				// the SROA'd display-class local ends up out of scope at its field accesses.
 				var forwardedLocal = ResolveForwardedClosureParameter(closureVar);
 				if (forwardedLocal == null)
+				{
+					info.UnresolvedClosureArguments.Add(arg);
 					return false;
+				}
 				closureVar = forwardedLocal;
 			}
 			var initializer = GetClosureInitializer(closureVar);
 			if (initializer == null)
+			{
+				info.UnresolvedClosureArguments.Add(arg);
 				return false;
+			}
+			info.UnresolvedClosureArguments.Remove(arg);
 			// determine the capture scope of closureVar and the declaration scope of the function 
 			var additionalScope = BlockContainer.FindClosestContainer(initializer);
 			if (closureVar.CaptureScope == null)
@@ -892,6 +1045,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				closureVar.Kind = VariableKind.DisplayClassLocal;
 			}
+			info.CapturedClosureVariables.Add(closureVar);
 			if (function.DeclarationScope == null)
 			{
 				function.DeclarationScope = closureVar.CaptureScope;
@@ -948,11 +1102,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		/// instead of defaulting to the top-level body (which would leave the SROA'd local out of
 		/// scope at the nested function's field accesses).
 		///
-		/// Only locals owned by another local function qualify. When the originating local instead
-		/// lives in a lambda, the nested function is already nested inside the forwarding function
-		/// through the lambda's own scope handling, and rerouting it here would hoist it out of that
-		/// scope. Returns null in that case, or when no such local exists yet (e.g. it has not been
-		/// processed) or is ambiguous, so the caller keeps the conservative default.
+		/// Locals owned by the top-level function or another local function qualify. A local owned by a
+		/// lambda does not: the nested function is already nested inside the forwarding function through
+		/// the lambda's own scope handling, and rerouting it here would hoist it out of that scope. Returns
+		/// null when no such local exists or the origin is ambiguous, so callers fail closed.
 		/// </summary>
 		ILVariable ResolveForwardedClosureParameter(ILVariable parameter)
 		{
@@ -962,13 +1115,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			ILVariable result = null;
 			foreach (var f in context.Function.Descendants.OfType<ILFunction>())
 			{
-				if (f.Kind != ILFunctionKind.LocalFunction)
+				if (f != context.Function && f.Kind != ILFunctionKind.LocalFunction)
 					continue;
 				foreach (var v in f.Variables)
 				{
 					if (v.Kind == VariableKind.Parameter)
-						continue;
-					if (v.CaptureScope == null)
 						continue;
 					if (v.Type.UnwrapByRef().GetDefinition() != structType)
 						continue;
