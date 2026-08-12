@@ -76,7 +76,7 @@ internal sealed class VB_AnonymousType_0<T0, T1>
 	}
 }
 [StandardModule]
-public sealed class VBAnonymousTypes
+public static class VBAnonymousTypes
 {
 	public static void MutableAnonymousType()
 	{
@@ -105,7 +105,7 @@ public sealed class VBAnonymousTypes
 
 	public static void SelectAnonymousType(IEnumerable<int> items)
 	{
-		var enumerable = items.Select([SpecialName] (int i) => new {
+		var enumerable = items.Select((int i) => new {
 			Value = i,
 			Square = checked(i * i)
 		});

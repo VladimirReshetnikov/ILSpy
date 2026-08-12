@@ -128,48 +128,7 @@ namespace ICSharpCode.Decompiler
 				ITypeDefinition td = type.GetDefinition();
 				return td != null && td.IsCompilerGenerated() && HasOnlyReadOnlyProperties(td);
 			}
-			return type.IsVBAnonymousType();
-		}
-
-		/// <summary>
-		/// The VB compiler emits anonymous types as real named generic types called
-		/// "VB$AnonymousType_N`K" in the global namespace, unlike the C# compiler which uses
-		/// the "&lt;&gt;f__AnonymousType" naming convention recognized by <see cref="IsAnonymousType(IType)"/>.
-		/// The shape is fixed: a compiler-generated generic type whose every type parameter is
-		/// surfaced by exactly one gettable instance property of that type parameter's type, so the
-		/// type can be reconstructed as a C# anonymous type "new { Name0 = ..., Name1 = ... }".
-		/// </summary>
-		public static bool IsVBAnonymousType(this IType type)
-		{
-			if (type == null)
-				return false;
-			if (!string.IsNullOrEmpty(type.Namespace))
-				return false;
-			if (!type.Name.StartsWith("VB$AnonymousType_", StringComparison.Ordinal))
-				return false;
-			ITypeDefinition td = type.GetDefinition();
-			if (td == null || !td.IsCompilerGenerated())
-				return false;
-			int typeParameterCount = td.TypeParameterCount;
-			if (typeParameterCount == 0)
-				return false;
-			// Each type parameter must be surfaced by exactly one gettable instance property of
-			// that type parameter's type; the property carries the anonymous member's name.
-			var coveredTypeParameters = new bool[typeParameterCount];
-			int propertyCount = 0;
-			foreach (IProperty property in td.Properties)
-			{
-				propertyCount++;
-				if (property.IsStatic || !property.CanGet)
-					return false;
-				if (property.ReturnType is not ITypeParameter tp || tp.OwnerType != SymbolKind.TypeDefinition)
-					return false;
-				int index = tp.Index;
-				if (index < 0 || index >= typeParameterCount || coveredTypeParameters[index])
-					return false;
-				coveredTypeParameters[index] = true;
-			}
-			return propertyCount == typeParameterCount;
+			return false;
 		}
 
 		/// <summary>
