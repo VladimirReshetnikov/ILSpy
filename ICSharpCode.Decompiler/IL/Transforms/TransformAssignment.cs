@@ -380,6 +380,9 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					return false;
 				if (!ValidateCompoundAssign(binary, smallIntConv, targetType, context.Settings))
 					return false;
+				string numericOperatorName = CompoundAssignmentOperatorGuard.GetOperatorMethodName(binary.Operator);
+				if (numericOperatorName == null || !CompoundAssignmentOperatorGuard.MayIntroduceCompoundAssignment(context.TypeSystem, targetType, numericOperatorName))
+					return false;
 				context.Step($"Compound assignment (binary.numeric)", compoundStore);
 				finalizeMatch?.Invoke(context);
 				newInst = new NumericCompoundAssign(
@@ -412,6 +415,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				}
 				if (operatorCall.IsLifted)
 					return false; // TODO: add tests and think about whether nullables need special considerations
+				if (!CompoundAssignmentOperatorGuard.MayIntroduceCompoundAssignment(context.TypeSystem, targetType, operatorCall.Method.Name))
+					return false;
 				context.Step($"Compound assignment (user-defined binary)", compoundStore);
 				finalizeMatch?.Invoke(context);
 				newInst = new UserDefinedCompoundAssign(operatorCall.Method, CompoundEvalMode.EvaluatesToNewValue,
@@ -469,6 +474,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				}
 
 				if (!IsMatchingCompoundLoad(arg, compoundStore, out var target, out var targetKind, out var finalizeMatch, forbiddenVariable: storeInSetter?.Variable))
+					return false;
+				if (!CompoundAssignmentOperatorGuard.MayIntroduceCompoundAssignment(context.TypeSystem, targetType, "op_Addition"))
 					return false;
 				context.Step($"Compound assignment (string concatenation)", compoundStore);
 				finalizeMatch?.Invoke(context);
@@ -912,6 +919,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return false;
 			if (IsImplicitTruncation(stloc_outer.Value, stloc_outer.Variable.Type, context.TypeSystem))
 				return false;
+			string preIncOperatorName = binary != null
+				? CompoundAssignmentOperatorGuard.GetOperatorMethodName(binary.Operator)
+				: ((Call)value2).Method.Name;
+			if (preIncOperatorName == null || !CompoundAssignmentOperatorGuard.MayIntroduceCompoundAssignment(context.TypeSystem, targetType, preIncOperatorName))
+				return false;
 			context.Step(nameof(TransformPreIncDecOperatorWithInlineStore), store);
 			finalizeMatch?.Invoke(context);
 			if (binary != null)
@@ -992,6 +1004,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (!IsMatchingCompoundLoad(stloc.Value, store, out var target, out var targetKind, out var finalizeMatch, forbiddenVariable: stloc.Variable))
 				return false;
 			if (IsImplicitTruncation(stloc.Value, stloc.Variable.Type, context.TypeSystem))
+				return false;
+			// This shape surfaces as "x++"/"x--", so the increment operator names decide.
+			string postIncOperatorName = binary != null
+				? (binary.Operator == BinaryNumericOperator.Add ? "op_Increment" : "op_Decrement")
+				: ((Call)value).Method.Name;
+			if (!CompoundAssignmentOperatorGuard.MayIntroduceCompoundAssignment(context.TypeSystem, targetType, postIncOperatorName))
 				return false;
 			context.Step("TransformPostIncDecOperatorWithInlineStore", store);
 			finalizeMatch?.Invoke(context);
@@ -1079,6 +1097,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				}
 				if (!ValidateCompoundAssign(binary, conv, targetType, context.Settings))
 					return false;
+				// This shape surfaces as "x++"/"x--", so the increment operator names decide.
+				string numericOperatorName = binary.Operator == BinaryNumericOperator.Add ? "op_Increment" : "op_Decrement";
+				if (!CompoundAssignmentOperatorGuard.MayIntroduceCompoundAssignment(context.TypeSystem, targetType, numericOperatorName))
+					return false;
 				context.Step("TransformPostIncDecOperator (builtin)", inst);
 				finalizeMatch?.Invoke(context);
 				inst.Value = new NumericCompoundAssign(binary, target, targetKind, binary.Right,
@@ -1092,6 +1114,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					return false;
 				if (operatorCall.IsLifted)
 					return false; // TODO: add tests and think about whether nullables need special considerations
+				if (!CompoundAssignmentOperatorGuard.MayIntroduceCompoundAssignment(context.TypeSystem, targetType, operatorCall.Method.Name))
+					return false;
 				context.Step("TransformPostIncDecOperator (user-defined)", inst);
 				Debug.Assert(truncation == ImplicitTruncationResult.ValuePreserved);
 				finalizeMatch?.Invoke(context);

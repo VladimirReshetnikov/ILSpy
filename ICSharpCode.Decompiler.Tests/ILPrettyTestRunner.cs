@@ -494,6 +494,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task CompoundAssignmentResultConversion()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task ParameterizedProperty()
 		{
 			await Run();

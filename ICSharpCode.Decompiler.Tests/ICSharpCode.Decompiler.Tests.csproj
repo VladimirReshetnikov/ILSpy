@@ -116,6 +116,8 @@
     <None Include="TestCases\ILPretty\InitOnlySettersAfterInitializer.cs" />
     <None Include="TestCases\ILPretty\OperatorTrueOutsideDirectCondition.il" />
     <None Include="TestCases\ILPretty\OperatorTrueOutsideDirectCondition.cs" />
+    <None Include="TestCases\ILPretty\CompoundAssignmentResultConversion.il" />
+    <None Include="TestCases\ILPretty\CompoundAssignmentResultConversion.cs" />
     <None Include="TestCases\ILPretty\AnonymousTypeConditionalPhi.il" />
     <None Include="TestCases\ILPretty\AwaitInCatchUnresolvedExceptionDispatchInfo.il" />
     <None Include="TestCases\ILPretty\ConstrainedCallOnRefStruct.il" />
@@ -231,6 +233,7 @@
     <Compile Remove="TestCases\ILPretty\DiscardNameTakenByLocalFunction.cs" />
     <Compile Remove="TestCases\ILPretty\InitOnlySettersAfterInitializer.cs" />
     <Compile Remove="TestCases\ILPretty\OperatorTrueOutsideDirectCondition.cs" />
+    <Compile Remove="TestCases\ILPretty\CompoundAssignmentResultConversion.cs" />
     <Compile Remove="TestCases\ILPretty\AnonymousTypeConditionalPhi.cs" />
     <None Include="TestCases\ILPretty\AnonymousTypeConditionalPhi.cs" />
     <Compile Remove="TestCases\ILPretty\CyclicInterfaceRefKind.cs" />

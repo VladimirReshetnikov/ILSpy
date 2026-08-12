@@ -58,6 +58,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				if (call.SlotInfo == StLoc.ValueSlot && call.Parent.SlotInfo == Block.InstructionSlot)
 				{
 					var store = (StLoc)call.Parent;
+					if (!CompoundAssignmentOperatorGuard.MayIntroduceCompoundAssignment(context.TypeSystem, store.Variable.Type, call.Method.Name))
+					{
+						// A C# 14 instance/extension compound operator would take over "++x"; leaving
+						// the raw operator call visibly uncompilable beats silently changing dispatch.
+						continue;
+					}
 					var block = (Block)store.Parent;
 					context.Step($"Fix {call.Method.Name} call at 0x{call.StartILOffset:x4} using {store.Variable.Name}", call);
 					// stloc V(call op_Increment(...))
@@ -72,6 +78,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				}
 				else
 				{
+					if (!CompoundAssignmentOperatorGuard.MayIntroduceCompoundAssignment(context.TypeSystem, call.GetParameter(0).Type, call.Method.Name))
+					{
+						// A C# 14 instance/extension compound operator would take over "++x"; leaving
+						// the raw operator call visibly uncompilable beats silently changing dispatch.
+						continue;
+					}
 					context.Step($"Fix {call.Method.Name} call at 0x{call.StartILOffset:x4} using new local", call);
 					var newVariable = call.Arguments[0].Extract(context);
 					if (newVariable == null)

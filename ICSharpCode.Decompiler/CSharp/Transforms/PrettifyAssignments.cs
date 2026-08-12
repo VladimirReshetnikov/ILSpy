@@ -25,6 +25,7 @@ using System.Linq;
 using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
+using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.Util;
 
@@ -49,29 +50,31 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		{
 			base.VisitAssignmentExpression(assignment);
 			// Combine "x = x op y" into "x op= y"
-			// Also supports "x = (T)(x op y)" -> "x op= y", if x.GetType() == T
-			// and y is implicitly convertible to T.
+			// Also supports "x = (T)(x op y)" -> "x op= y" for a predefined operator op when
+			// T is the type of x and y is implicitly convertible to T: that is exactly the
+			// shape C# assigns to the compound form for predefined narrowing operators.
+			// A user-defined operator's result must instead be implicitly convertible to the
+			// type of x, so around one every cast has to stay in the source.
 			Expression rhs = assignment.Right;
-			IType? expectedType = null;
-			if (assignment.Right is CastExpression { Type: var astType } cast)
+			CastExpression? cast = assignment.Right as CastExpression;
+			if (cast != null)
 			{
 				rhs = cast.Expression;
-				expectedType = astType.GetResolveResult().Type;
 			}
 			if (rhs is BinaryOperatorExpression binary && assignment.Operator == AssignmentOperatorType.Assign)
 			{
-				if (CanConvertToCompoundAssignment(assignment.Left) && assignment.Left.IsMatch(binary.Left)
-					&& binary.Right != null && IsImplicitlyConvertible(binary.Right, expectedType))
+				var newOperator = GetAssignmentOperatorForBinaryOperator(binary.Operator);
+				if (newOperator != AssignmentOperatorType.Assign
+					&& CanConvertToCompoundAssignment(assignment.Left) && assignment.Left.IsMatch(binary.Left)
+					&& binary.Right != null
+					&& (cast == null || CastKeepsCompoundAssignmentSemantics(assignment.Left, binary, cast))
+					&& NoCompoundAssignmentOperatorTakesOver(assignment.Left, binary.Operator))
 				{
-					var newOperator = GetAssignmentOperatorForBinaryOperator(binary.Operator);
-					if (newOperator != AssignmentOperatorType.Assign)
-					{
-						context.Step("Convert assignment to compound assignment", assignment);
-						assignment.Operator = newOperator;
-						// If we found a shorter operator, get rid of the BinaryOperatorExpression:
-						assignment.CopyAnnotationsFrom(binary);
-						assignment.Right = binary.Right;
-					}
+					context.Step("Convert assignment to compound assignment", assignment);
+					assignment.Operator = newOperator;
+					// If we found a shorter operator, get rid of the BinaryOperatorExpression:
+					assignment.CopyAnnotationsFrom(binary);
+					assignment.Right = binary.Right;
 				}
 			}
 			if (context.Settings.IntroduceIncrementAndDecrement && assignment.Operator is AssignmentOperatorType.Add or AssignmentOperatorType.Subtract)
@@ -85,7 +88,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					&& CSharpPrimitiveCast.Cast(rr.Type.GetTypeCode(), 1, false).Equals(rr.ConstantValue))
 				{
 					// only if it's not a custom operator
-					if (assignment.Annotation<IL.CallInstruction>() == null && assignment.Annotation<IL.UserDefinedCompoundAssign>() == null && assignment.Annotation<IL.DynamicCompoundAssign>() == null)
+					if (assignment.Annotation<IL.CallInstruction>() == null && assignment.Annotation<IL.UserDefinedCompoundAssign>() == null && assignment.Annotation<IL.DynamicCompoundAssign>() == null
+						&& NoIncrementOperatorTakesOver(assignment.Left, assignment.Operator == AssignmentOperatorType.Add))
 					{
 						UnaryOperatorType type;
 						// When the parent is an expression statement, pre- or post-increment doesn't matter;
@@ -102,13 +106,75 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 			}
 
-			bool IsImplicitlyConvertible(Expression rhs, IType? expectedType)
-			{
-				if (expectedType == null)
-					return true;
+		}
 
-				var conversions = CSharpConversions.Get(context.TypeSystem);
-				return conversions.ImplicitConversion(rhs.GetResolveResult(), expectedType).IsImplicit;
+		bool CastKeepsCompoundAssignmentSemantics(Expression left, BinaryOperatorExpression binary, CastExpression cast)
+		{
+			// "x op= y" only applies an explicit conversion from the operator result back to
+			// the type of x when the selected operator is predefined; a user-defined operator
+			// requires an implicit result conversion, so its cast cannot be folded away.
+			// Everything that cannot be proven predefined keeps the expanded form.
+			if (binary.GetResolveResult() is not OperatorResolveResult { UserDefinedOperatorMethod: null })
+				return false;
+			if (cast.GetSymbol() is IMember)
+				return false;
+			if (cast.GetResolveResult() is ConversionResolveResult { Conversion.IsUserDefined: true })
+				return false;
+			IType castTargetType = cast.Type.GetResolveResult().Type;
+			if (castTargetType.Kind == TypeKind.Unknown)
+				return false;
+			IType leftType = left.GetResolveResult().Type;
+			if (!NormalizeTypeVisitor.IgnoreNullabilityAndTuples.EquivalentTypes(leftType, castTargetType))
+				return false;
+			if (binary.Right is not { } operand)
+				return false;
+			var conversions = CSharpConversions.Get(context.TypeSystem);
+			return conversions.ImplicitConversion(operand.GetResolveResult(), castTargetType).IsImplicit;
+		}
+
+		bool NoCompoundAssignmentOperatorTakesOver(Expression left, BinaryOperatorType op)
+		{
+			string? operatorMethodName = GetOperatorMethodName(op);
+			if (operatorMethodName == null)
+				return false;
+			return IL.Transforms.CompoundAssignmentOperatorGuard.MayIntroduceCompoundAssignment(
+				context.TypeSystem, left.GetResolveResult().Type, operatorMethodName);
+		}
+
+		bool NoIncrementOperatorTakesOver(Expression left, bool increment)
+		{
+			return IL.Transforms.CompoundAssignmentOperatorGuard.MayIntroduceCompoundAssignment(
+				context.TypeSystem, left.GetResolveResult().Type, increment ? "op_Increment" : "op_Decrement");
+		}
+
+		static string? GetOperatorMethodName(BinaryOperatorType bop)
+		{
+			switch (bop)
+			{
+				case BinaryOperatorType.Add:
+					return "op_Addition";
+				case BinaryOperatorType.Subtract:
+					return "op_Subtraction";
+				case BinaryOperatorType.Multiply:
+					return "op_Multiply";
+				case BinaryOperatorType.Divide:
+					return "op_Division";
+				case BinaryOperatorType.Modulus:
+					return "op_Modulus";
+				case BinaryOperatorType.ShiftLeft:
+					return "op_LeftShift";
+				case BinaryOperatorType.ShiftRight:
+					return "op_RightShift";
+				case BinaryOperatorType.UnsignedShiftRight:
+					return "op_UnsignedRightShift";
+				case BinaryOperatorType.BitwiseAnd:
+					return "op_BitwiseAnd";
+				case BinaryOperatorType.BitwiseOr:
+					return "op_BitwiseOr";
+				case BinaryOperatorType.ExclusiveOr:
+					return "op_ExclusiveOr";
+				default:
+					return null;
 			}
 		}
 
