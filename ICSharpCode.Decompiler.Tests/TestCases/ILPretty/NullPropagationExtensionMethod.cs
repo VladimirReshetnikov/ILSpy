@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 {
@@ -27,6 +28,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 		{
 			return 0;
 		}
+
+		public static string FirstOrDefault(this IValueReceiver source)
+		{
+			return null;
+		}
+	}
+	internal interface IValueReceiver
+	{
 	}
 	internal class NullPropagationExtensionMethod
 	{
@@ -52,5 +61,44 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 		{
 			return (container?.GetItems().Count()).GetValueOrDefault();
 		}
+
+		public string BoxedValueTypeLocal()
+		{
+			IValueReceiver valueReceiver = GetValueReceiver();
+			if (valueReceiver == null)
+			{
+				return null;
+			}
+			return valueReceiver.FirstOrDefault();
+		}
+
+		public string BoxedValueTypeStack()
+		{
+			object obj = GetValueReceiver();
+			if (obj == null)
+			{
+				return null;
+			}
+			return ((IValueReceiver)obj).FirstOrDefault();
+		}
+
+		public string BoxedNullableValueType()
+		{
+			return ((IValueReceiver)GetNullableValueReceiver())?.FirstOrDefault();
+		}
+
+		private static ValueReceiver GetValueReceiver()
+		{
+			return default(ValueReceiver);
+		}
+
+		private static ValueReceiver? GetNullableValueReceiver()
+		{
+			return null;
+		}
+	}
+	[StructLayout(LayoutKind.Sequential)]
+	internal struct ValueReceiver : IValueReceiver
+	{
 	}
 }

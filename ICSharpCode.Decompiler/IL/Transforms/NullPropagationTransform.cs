@@ -111,6 +111,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		ILInstruction TryNullPropagation(ILVariable testedVar, ILInstruction nonNullInst, ILInstruction nullInst,
 			Mode mode)
 		{
+			if (mode == Mode.ReferenceType && IsDefinitelyNonNullBoxedValue(testedVar))
+			{
+				// The null check applies to the reference produced by boxing, not to the value
+				// expression itself. Turning it into ?. lets later inlining erase the boxing
+				// conversion and can leave an illegal null-conditional on a non-nullable struct.
+				// Keep the original conditional; the reference-typed temporary/cast is legal C#.
+				return null;
+			}
 			bool removedRewrapOrNullableCtor = false;
 			if (NullableLiftingTransform.MatchNullableCtor(nonNullInst, out _, out var arg))
 			{
@@ -166,6 +174,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return result;
 			}
 			return null;
+		}
+
+		static bool IsDefinitelyNonNullBoxedValue(ILVariable testedVar)
+		{
+			return testedVar.StoreInstructions is [StLoc { Value: Box box }]
+				&& NullableType.IsNonNullableValueType(box.Type);
 		}
 
 		/// <summary>
