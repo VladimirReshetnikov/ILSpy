@@ -24,7 +24,6 @@ using System.Threading.Tasks;
 using ICSharpCode.Decompiler.Instrumentation;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem.Implementation;
-using ICSharpCode.Decompiler.Util;
 
 using static ICSharpCode.Decompiler.Metadata.MetadataExtensions;
 
@@ -429,21 +428,23 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// non-assembly modules.</returns>
 		private async Task<int> InitializeCoreAsync(MetadataFile mainModule, IAssemblyResolver assemblyResolver)
 		{
-			// Load referenced assemblies and type-forwarder references.
+			// Load referenced assemblies, transitive name-lookup dependencies and type-forwarder references.
 			// This is necessary to make .NET Core/PCL binaries work better.
-			var referencedAssemblies = new List<MetadataFile>();
-			var nameLookupOnlyAssemblyNames = new HashSet<string>();
-			// Simple names of the assembly references actually declared in metadata (by the main
-			// module or by type forwarders), whether or not they resolve. An assembly the module
-			// declares a reference to is a real reference even when the declared reference failed
-			// to resolve and the file was found via the implicit-reference fallback instead, so it
-			// must never be demoted to a name-lookup-only module.
-			var declaredAssemblyReferenceNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			var referencedAssemblies = new List<(MetadataFile File, string AssemblyReferenceKey)>();
+			// Simple names that must participate fully in the compilation. Main-module references,
+			// type-forwarder targets reached from full references, and full implicit references make
+			// namespace-completion fallbacks full even when the originally declared reference did not resolve.
+			var fullAssemblyReferenceNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			// Lookup kind is tracked per assembly identity, not just per simple name. A full edge
+			// promotes the same identity, but must not promote a different transitive version that
+			// happens to have the same simple name.
+			var nameLookupOnlyAssemblyReferences = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 			var assemblyReferenceQueue = new Queue<(bool IsAssembly, MetadataFile MainModule, object Reference, Task<MetadataFile> ResolveTask)>();
-			var comparer = KeyComparer.Create(((bool IsAssembly, MetadataFile MainModule, object Reference) reference) =>
-				reference.IsAssembly ? "A:" + ((IAssemblyReference)reference.Reference).FullName :
-									   "M:" + reference.Reference);
-			var assemblyReferencesInQueue = new HashSet<(bool IsAssembly, MetadataFile Parent, object Reference)>(comparer);
+			var assemblyReferenceLoads = new Dictionary<string, (MetadataFile ParentModule, IAssemblyReference Reference, Task<MetadataFile> ResolveTask)>(StringComparer.OrdinalIgnoreCase);
+			var processedAssemblyReferenceLookupKinds = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+			var resolvedAssemblyReferences = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			var moduleReferencesInQueue = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			var implicitReferencesProcessed = false;
 			var mainMetadata = mainModule.Metadata;
 			var tfm = mainModule.DetectTargetFrameworkId();
 			var (identifier, version) = UniversalAssemblyResolver.ParseTargetFramework(tfm);
@@ -458,7 +459,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 						var file = mainMetadata.GetAssemblyFile(fileHandle);
 						if (mainMetadata.StringComparer.Equals(file.Name, moduleName) && file.ContainsMetadata)
 						{
-							AddToQueue(false, mainModule, moduleName);
+							AddModuleToQueue(mainModule, moduleName);
 							break;
 						}
 					}
@@ -469,16 +470,35 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 			foreach (var refs in mainModule.AssemblyReferences)
 			{
-				declaredAssemblyReferenceNames.Add(refs.Name);
-				AddToQueue(true, mainModule, refs);
+				AddAssemblyToQueue(mainModule, refs, isNameLookupOnly: false);
 			}
 			while (assemblyReferenceQueue.Count > 0)
 			{
 				var asmRef = assemblyReferenceQueue.Dequeue();
+				string assemblyReferenceKey = null;
+				var isNameLookupOnly = false;
+				if (asmRef.IsAssembly)
+				{
+					assemblyReferenceKey = ((IAssemblyReference)asmRef.Reference).FullName;
+					isNameLookupOnly = nameLookupOnlyAssemblyReferences[assemblyReferenceKey];
+					if (processedAssemblyReferenceLookupKinds.TryGetValue(assemblyReferenceKey, out var processedLookupKind)
+						&& (!processedLookupKind || isNameLookupOnly))
+					{
+						continue;
+					}
+					processedAssemblyReferenceLookupKinds[assemblyReferenceKey] = isNameLookupOnly;
+				}
 				var asm = await asmRef.ResolveTask.ConfigureAwait(false);
 				if (asm != null)
 				{
-					referencedAssemblies.Add(asm);
+					if (!asmRef.IsAssembly || resolvedAssemblyReferences.Add(assemblyReferenceKey))
+					{
+						referencedAssemblies.Add((asm, assemblyReferenceKey));
+					}
+					foreach (var reference in asm.AssemblyReferences)
+					{
+						AddAssemblyToQueue(asm, reference, isNameLookupOnly: true);
+					}
 					var metadata = asm.Metadata;
 					foreach (var h in metadata.ExportedTypes)
 					{
@@ -487,18 +507,21 @@ namespace ICSharpCode.Decompiler.TypeSystem
 						{
 							case SRM.HandleKind.AssemblyReference:
 								var forwarderRef = new AssemblyReference(asm, (SRM.AssemblyReferenceHandle)exportedType.Implementation);
-								declaredAssemblyReferenceNames.Add(forwarderRef.Name);
-								AddToQueue(true, asm, forwarderRef);
+								// A forwarder continues the semantic reachability of its parent. Forwarders
+								// discovered through a name-lookup-only branch must not promote that branch's
+								// extension methods or other members into overload resolution.
+								AddAssemblyToQueue(asm, forwarderRef, isNameLookupOnly);
 								break;
 							case SRM.HandleKind.AssemblyFile:
 								var file = metadata.GetAssemblyFile((SRM.AssemblyFileHandle)exportedType.Implementation);
-								AddToQueue(false, asm, metadata.GetString(file.Name));
+								AddModuleToQueue(asm, metadata.GetString(file.Name));
 								break;
 						}
 					}
 				}
-				if (assemblyReferenceQueue.Count == 0)
+				if (assemblyReferenceQueue.Count == 0 && !implicitReferencesProcessed)
 				{
+					implicitReferencesProcessed = true;
 					// For .NET Core and .NET 5 and newer, we need to pull in implicit references which are not included in the metadata,
 					// as they contain compile-time-only types, such as System.Runtime.InteropServices.dll (for DllImport, MarshalAs, etc.)
 					switch (identifier)
@@ -515,24 +538,26 @@ namespace ICSharpCode.Decompiler.TypeSystem
 							{
 								namespaceCompletionReferencesForModule.Add("System.Reflection.Metadata");
 							}
-							if (declaredAssemblyReferenceNames.Contains("WindowsBase"))
+							if (fullAssemblyReferenceNames.Contains("WindowsBase"))
 							{
 								namespaceCompletionReferencesForModule.AddRange(windowsDesktopNamespaceCompletionReferences);
 							}
 							foreach (var item in implicitReferences.Concat(namespaceCompletionReferencesForModule))
 							{
-								var existing = referencedAssemblies.FirstOrDefault(asm => asm.Name == item);
-								if (existing == null)
+								var implicitReferenceIsNameLookupOnly = namespaceCompletionReferencesForModule.Contains(item)
+									&& !fullAssemblyReferenceNames.Contains(item);
+								var reference = AssemblyNameReference.Parse(item + ", Version=" + version.ToString(3) + ".0, Culture=neutral");
+								var existingReferences = referencedAssemblies.Where(asm => asm.File.Name == item).ToList();
+								var hasFullReference = existingReferences.Any(asm =>
+									asm.AssemblyReferenceKey == null || !nameLookupOnlyAssemblyReferences[asm.AssemblyReferenceKey]);
+								// Full implicit and direct-reference fallback edges promote the exact same
+								// identity when it entered through an ordinary transitive edge. A resolved full
+								// reference of the same simple name already supplies the semantic dependency;
+								// do not replace it with a synthesized framework-version reference.
+								if (existingReferences.Count == 0
+									|| (!implicitReferenceIsNameLookupOnly && !hasFullReference))
 								{
-									AddToQueue(true, mainModule, AssemblyNameReference.Parse(item + ", Version=" + version.ToString(3) + ".0, Culture=neutral"));
-									// Demote to name-lookup-only just those assemblies the module does not
-									// declare a reference to; a declared-but-unresolved reference stays a
-									// full reference when the fallback load finds it.
-									if (namespaceCompletionReferencesForModule.Contains(item)
-										&& !declaredAssemblyReferenceNames.Contains(item))
-									{
-										nameLookupOnlyAssemblyNames.Add(item);
-									}
+									AddAssemblyToQueue(mainModule, reference, implicitReferenceIsNameLookupOnly);
 								}
 							}
 							break;
@@ -547,29 +572,32 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			var mainModuleWithOptions = mainModule.WithOptions(typeSystemOptions);
 			// create IModuleReferences for all references
 			var referencedAssembliesWithOptions = new List<IModuleReference>(referencedAssemblies.Count);
-			Dictionary<string, (Version version, int insertionIndex)> referenceAssemblyVersionMap = new();
-			foreach (var file in referencedAssemblies)
+			Dictionary<string, (bool isNameLookupOnly, Version version, int insertionIndex)> referenceAssemblyVersionMap = new();
+			foreach (var (file, assemblyReferenceKey) in referencedAssemblies)
 			{
+				var isNameLookupOnly = assemblyReferenceKey != null && nameLookupOnlyAssemblyReferences[assemblyReferenceKey];
 				// if the file is an assembly, we need to make sure to deduplicate all assemblies,
-				// with the same name, but different version. We keep the highest version number.
+				// with the same name, but different version. Full references win over name-lookup-only
+				// references; within the same lookup kind, we keep the highest version number.
 				if (file.IsAssembly)
 				{
 					var newFileVersion = file.Metadata.GetAssemblyDefinition().Version;
 					if (referenceAssemblyVersionMap.TryGetValue(file.Name, out var info))
 					{
-						if (newFileVersion >= info.version)
+						if ((info.isNameLookupOnly && !isNameLookupOnly)
+							|| (info.isNameLookupOnly == isNameLookupOnly && newFileVersion >= info.version))
 						{
-							referencedAssembliesWithOptions[info.insertionIndex] = CreateModuleReference(file);
-							referenceAssemblyVersionMap[file.Name] = (newFileVersion, info.insertionIndex);
+							referencedAssembliesWithOptions[info.insertionIndex] = CreateModuleReference(file, isNameLookupOnly);
+							referenceAssemblyVersionMap[file.Name] = (isNameLookupOnly, newFileVersion, info.insertionIndex);
 						}
 						continue;
 					}
 					else
 					{
-						referenceAssemblyVersionMap[file.Name] = (file.Metadata.GetAssemblyDefinition().Version, referencedAssembliesWithOptions.Count);
+						referenceAssemblyVersionMap[file.Name] = (isNameLookupOnly, newFileVersion, referencedAssembliesWithOptions.Count);
 					}
 				}
-				referencedAssembliesWithOptions.Add(CreateModuleReference(file));
+				referencedAssembliesWithOptions.Add(CreateModuleReference(file, isNameLookupOnly));
 			}
 			// Primitive types are necessary to avoid assertions in ILReader.
 			// Other known types are necessary in order for transforms to work (e.g. Task<T> for async transform).
@@ -586,31 +614,49 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			this.mainModule = (MetadataModule)base.MainModule;
 			return referencedAssembliesWithOptions.Count;
 
-			IModuleReference CreateModuleReference(MetadataFile file)
+			IModuleReference CreateModuleReference(MetadataFile file, bool isNameLookupOnly)
 			{
-				if (nameLookupOnlyAssemblyNames.Contains(file.Name))
+				if (isNameLookupOnly)
 				{
 					return new NameLookupOnlyModuleReference(file, typeSystemOptions);
 				}
 				return file.WithOptions(typeSystemOptions);
 			}
 
-			void AddToQueue(bool isAssembly, MetadataFile mainModule, object reference)
+			void AddModuleToQueue(MetadataFile parentModule, string moduleName)
 			{
-				if (assemblyReferencesInQueue.Add((isAssembly, mainModule, reference)))
+				if (moduleReferencesInQueue.Add(moduleName))
 				{
-					// Immediately start loading the referenced module as we add the entry to the queue.
-					// This allows loading multiple modules in parallel.
-					Task<MetadataFile> asm;
-					if (isAssembly)
-					{
-						asm = assemblyResolver.ResolveAsync((IAssemblyReference)reference);
-					}
-					else
-					{
-						asm = assemblyResolver.ResolveModuleAsync(mainModule, (string)reference);
-					}
-					assemblyReferenceQueue.Enqueue((isAssembly, mainModule, reference, asm));
+					var resolveTask = assemblyResolver.ResolveModuleAsync(parentModule, moduleName);
+					assemblyReferenceQueue.Enqueue((false, parentModule, moduleName, resolveTask));
+				}
+			}
+
+			void AddAssemblyToQueue(MetadataFile parentModule, IAssemblyReference reference, bool isNameLookupOnly)
+			{
+				if (!isNameLookupOnly)
+				{
+					fullAssemblyReferenceNames.Add(reference.Name);
+				}
+				if (!nameLookupOnlyAssemblyReferences.TryGetValue(reference.FullName, out var existingLookupKind)
+					|| (existingLookupKind && !isNameLookupOnly))
+				{
+					nameLookupOnlyAssemblyReferences[reference.FullName] = isNameLookupOnly;
+				}
+				if (!assemblyReferenceLoads.TryGetValue(reference.FullName, out var load))
+				{
+					// Start loading immediately so independent references resolve in parallel.
+					load = (parentModule, reference, assemblyResolver.ResolveAsync(reference));
+					assemblyReferenceLoads.Add(reference.FullName, load);
+					assemblyReferenceQueue.Enqueue((true, load.ParentModule, load.Reference, load.ResolveTask));
+				}
+				else if (existingLookupKind && !isNameLookupOnly
+					&& processedAssemblyReferenceLookupKinds.TryGetValue(reference.FullName, out var processedLookupKind)
+					&& processedLookupKind)
+				{
+					// Revisit a resolved lookup-only assembly after promotion so its forwarder
+					// closure inherits full semantic reachability as well.
+					assemblyReferenceQueue.Enqueue((true, load.ParentModule, load.Reference, load.ResolveTask));
 				}
 			}
 
@@ -619,7 +665,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				var name = knownType.TypeName;
 				if (!mainModule.GetTypeDefinition(name).IsNil)
 					return false;
-				foreach (var file in referencedAssemblies)
+				foreach (var (file, _) in referencedAssemblies)
 				{
 					if (!file.GetTypeDefinition(name).IsNil)
 						return false;

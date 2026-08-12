@@ -382,6 +382,12 @@
     <None Include="TestCases\Pretty\MetadataAttributes.cs" />
     <Compile Remove="TestCases\Pretty\NullableRefTypes.cs" />
     <None Include="TestCases\Pretty\NullableRefTypes.cs" />
+    <Compile Remove="TestCases\Pretty\TransitiveNameLookup.cs" />
+    <Compile Remove="TestCases\Pretty\TransitiveNameLookup.A.dep.cs" />
+    <Compile Remove="TestCases\Pretty\TransitiveNameLookup.B.dep.cs" />
+    <None Include="TestCases\Pretty\TransitiveNameLookup.cs" />
+    <None Include="TestCases\Pretty\TransitiveNameLookup.A.dep.cs" />
+    <None Include="TestCases\Pretty\TransitiveNameLookup.B.dep.cs" />
     <Compile Remove="TestCases\Ugly\AggressiveScalarReplacementOfAggregates.Expected.cs" />
     <None Include="TestCases\Ugly\AggressiveScalarReplacementOfAggregates.Expected.cs" />
     <Compile Remove="TestCases\Ugly\QueryWithUntranslatableClause.Expected.cs" />

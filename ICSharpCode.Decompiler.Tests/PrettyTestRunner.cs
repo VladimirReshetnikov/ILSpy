@@ -19,11 +19,13 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Tests.Helpers;
+using ICSharpCode.Decompiler.TypeSystem;
 
 using NUnit.Framework;
 
@@ -1034,6 +1036,65 @@ namespace ICSharpCode.Decompiler.Tests
 				}
 				decompiled = await Tester.DecompileCSharp(output.PathToAssembly, Tester.GetSettings(cscOptions)).ConfigureAwait(false);
 				CodeAssert.FilesAreEqual(csFile, decompiled, Tester.GetPreprocessorSymbols(cscOptions).ToArray());
+			}
+			finally
+			{
+				if (decompiled != null)
+					Tester.RepeatOnIOError(() => File.Delete(decompiled));
+				Tester.RepeatOnIOError(() => Directory.Delete(tempDirectory, recursive: true));
+			}
+		}
+
+		[Test]
+		public async Task TransitiveNameLookup()
+		{
+			var tempDirectory = Path.Combine(Path.GetTempPath(), "ILSpy-TransitiveNameLookup-" + Guid.NewGuid().ToString("N"));
+			Directory.CreateDirectory(tempDirectory);
+			string decompiled = null;
+			try
+			{
+				var cscOptions = CompilerOptions.UseRoslynLatest | CompilerOptions.Library;
+				var assemblyB = await Tester.CompileCSharp(
+					Path.Combine(TestCasePath, "TransitiveNameLookup.B.dep.cs"),
+					cscOptions, Path.Combine(tempDirectory, "B.dll")).ConfigureAwait(false);
+				var assemblyA = await Tester.CompileCSharp(
+					Path.Combine(TestCasePath, "TransitiveNameLookup.A.dep.cs"),
+					cscOptions, Path.Combine(tempDirectory, "A.dll"),
+					new[] { assemblyB.PathToAssembly }).ConfigureAwait(false);
+				var csFile = Path.Combine(TestCasePath, "TransitiveNameLookup.cs");
+				var output = await Tester.CompileCSharp(
+					csFile, cscOptions, Path.Combine(tempDirectory, "TransitiveNameLookup.dll"),
+					new[] { assemblyA.PathToAssembly }).ConfigureAwait(false);
+
+				using (var module = new PEFile(output.PathToAssembly))
+				{
+					Assert.That(module.AssemblyReferences.Select(reference => reference.Name),
+						Does.Contain("A").And.Not.Contain("B"));
+				}
+				using (var module = new PEFile(assemblyA.PathToAssembly))
+				{
+					Assert.That(module.AssemblyReferences.Select(reference => reference.Name),
+						Does.Contain("B"));
+				}
+				using (var module = new PEFile(output.PathToAssembly))
+				{
+					var resolver = new UniversalAssemblyResolver(output.PathToAssembly, false, module.DetectTargetFrameworkId(),
+						streamOptions: PEStreamOptions.PrefetchEntireImage);
+					resolver.AddSearchDirectory(tempDirectory);
+					var typeSystem = new DecompilerTypeSystem(module, resolver, Tester.GetSettings(cscOptions));
+					var moduleA = (MetadataModule)typeSystem.ReferencedModules.Single(candidate => candidate.AssemblyName == "A");
+					var moduleB = (MetadataModule)typeSystem.ReferencedModules.Single(candidate => candidate.AssemblyName == "B");
+					Assert.Multiple(() => {
+						Assert.That(moduleA.IsNameLookupOnly, Is.False, "the main module's direct reference must remain full");
+						Assert.That(moduleB.IsNameLookupOnly, Is.True, "the ordinary transitive reference must be name-lookup-only");
+					});
+				}
+
+				decompiled = await Tester.DecompileCSharp(output.PathToAssembly, Tester.GetSettings(cscOptions)).ConfigureAwait(false);
+				CodeAssert.FilesAreEqual(csFile, decompiled, Tester.GetPreprocessorSymbols(cscOptions).Append("EXPECTED_OUTPUT").ToArray());
+				await Tester.CompileCSharp(
+					decompiled, cscOptions, Path.Combine(tempDirectory, "TransitiveNameLookup.Recompiled.dll"),
+					new[] { assemblyA.PathToAssembly, assemblyB.PathToAssembly }).ConfigureAwait(false);
 			}
 			finally
 			{
