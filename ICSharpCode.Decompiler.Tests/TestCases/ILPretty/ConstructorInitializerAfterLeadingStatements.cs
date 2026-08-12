@@ -21,6 +21,10 @@ public class BaseType
 	public BaseType(Func<int> factory)
 	{
 	}
+
+	public BaseType(in ReadonlyConstructorInfo info)
+	{
+	}
 }
 public class BranchAssignedPatternArgument : BaseType
 {
@@ -93,6 +97,51 @@ public class InitializedObjectTemporary : BaseType
 		}.Invoke)
 	{
 		Copy = x;
+	}
+}
+public class OverloadSensitiveBaseType
+{
+	public OverloadSensitiveBaseType(ReadonlyConstructorInfo info)
+	{
+	}
+
+	public OverloadSensitiveBaseType(in ReadonlyConstructorInfo info)
+	{
+	}
+}
+public class OverloadSensitiveReadonlyStructTemporaryBaseConstructor : OverloadSensitiveBaseType
+{
+	public OverloadSensitiveReadonlyStructTemporaryBaseConstructor(int value)
+	{
+		ReadonlyConstructorInfo info = new ReadonlyConstructorInfo {
+			Value = value
+		};
+		base._002Ector(in info);
+	}
+}
+public struct ReadonlyConstructorInfo
+{
+	public int Value;
+}
+public class ReadonlyStructLvalueBaseConstructor : BaseType
+{
+	public ReadonlyStructLvalueBaseConstructor(in ReadonlyConstructorInfo info)
+		: base(in info)
+	{
+	}
+}
+public class ReadonlyStructTemporaryBaseConstructor : BaseType
+{
+	public ReadonlyStructTemporaryBaseConstructor(int value)
+		: base(new ReadonlyConstructorInfo {
+			Value = Compute(value)
+		})
+	{
+	}
+
+	private static int Compute(int value)
+	{
+		return value + 1;
 	}
 }
 public class SharedFallbackConstructorArgument : BaseType

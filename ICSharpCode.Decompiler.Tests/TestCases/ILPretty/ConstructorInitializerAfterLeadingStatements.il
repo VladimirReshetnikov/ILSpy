@@ -60,6 +60,123 @@
         call instance void [CORE_ASSEMBLY]System.Object::.ctor()
         ret
     }
+
+    .method public hidebysig specialname rtspecialname
+        instance void .ctor ([in] valuetype ReadonlyConstructorInfo& info) cil managed
+    {
+        .param [1]
+        .custom instance void [CORE_ASSEMBLY]System.Runtime.CompilerServices.IsReadOnlyAttribute::.ctor() = (01 00 00 00)
+        .maxstack 8
+        ldarg.0
+        call instance void [CORE_ASSEMBLY]System.Object::.ctor()
+        ret
+    }
+}
+
+.class public sequential ansi sealed beforefieldinit ReadonlyConstructorInfo
+    extends [CORE_ASSEMBLY]System.ValueType
+{
+    .field public int32 Value
+}
+
+// The struct temporary is initialized before the base call and passed by readonly reference.
+// A constructor initializer cannot name the local, but an explicit 'in' argument cannot be a
+// freshly-created value either; C# must use the implicit-by-value form of the in-parameter call.
+.class public auto ansi beforefieldinit ReadonlyStructTemporaryBaseConstructor
+    extends BaseType
+{
+    .method public hidebysig specialname rtspecialname
+        instance void .ctor (int32 'value') cil managed
+    {
+        .maxstack 3
+        .locals init (valuetype ReadonlyConstructorInfo V_0)
+
+        ldarg.0
+        ldloca.s V_0
+        initobj ReadonlyConstructorInfo
+        ldloca.s V_0
+        ldarg.1
+        call int32 ReadonlyStructTemporaryBaseConstructor::Compute(int32)
+        stfld int32 ReadonlyConstructorInfo::Value
+        ldloca.s V_0
+        call instance void BaseType::.ctor(valuetype ReadonlyConstructorInfo&)
+        ret
+    }
+
+    .method private hidebysig static int32 Compute (int32 'value') cil managed
+    {
+        .maxstack 2
+        ldarg.0
+        ldc.i4.1
+        add
+        ret
+    }
+}
+
+// A real lvalue passed with an explicit 'in' is already legal and must keep its
+// direction modifier; only the freshly materialized temporary above is rewritten.
+.class public auto ansi beforefieldinit ReadonlyStructLvalueBaseConstructor
+    extends BaseType
+{
+    .method public hidebysig specialname rtspecialname
+        instance void .ctor ([in] valuetype ReadonlyConstructorInfo& info) cil managed
+    {
+        .param [1]
+        .custom instance void [CORE_ASSEMBLY]System.Runtime.CompilerServices.IsReadOnlyAttribute::.ctor() = (01 00 00 00)
+        .maxstack 2
+        ldarg.0
+        ldarg.1
+        call instance void BaseType::.ctor(valuetype ReadonlyConstructorInfo&)
+        ret
+    }
+}
+
+// Omitting 'in' is not semantics-preserving when a by-value overload of the same
+// element type exists. This deliberately unrepresentable source shape must stay
+// unfolded instead of silently rebinding to the by-value constructor.
+.class public auto ansi beforefieldinit OverloadSensitiveBaseType
+    extends [CORE_ASSEMBLY]System.Object
+{
+    .method public hidebysig specialname rtspecialname
+        instance void .ctor (valuetype ReadonlyConstructorInfo info) cil managed
+    {
+        .maxstack 1
+        ldarg.0
+        call instance void [CORE_ASSEMBLY]System.Object::.ctor()
+        ret
+    }
+
+    .method public hidebysig specialname rtspecialname
+        instance void .ctor ([in] valuetype ReadonlyConstructorInfo& info) cil managed
+    {
+        .param [1]
+        .custom instance void [CORE_ASSEMBLY]System.Runtime.CompilerServices.IsReadOnlyAttribute::.ctor() = (01 00 00 00)
+        .maxstack 1
+        ldarg.0
+        call instance void [CORE_ASSEMBLY]System.Object::.ctor()
+        ret
+    }
+}
+
+.class public auto ansi beforefieldinit OverloadSensitiveReadonlyStructTemporaryBaseConstructor
+    extends OverloadSensitiveBaseType
+{
+    .method public hidebysig specialname rtspecialname
+        instance void .ctor (int32 'value') cil managed
+    {
+        .maxstack 3
+        .locals init (valuetype ReadonlyConstructorInfo V_0)
+
+        ldarg.0
+        ldloca.s V_0
+        initobj ReadonlyConstructorInfo
+        ldloca.s V_0
+        ldarg.1
+        stfld int32 ReadonlyConstructorInfo::Value
+        ldloca.s V_0
+        call instance void OverloadSensitiveBaseType::.ctor(valuetype ReadonlyConstructorInfo&)
+        ret
+    }
 }
 
 // The result temporary is assigned on both sides of a type-pattern branch. The

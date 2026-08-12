@@ -29,6 +29,7 @@ using System.Reflection.Metadata.Ecma335;
 using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
+using ICSharpCode.Decompiler.CSharp.TypeSystem;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -561,7 +562,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				// initializer (the initializer runs before the body that declares the local), so
 				// fold its declaration into the arguments. Bail if that cannot be done safely.
 				if (stmt != constructorDeclaration.Body.Statements.FirstOrDefault()
-					&& !TryFoldLeadingTemporariesIntoConstructorCall(constructorDeclaration.Body, stmt, invocation))
+					&& !TryFoldLeadingTemporariesIntoConstructorCall(
+						constructorDeclaration.Body, stmt, invocation, ctorMethod, ctor))
 				{
 					return false;
 				}
@@ -612,7 +614,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			/// so the arguments only reference parameters and fields once the call becomes an initializer.
 			/// Returns <c>false</c> (bail) if a referenced local cannot be folded safely.
 			/// </summary>
-			private bool TryFoldLeadingTemporariesIntoConstructorCall(BlockStatement body, Statement callStatement, AstNode invocation)
+			private bool TryFoldLeadingTemporariesIntoConstructorCall(BlockStatement body, Statement callStatement,
+				AstNode invocation, IMethod currentConstructor, IMethod calledConstructor)
 			{
 				// Collect the local variables referenced inside the call arguments.
 				var argumentUses = new Dictionary<ILVariable, List<IdentifierExpression>>();
@@ -711,14 +714,127 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					// silently change behavior, so the call stays in the body instead.
 					if (uses.Count > 1 && !IsRereadableValue(initializer))
 						return false;
-					foreach (var use in uses)
+					if (uses.Count == 1
+						&& initializer is ObjectCreateExpression objectCreation
+						&& uses[0].Parent is DirectionExpression {
+							FieldDirection: FieldDirection.In,
+							Expression: var directedExpression
+						} direction
+						&& directedExpression == uses[0])
 					{
-						use.ReplaceWith(initializer.Clone());
+						// An explicit `in` argument needs a variable, so replacing this local with
+						// a freshly-created value would produce illegal C# (`in new T { ... }`).
+						// C# also permits an in-parameter to be called without the modifier, but
+						// that can change overload selection. Drop `in` together with the local
+						// only after resolving the prospective constructor initializer and proving
+						// that it selects the same constructor with the same argument mapping.
+						if (!TryReplaceExplicitInTemporaryUse(invocation, currentConstructor,
+							calledConstructor, direction, objectCreation))
+						{
+							return false;
+						}
+					}
+					else
+					{
+						foreach (var use in uses)
+						{
+							use.ReplaceWith(initializer.Clone());
+						}
 					}
 					declaration.Remove();
 				}
 
 				return true;
+			}
+
+			private bool TryReplaceExplicitInTemporaryUse(AstNode invocation, IMethod currentConstructor,
+				IMethod calledConstructor, DirectionExpression direction, ObjectCreateExpression replacement)
+			{
+				var arguments = invocation.GetChildren(Slots.Argument).OfType<Expression>().ToArray();
+				var argumentResolveResults = new ResolveResult[arguments.Length];
+				string[]? argumentNames = null;
+				int replacementIndex = -1;
+
+				for (int i = 0; i < arguments.Length; i++)
+				{
+					Expression argumentValue = arguments[i];
+					if (argumentValue is NamedArgumentExpression namedArgument)
+					{
+						argumentNames ??= new string[arguments.Length];
+						argumentNames[i] = namedArgument.Name;
+						argumentValue = namedArgument.Expression;
+					}
+
+					if (argumentValue == direction)
+					{
+						if (replacementIndex >= 0)
+							return false;
+						replacementIndex = i;
+						argumentResolveResults[i] = replacement.GetResolveResult();
+					}
+					else
+					{
+						argumentResolveResults[i] = argumentValue.GetResolveResult();
+					}
+				}
+
+				if (replacementIndex < 0
+					|| replacement.GetResolveResult().IsError
+					|| invocation.GetResolveResult() is not CSharpInvocationResolveResult {
+						IsError: false
+					} originalInvocation
+					|| originalInvocation.Member is not IMethod originalConstructor
+					|| !calledConstructor.Equals(originalConstructor, NormalizeTypeVisitor.TypeErasure))
+				{
+					return false;
+				}
+
+				var resolver = new CSharpResolver(new CSharpTypeResolveContext(
+					context.TypeSystem.MainModule,
+					context.DecompileRun.UsingScope,
+					currentConstructor.DeclaringTypeDefinition,
+					currentConstructor));
+				var prospectiveInvocation = resolver.ResolveObjectCreation(calledConstructor.DeclaringType,
+					argumentResolveResults, argumentNames, allowProtectedAccess: true);
+				if (prospectiveInvocation is not CSharpInvocationResolveResult {
+					IsError: false,
+					Member: IMethod prospectiveConstructor
+				} prospectiveCSharpInvocation
+					|| !calledConstructor.Equals(prospectiveConstructor, NormalizeTypeVisitor.TypeErasure)
+					|| originalInvocation.IsExpandedForm != prospectiveCSharpInvocation.IsExpandedForm
+					|| !HasSameArgumentToParameterMap(originalInvocation, prospectiveCSharpInvocation,
+						arguments.Length))
+				{
+					return false;
+				}
+
+				direction.ReplaceWith((ObjectCreateExpression)replacement.Detach());
+				return true;
+
+				static bool HasSameArgumentToParameterMap(CSharpInvocationResolveResult first,
+					CSharpInvocationResolveResult second, int argumentCount)
+				{
+					var firstMap = first.GetArgumentToParameterMap();
+					var secondMap = second.GetArgumentToParameterMap();
+					for (int i = 0; i < argumentCount; i++)
+					{
+						if (GetParameterIndex(first, firstMap, i) != GetParameterIndex(second, secondMap, i))
+							return false;
+					}
+					return true;
+				}
+
+				static int GetParameterIndex(CSharpInvocationResolveResult invocation,
+					IReadOnlyList<int>? map, int argumentIndex)
+				{
+					if (map != null)
+						return argumentIndex < map.Count ? map[argumentIndex] : -1;
+					if (!invocation.IsExpandedForm)
+						return argumentIndex;
+					return invocation.Member.Parameters.Count == 0
+						? -1
+						: Math.Min(argumentIndex, invocation.Member.Parameters.Count - 1);
+				}
 			}
 
 			/// <summary>
