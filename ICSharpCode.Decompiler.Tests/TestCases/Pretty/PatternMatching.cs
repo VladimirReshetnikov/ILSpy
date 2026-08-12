@@ -65,6 +65,44 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public bool IsFrozen { get; set; }
 		}
 
+#if CS80
+		public sealed class EventPatternTarget
+		{
+			public Action Callback { get; set; }
+
+			public event Action Changed;
+
+			public static void InvokeEvent(object obj)
+			{
+				// A field-like event can be read inside its declaring type, but it cannot be named by
+				// a property sub-pattern. Keep the event read separate from the type pattern.
+#if EXPECTED_OUTPUT && ROSLYN3
+				if (obj is EventPatternTarget eventPatternTarget)
+				{
+					eventPatternTarget.Changed?.Invoke();
+				}
+#else
+				if (obj is EventPatternTarget target && target.Changed is { } action)
+				{
+					action();
+				}
+#endif
+			}
+
+			public static void InvokeProperty(object obj)
+			{
+#if EXPECTED_OUTPUT
+				if (obj is EventPatternTarget { Callback: { } callback })
+#else
+				if (obj is EventPatternTarget target && target.Callback is { } callback)
+#endif
+				{
+					callback();
+				}
+			}
+		}
+#endif
+
 		public void SimpleTypePattern(object x)
 		{
 			if (x is string value)

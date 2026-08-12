@@ -22,6 +22,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Metadata;
 
 using ICSharpCode.Decompiler.IL.ControlFlow;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -525,14 +526,31 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		/// <remarks>
 		/// A property pattern <c>x is T { Member: ... }</c> performs member lookup for <c>Member</c> on
 		/// <c>T</c>. When the accessed getter/field is declared on a class or struct in the tested value's
-		/// own hierarchy, that lookup names it directly. When it is declared on an interface, the tested
-		/// value was up-cast to that interface for the access (e.g. <c>((IFace)x).Member</c>): the pattern
-		/// can name it only when the pattern type surfaces the member without a cast. An explicit interface
-		/// implementation is unreachable that way, so folding it into a property pattern would produce
-		/// uncompilable C# (CS0117); such accesses must stay a conjunction.
+		/// own hierarchy, that lookup usually names it directly. Event backing fields are the exception:
+		/// lookup finds the event, which is not readable in a property sub-pattern. When the member is
+		/// declared on an interface, the tested value was up-cast to that interface for the access (e.g.
+		/// <c>((IFace)x).Member</c>): the pattern can name it only when the pattern type surfaces the member
+		/// without a cast. An explicit interface implementation is unreachable that way, so folding it
+		/// into a property pattern would produce uncompilable C# (CS0117); such accesses must stay a
+		/// conjunction.
 		/// </remarks>
 		private static bool CanNameInPropertyPattern(IMember member, IType patternType)
 		{
+			if (member is IField field)
+			{
+				if (field.MetadataToken.Kind != HandleKind.FieldDefinition
+					|| field.ParentModule is not MetadataModule module)
+				{
+					return false;
+				}
+				// A field-like event's backing field is readable within its declaring type, but the
+				// corresponding event cannot be read by a property sub-pattern.
+				if (module.MetadataFile.PropertyAndEventBackingFieldLookup.IsEventBackingField(
+					(FieldDefinitionHandle)field.MetadataToken, out _))
+				{
+					return false;
+				}
+			}
 			ITypeDefinition? declaringTypeDef = member.DeclaringTypeDefinition;
 			if (declaringTypeDef == null || declaringTypeDef.Kind != TypeKind.Interface)
 			{
