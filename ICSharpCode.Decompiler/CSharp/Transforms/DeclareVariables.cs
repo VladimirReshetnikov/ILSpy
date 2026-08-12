@@ -150,6 +150,35 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		readonly Dictionary<ILVariable, VariableToDeclare> variableDict = new Dictionary<ILVariable, VariableToDeclare>();
 		[AllowNull]
 		TransformContext context;
+		bool? unsafeSkipInitIsAvailable;
+		bool? unsafeNullRefIsAvailable;
+
+		/// <summary>
+		/// Whether <c>System.Runtime.CompilerServices.Unsafe.SkipInit&lt;T&gt;(out T)</c> resolves in
+		/// the current compilation. Old target frameworks (e.g. .NET Framework) do not have the type,
+		/// and older versions of the System.Runtime.CompilerServices.Unsafe package have the type but
+		/// not the method; emitting a call that does not resolve would not compile (CS0234/CS0117).
+		/// </summary>
+		bool UnsafeSkipInitIsAvailable()
+		{
+			unsafeSkipInitIsAvailable ??= context.TypeSystem.FindType(KnownTypeCode.Unsafe)
+				.GetMethods(m => m.Name == "SkipInit")
+				.Any(m => m.IsStatic && m.TypeParameters.Count == 1
+					&& m.Parameters is [{ ReferenceKind: ReferenceKind.Out }]);
+			return unsafeSkipInitIsAvailable.Value;
+		}
+
+		/// <summary>
+		/// Whether <c>System.Runtime.CompilerServices.Unsafe.NullRef&lt;T&gt;()</c> resolves in the
+		/// current compilation. See <see cref="UnsafeSkipInitIsAvailable"/>.
+		/// </summary>
+		bool UnsafeNullRefIsAvailable()
+		{
+			unsafeNullRefIsAvailable ??= context.TypeSystem.FindType(KnownTypeCode.Unsafe)
+				.GetMethods(m => m.Name == "NullRef")
+				.Any(m => m.IsStatic && m.TypeParameters.Count == 1 && m.Parameters.Count == 0);
+			return unsafeNullRefIsAvailable.Value;
+		}
 
 		public void Run(AstNode rootNode, TransformContext context)
 		{
@@ -172,6 +201,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			{
 				this.context = null;
 				variableDict.Clear();
+				unsafeSkipInitIsAvailable = null;
+				unsafeNullRefIsAvailable = null;
 			}
 		}
 
@@ -1046,12 +1077,18 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (v.Type.Kind != TypeKind.ByReference
 						&& (v.DefaultInitialization == VariableInitKind.NeedsDefaultValue
 							|| (v.DefaultInitialization == VariableInitKind.NeedsSkipInit
-								&& v.Type.Kind is TypeKind.Pointer or TypeKind.FunctionPointer)))
+								&& (v.Type.Kind is TypeKind.Pointer or TypeKind.FunctionPointer
+									|| !UnsafeSkipInitIsAvailable()))))
 					{
 						// A pointer (data or function) cannot be a generic type argument, so
-						// Unsafe.SkipInit<T> has no spelling for one (CS0306). A null pointer is the
-						// closest stand-in: the local is assigned before it is read either way, so
+						// Unsafe.SkipInit<T> has no spelling for one (CS0306). A default initializer is
+						// the closest stand-in: the local is assigned before it is read either way, so
 						// what it starts as is not observable.
+						//
+						// The same fallback applies when Unsafe.SkipInit does not resolve in the
+						// compilation (the assembly targets a framework without the API): a call that
+						// cannot bind would not compile at all, whereas the zero initializer merely
+						// writes the value the CLR gives a '.locals init' slot anyway.
 						initializer = new DefaultValueExpression(type.Clone());
 					}
 					var vds = new VariableDeclarationStatement(type, v.Name, initializer);
@@ -1080,7 +1117,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						?? throw new InvalidOperationException("Variable insertion point has no parent.");
 					if (v.Type.Kind == TypeKind.ByReference
 						|| (v.DefaultInitialization == VariableInitKind.NeedsSkipInit
-							&& v.Type.Kind is not (TypeKind.Pointer or TypeKind.FunctionPointer)))
+							&& v.Type.Kind is not (TypeKind.Pointer or TypeKind.FunctionPointer)
+							&& UnsafeSkipInitIsAvailable()))
 					{
 						AstType unsafeType = context.TypeSystemAstBuilder.ConvertType(
 							context.TypeSystem.FindType(KnownTypeCode.Unsafe));
@@ -1110,13 +1148,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							}
 							IType elementTypeRef = ((ByReferenceType)v.Type).ElementType;
 							AstType elementType = context.TypeSystemAstBuilder.ConvertType(elementTypeRef);
-							if (elementTypeRef.IsByRefLike)
+							if (elementTypeRef.IsByRefLike || !UnsafeNullRefIsAvailable())
 							{
 								// 'Unsafe.NullRef<T>()' is unusable when T is a ref struct: the type
 								// parameter only admits one under the 'allows ref struct' constraint,
 								// which needs a .NET 9+ runtime, and whether the copy the decompiler
 								// resolved carries the constraint says nothing about the runtime the
 								// assembly actually targets (CS9244 on recompilation when it does not).
+								// It is equally unusable when it does not resolve in the compilation
+								// at all (the assembly targets a framework without the API).
 								// Bind the ref local to a placeholder local of the element type
 								// instead. A reference to a local has the narrowest ref-safe-context
 								// there is, so every later ref reassignment stays valid and no

@@ -1,5 +1,3 @@
-using System.Runtime.CompilerServices;
-
 public struct Entry
 {
 	public int Value;
@@ -16,7 +14,8 @@ public static class Lookup
 
 	public static int Read(bool flag)
 	{
-		scoped ref Entry reference = ref System.Runtime.CompilerServices.Unsafe.NullRef<Entry>();
+		Entry reference_placeholder = default(Entry);
+		ref Entry reference = ref reference_placeholder;
 		if (flag)
 		{
 			Note();

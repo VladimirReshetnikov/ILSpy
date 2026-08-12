@@ -774,6 +774,21 @@ namespace ICSharpCode.Decompiler.Tests
 		[Test]
 		public async Task RefLocalUninitialized()
 		{
+			var libraryFile = Path.Combine(TestCasePath, "RefLocalUninitialized.Library.il");
+			var library = await Tester.AssembleIL(libraryFile, AssemblerOptions.Library).ConfigureAwait(false);
+			try
+			{
+				await Run();
+			}
+			finally
+			{
+				Tester.RepeatOnIOError(() => File.Delete(library));
+			}
+		}
+
+		[Test]
+		public async Task SkipInitUnavailable()
+		{
 			await Run();
 		}
 

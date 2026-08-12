@@ -16,10 +16,18 @@
 // rebound to an array element and a member of it is then returned by reference, so 'scoped' must
 // be left off: it confines the reference to the method, which is what the ref return contradicts
 // (CS8158). Starting out unassigned does not decide this either way.
+//
+// RefLocalUninitialized.Library supplies a resolvable System.Runtime.CompilerServices.Unsafe
+// type: SkipInit/NullRef emission is resolution-gated, and without the reference the
+// declarations would use the zero/placeholder fallbacks instead of the spellings guarded here.
 
 .assembly extern System.Runtime
 {
 	.ver 0:0:0:0
+}
+.assembly extern RefLocalUninitialized.Library
+{
+	.ver 1:0:0:0
 }
 .assembly RefLocalUninitialized { }
 .module RefLocalUninitialized.dll

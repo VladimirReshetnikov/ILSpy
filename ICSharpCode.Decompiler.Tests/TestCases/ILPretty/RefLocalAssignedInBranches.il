@@ -28,6 +28,10 @@
 
   // The reference is assigned in either branch and never read before, so nothing in the IL
   // corresponds to a declaration. C# still insists a reference be bound where it is declared.
+  // This assembly only references the .NET Framework mscorlib, where
+  // System.Runtime.CompilerServices.Unsafe does not resolve, so the declaration cannot be bound
+  // via 'Unsafe.NullRef<Entry>()'; it is bound to a placeholder local of the element type
+  // instead.
   .method public hidebysig static int32 Read(bool flag) cil managed
   {
     .maxstack 2
