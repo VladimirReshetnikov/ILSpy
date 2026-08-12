@@ -2895,8 +2895,22 @@ namespace ICSharpCode.Decompiler.CSharp
 				}
 				else
 				{
-					IType targetTypeHint = constrainedTo ?? memberDeclaringType;
-					if (CallInstruction.ExpectedTypeForThisPointer(memberDeclaringType, constrainedTo) == StackType.Ref)
+					IType receiverType = constrainedTo ?? memberDeclaringType;
+					IType targetTypeHint = receiverType;
+					StackType expectedThisPointerType = CallInstruction.ExpectedTypeForThisPointer(memberDeclaringType, constrainedTo);
+					bool unwrappedUnknownManagedReferenceReceiver = false;
+					if (expectedThisPointerType == StackType.Unknown
+						&& memberDeclaringType.Kind == TypeKind.Unknown
+						&& target is Conv { Kind: ConversionKind.Invalid, InputType: StackType.Ref, TargetType: IL.PrimitiveType.Unknown } conv)
+					{
+						// ILReader preserves the unknown expected stack type using an invalid Ref->Unknown conversion.
+						// The Ref input still identifies the unresolved instance receiver as a managed reference.
+						target = conv.Argument;
+						unwrappedUnknownManagedReferenceReceiver = true;
+					}
+					bool isManagedReferenceReceiver = expectedThisPointerType == StackType.Ref
+						|| unwrappedUnknownManagedReferenceReceiver;
+					if (isManagedReferenceReceiver)
 					{
 						if (target.ResultType == StackType.Ref)
 						{
@@ -2908,13 +2922,18 @@ namespace ICSharpCode.Decompiler.CSharp
 						}
 					}
 					var translatedTarget = Translate(target, targetTypeHint);
-					if (CallInstruction.ExpectedTypeForThisPointer(memberDeclaringType, constrainedTo) == StackType.Ref)
+					if (isManagedReferenceReceiver)
 					{
 						// When accessing members on value types, ensure we use a reference of the correct type,
 						// and not a pointer or a reference to a different type (issue #1333)
-						if (!(translatedTarget.Type is ByReferenceType brt && NormalizeTypeVisitor.TypeErasure.EquivalentTypes(brt.ElementType, constrainedTo ?? memberDeclaringType)))
+						bool hasExpectedReceiverType = translatedTarget.Type is ByReferenceType brt
+							&& (NormalizeTypeVisitor.TypeErasure.EquivalentTypes(brt.ElementType, receiverType)
+								|| (unwrappedUnknownManagedReferenceReceiver
+									&& brt.ElementType.Kind == TypeKind.Unknown
+									&& brt.ElementType.ReflectionName == receiverType.ReflectionName));
+						if (!hasExpectedReceiverType)
 						{
-							translatedTarget = translatedTarget.ConvertTo(new ByReferenceType(constrainedTo ?? memberDeclaringType), this);
+							translatedTarget = translatedTarget.ConvertTo(new ByReferenceType(receiverType), this);
 						}
 					}
 					if (translatedTarget.Expression is DirectionExpression)
