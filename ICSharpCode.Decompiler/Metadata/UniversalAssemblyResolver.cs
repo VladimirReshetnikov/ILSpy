@@ -403,6 +403,9 @@ namespace ICSharpCode.Decompiler.Metadata
 		{
 			if (name.IsWindowsRuntime)
 			{
+				string? candidate = SearchDirectory(name, directories);
+				if (candidate != null)
+					return candidate;
 				return FindWindowsMetadataFile(name);
 			}
 

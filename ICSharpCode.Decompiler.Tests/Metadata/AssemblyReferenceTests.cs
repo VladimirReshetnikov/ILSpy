@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Immutable;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Metadata;
@@ -25,6 +26,7 @@ using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 
 using AssemblyReference = ICSharpCode.Decompiler.Metadata.AssemblyReference;
+using UniversalAssemblyResolver = ICSharpCode.Decompiler.Metadata.UniversalAssemblyResolver;
 
 using NUnit.Framework;
 
@@ -119,6 +121,35 @@ namespace ICSharpCode.Decompiler.Tests.Metadata
 			var reference = BuildReference("SomeLibrary", new Version(1, 0, 0, 0), Array.Empty<byte>(), default);
 
 			Assert.That(reference.GetPublicKeyToken(), Is.Null);
+		}
+
+		[Test]
+		public void WindowsRuntimeReferenceUsesExplicitSearchDirectory()
+		{
+			string assemblyName = "SyntheticWindowsRuntime" + Guid.NewGuid().ToString("N");
+			string directory = Path.Combine(Path.GetTempPath(), assemblyName);
+			Directory.CreateDirectory(directory);
+			try
+			{
+				string winmdFile = Path.Combine(directory, assemblyName + ".winmd");
+				string dllFile = Path.Combine(directory, assemblyName + ".dll");
+				File.WriteAllBytes(winmdFile, Array.Empty<byte>());
+				File.WriteAllBytes(dllFile, Array.Empty<byte>());
+
+				var reference = BuildReference(
+					assemblyName,
+					new Version(255, 255, 255, 255),
+					Array.Empty<byte>(),
+					AssemblyFlags.WindowsRuntime);
+				var resolver = new UniversalAssemblyResolver(null, false, ".NETFramework,Version=v4.8");
+				resolver.AddSearchDirectory(directory);
+
+				Assert.That(resolver.FindAssemblyFile(reference), Is.EqualTo(winmdFile));
+			}
+			finally
+			{
+				Directory.Delete(directory, recursive: true);
+			}
 		}
 	}
 }
