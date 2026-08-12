@@ -208,6 +208,12 @@ namespace ICSharpCode.Decompiler.Tests
 			await Run(options: options | CompilerOptions.Library);
 		}
 
+		[Test]
+		public async Task VBYieldInTryCatch()
+		{
+			await Run(options: CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest, verifyRoundTrip: true);
+		}
+
 		static void IgnoreIfVbRuntimeSubstituted(CompilerOptions options)
 		{
 			if (!OperatingSystem.IsWindows()
@@ -220,8 +226,12 @@ namespace ICSharpCode.Decompiler.Tests
 			}
 		}
 
-		async Task Run([CallerMemberName] string testName = null, CompilerOptions options = CompilerOptions.UseDebug, DecompilerSettings settings = null, string typeName = null)
+		async Task Run([CallerMemberName] string testName = null, CompilerOptions options = CompilerOptions.UseDebug, DecompilerSettings settings = null, string typeName = null, bool verifyRoundTrip = false)
 		{
+			if (verifyRoundTrip && (options & CompilerOptions.UseRoslynMask) != 0)
+			{
+				options |= CompilerOptions.UseTestRunner;
+			}
 			var vbFile = Path.Combine(TestCasePath, testName + ".vb");
 			var csFile = Path.Combine(TestCasePath, testName + ".cs");
 			var exeFile = TestsAssemblyOutput.GetFilePath(TestCasePath, testName, Tester.GetSuffix(options) + ".exe");
@@ -230,14 +240,35 @@ namespace ICSharpCode.Decompiler.Tests
 				exeFile = Path.ChangeExtension(exeFile, ".dll");
 			}
 
-			var executable = await Tester.CompileVB(vbFile, options | CompilerOptions.ReferenceVisualBasic, exeFile).ConfigureAwait(false);
-			var decompilerSettings = settings ?? new DecompilerSettings { FileScopedNamespaces = false };
-			var decompiled = typeName == null
-				? await Tester.DecompileCSharp(executable.PathToAssembly, decompilerSettings).ConfigureAwait(false)
-				: await Tester.DecompileCSharpType(executable.PathToAssembly, new FullTypeName(typeName), decompilerSettings).ConfigureAwait(false);
+			CompilerResults recompiled = null;
+			string decompiled = null;
+			bool succeeded = false;
+			try
+			{
+				var executable = await Tester.CompileVB(vbFile, options | CompilerOptions.ReferenceVisualBasic, exeFile).ConfigureAwait(false);
+				var decompilerSettings = settings ?? new DecompilerSettings { FileScopedNamespaces = false };
+				decompiled = typeName == null
+					? await Tester.DecompileCSharp(executable.PathToAssembly, decompilerSettings).ConfigureAwait(false)
+					: await Tester.DecompileCSharpType(executable.PathToAssembly, new FullTypeName(typeName), decompilerSettings).ConfigureAwait(false);
 
-			CodeAssert.FilesAreEqual(csFile, decompiled, Tester.GetPreprocessorSymbols(options).ToArray());
-			Tester.RepeatOnIOError(() => File.Delete(decompiled));
+				if (verifyRoundTrip)
+				{
+					recompiled = await Tester.CompileCSharp(decompiled, options | CompilerOptions.ReferenceVisualBasic).ConfigureAwait(false);
+					await Tester.RunAndCompareOutput(testName + ".vb", executable.PathToAssembly, recompiled.PathToAssembly, decompiled,
+						(options & CompilerOptions.UseTestRunner) != 0, (options & CompilerOptions.Force32Bit) != 0).ConfigureAwait(false);
+				}
+
+				CodeAssert.FilesAreEqual(csFile, decompiled, Tester.GetPreprocessorSymbols(options).ToArray());
+				succeeded = true;
+			}
+			finally
+			{
+				if (succeeded && decompiled != null)
+				{
+					Tester.RepeatOnIOError(() => File.Delete(decompiled));
+				}
+				recompiled?.DeleteTempFiles();
+			}
 		}
 	}
 }

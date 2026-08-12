@@ -250,6 +250,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		{
 			return new List<IAstTransform> {
 				new PatternStatementTransform(),
+				new LegalizeYieldInTryCatch(), // must run after foreach reconstruction and before DeclareVariables
 				new ReplaceMethodCallsWithOperators(), // must run before DeclareVariables.EnsureExpressionStatementsAreValid
 				new IntroduceUnsafeModifier(),
 				new AddCheckedBlocks(),

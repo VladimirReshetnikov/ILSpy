@@ -179,6 +179,7 @@
   <ItemGroup>
     <None Include="TestCases\VBPretty\VBAutomaticEvents.vb" />
     <None Include="TestCases\VBPretty\VBNonGenericForEach.vb" />
+    <None Include="TestCases\VBPretty\VBYieldInTryCatch.vb" />
     <None Include="TestCases\VBPretty\YieldReturn.vb" />
     <None Include="TestCases\VBPretty\Issue1906.vb" />
     <None Include="TestCases\VBPretty\Issue2192.vb" />
@@ -306,6 +307,8 @@
     <None Include="TestCases\VBPretty\VBClosures.cs" />
     <Compile Remove="TestCases\VBPretty\VBExplicitInterfaceImplementation.cs" />
     <None Include="TestCases\VBPretty\VBExplicitInterfaceImplementation.cs" />
+    <Compile Remove="TestCases\VBPretty\VBYieldInTryCatch.cs" />
+    <None Include="TestCases\VBPretty\VBYieldInTryCatch.cs" />
     <!-- VB permits Yield inside the Try block of a Try...Catch; C# has no such form (CS1626). -->
     <Compile Remove="TestCases\VBPretty\YieldReturn.cs" />
     <None Include="TestCases\VBPretty\YieldReturn.cs" />

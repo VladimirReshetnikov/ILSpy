@@ -917,13 +917,11 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 						// Visual Basic, unlike C#, permits Yield inside the Try block of a Try...Catch,
 						// so the yield returns to convert can be nested in one.
 						//
-						// What comes out cannot be recompiled: C# rejects a yield in a try that has a
-						// catch clause (CS1626), and the construct has no other C# spelling either.
-						// Reconstructing it regardless is deliberate. The alternative is to leave the
-						// state machine raw, which is not compilable and not readable, and which strands
-						// an InvalidBranch where each 'return true' used to be. Between output that says
-						// what the source said and output that says nothing, neither being compilable,
-						// the faithful one is worth more to someone reading the result.
+						// C# rejects a yield in a try that has a catch clause (CS1626). A later AST pass
+						// rewrites the narrow foreach shape for which exception and disposal behavior can
+						// be preserved. Reconstructing the faithful source-like form here remains deliberate:
+						// unsupported shapes are still more useful this way than as a raw, invalid state
+						// machine with an InvalidBranch where each 'return true' used to be.
 						var oldTryBlock = (BlockContainer)tryCatch.TryBlock;
 						var sra = rangeAnalysis.CreateNestedAnalysis();
 						sra.AssignStateRanges(oldTryBlock, LongSet.Universe);
