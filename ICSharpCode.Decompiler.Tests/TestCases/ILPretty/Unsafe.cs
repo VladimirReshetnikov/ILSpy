@@ -22,6 +22,18 @@ internal sealed class ExtraUnsafeTests
 		}
 	}
 
+	public unsafe static void PinArrayWithNativeIntByRefLocal(byte[] data)
+	{
+		fixed (byte* data2 = data)
+		{
+			Consume(data2);
+		}
+	}
+
+	private unsafe static void Consume(void* data)
+	{
+	}
+
 	public unsafe static uint* RefToPointerWithoutPinning(ref uint managedPtr)
 	{
 		return (uint*)Unsafe.AsPointer(ref managedPtr);

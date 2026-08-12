@@ -735,6 +735,13 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 				context.Step("Replace pinned ref-local with native pointer", pinnedRegion);
 				ILVariable oldVar = pinnedRegion.Variable;
 				IType elementType = ((ByReferenceType)oldVar.Type).ElementType;
+				if (pinnedRegion.Init is GetPinnableReference { Method: null, Argument: LdLoc arrayLoad }
+					&& arrayLoad.Variable.Type is ArrayType arrayType)
+				{
+					// Some compilers use a native-int byref as the storage local while pinning an array.
+					// The fixed pointer must use the array element type, not the storage local type.
+					elementType = arrayType.ElementType;
+				}
 				if (elementType.Kind == TypeKind.Pointer && pinnedRegion.Init.MatchLdFlda(out _, out var field)
 					&& ((PointerType)elementType).ElementType.Equals(field.Type))
 				{

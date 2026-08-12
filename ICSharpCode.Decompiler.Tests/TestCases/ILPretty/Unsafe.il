@@ -583,6 +583,51 @@
     ret
   }
 
+  .method public hidebysig static void PinArrayWithNativeIntByRefLocal(uint8[] data)
+  {
+    .maxstack 2
+    .locals init (
+      [0] native int& pinned,
+      [1] uint8[]
+    )
+
+    ldarg.0
+    dup
+    stloc.1
+    brfalse.s pin_null
+
+    ldloc.1
+    ldlen
+    conv.i4
+    brfalse.s pin_null
+
+    ldloc.1
+    ldc.i4.0
+    ldelema [CORE_ASSEMBLY]System.Byte
+    stloc.0
+    br.s pinned_body
+
+  pin_null:
+    ldc.i4.0
+    conv.u
+    stloc.0
+
+  pinned_body:
+    ldloc.0
+    conv.i
+    call void ExtraUnsafeTests::Consume(void*)
+    ldc.i4.0
+    conv.u
+    stloc.0
+    ret
+  }
+
+  .method private hidebysig static void Consume(void* data) cil managed
+  {
+    .maxstack 0
+    ret
+  }
+
   .method public hidebysig static uint32* RefToPointerWithoutPinning(uint32& managedPtr)
   {
     .maxstack 8
