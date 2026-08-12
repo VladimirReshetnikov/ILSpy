@@ -103,6 +103,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 			return span.Length;
 		}
 
+		public static int SwapInitializedSpans(int n)
+		{
+			scoped Span<int> span = default(Span<int>);
+			Span<int> span2 = stackalloc int[16];
+			Span<int> span3 = stackalloc int[16];
+			span2[0] = n;
+			span3[0] = n + 1;
+			span = span3;
+			span3 = span2;
+			span2 = span;
+			return span2[0] + span3[0];
+		}
+
 		private static Span<byte> Wrap(Span<byte> b)
 		{
 			return b.Slice(0, b.Length);

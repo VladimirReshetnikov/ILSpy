@@ -973,8 +973,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					{
 						type.AddTrailingTrivia(new Comment("pinned", CommentType.MultiLine));
 					}
+					bool isScopedRef = context.Settings.ScopedRef && v.Type.IsByRefLike
+						&& ShouldDeclareByRefLikeLocalScoped(v, assignment.Right);
 					replacements.Add((v.InsertionPoint.nextNode, () => {
 						var vds = new VariableDeclarationStatement(type, v.Name, assignment.Right.Detach());
+						vds.IsScopedRef = isScopedRef;
 						var init = vds.Variables.Single();
 						init.AddAnnotation(assignment.Left.GetResolveResult());
 						foreach (object annotation in assignment.Left.Annotations.Concat(assignment.Annotations))
@@ -1328,7 +1331,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// quo), because a false "does not escape" would inject a new ref-safety error on a legitimately
 		/// escaping local, which is strictly worse than the missing modifier.
 		/// </summary>
-		bool ShouldDeclareByRefLikeLocalScoped(VariableToDeclare v)
+		bool ShouldDeclareByRefLikeLocalScoped(VariableToDeclare v, Expression? declarationInitializer = null)
 		{
 			// All uses of the variable live within the block that receives the declaration; the
 			// insertion point is the common ancestor of every reference (see FindInsertionPoints).
@@ -1339,6 +1342,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// assigned a stackalloc). Those helper locals may be declared in an enclosing block, so
 			// the search for their assignments spans the whole method body, not just this block.
 			BlockStatement methodBody = OutermostBlock(scope);
+			// A stack-referring declaration initializer already narrows the local's safe-context to
+			// the current method. Only a wide/default initializer followed by a narrow assignment
+			// needs an explicit scoped modifier on a combined declaration.
+			if (declarationInitializer != null && IsStackReferringValue(declarationInitializer, methodBody))
+				return false;
 			bool sawAssignmentRequiringScopedDeclaration = false;
 			bool sawUse = false;
 			foreach (AstNode node in scope.Descendants)
@@ -1473,10 +1481,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		}
 
 		/// <summary>
-		/// Whether the ref-struct <paramref name="variable"/> is, at some assignment in the method, given
-		/// a stack-referring value. Non-ref-struct locals (e.g. an array or pointer backing a wide span)
-		/// cannot carry a stack reference into the local under analysis and are rejected. The visited set
-		/// guards against cyclic local-copy chains.
+		/// Whether the ref-struct <paramref name="variable"/> is, at some initializer or assignment in the
+		/// method, given a stack-referring value. Non-ref-struct locals (e.g. an array or pointer backing a
+		/// wide span) cannot carry a stack reference into the local under analysis and are rejected. The
+		/// visited set guards against cyclic local-copy chains.
 		/// </summary>
 		bool LocalHoldsStackReferringValue(ILVariable? variable, BlockStatement methodBody, HashSet<VariableToDeclare> visitedLocals)
 		{
@@ -1487,6 +1495,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return false;
 			foreach (AstNode node in methodBody.DescendantsAndSelf)
 			{
+				if (node is VariableInitializer { Initializer: { } initializer } variableInitializer
+					&& ResolveVariableToDeclare(variableInitializer.GetILVariable()) == local
+					&& IsStackReferringValue(initializer, methodBody, visitedLocals))
+				{
+					return true;
+				}
 				if (node is IdentifierExpression identifier
 					&& ResolveVariableToDeclare(identifier.GetILVariable()) == local
 					&& identifier.Parent is AssignmentExpression { Operator: AssignmentOperatorType.Assign } assignment
