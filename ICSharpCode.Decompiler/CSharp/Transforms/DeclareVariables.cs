@@ -740,6 +740,20 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		}
 
 		/// <summary>
+		/// Moves an insertion point out of the embedded blocks of enhanced (braceless) using
+		/// statements. Such a block's statements are printed flattened into the enclosing block, so
+		/// for declaration-space purposes the insertion point sits at the using statement itself.
+		/// </summary>
+		static InsertionPoint SkipEnhancedUsingBlocks(InsertionPoint point)
+		{
+			while (point.nextNode.Parent is BlockStatement { Parent: UsingStatement { IsEnhanced: true } usingStmt })
+			{
+				point = new InsertionPoint { level = point.level - 2, nextNode = usingStmt };
+			}
+			return point;
+		}
+
+		/// <summary>
 		/// Finds an insertion point in a common parent instruction.
 		/// </summary>
 		InsertionPoint FindCommonParent(InsertionPoint oldPoint, InsertionPoint newPoint)
@@ -829,6 +843,25 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					InsertionPoint point1 = prev.InsertionPoint.UpTo(v.InsertionPoint.level);
 					InsertionPoint point2 = v.InsertionPoint.UpTo(prev.InsertionPoint.level);
 					Debug.Assert(point1.level == point2.level);
+					if (point1.nextNode.Parent != point2.nextNode.Parent)
+					{
+						// The insertion scopes are siblings in the AST, where reusing a name is legal.
+						// But an enhanced (braceless) using statement prints the statements of its
+						// embedded block flattened into the enclosing block, so they share the enclosing
+						// block's declaration space even though the AST keeps them in a nested
+						// BlockStatement. Re-run the comparison with the insertion points hopped out of
+						// such blocks: a collision found this way is real in the printed code.
+						InsertionPoint hopped1 = SkipEnhancedUsingBlocks(prev.InsertionPoint);
+						InsertionPoint hopped2 = SkipEnhancedUsingBlocks(v.InsertionPoint);
+						if (hopped1.nextNode == prev.InsertionPoint.nextNode
+							&& hopped2.nextNode == v.InsertionPoint.nextNode)
+						{
+							continue;
+						}
+						point1 = hopped1.UpTo(hopped2.level);
+						point2 = hopped2.UpTo(hopped1.level);
+						Debug.Assert(point1.level == point2.level);
+					}
 					if (point1.nextNode.Parent == point2.nextNode.Parent)
 					{
 						Debug.Assert(prev.Type.Equals(v.Type));
