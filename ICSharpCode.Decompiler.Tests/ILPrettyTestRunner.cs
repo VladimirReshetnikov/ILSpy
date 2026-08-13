@@ -176,6 +176,22 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task AmbiguousIvtName()
+		{
+			var libraryA = await Tester.AssembleIL(Path.Combine(TestCasePath, "AmbiguousIvtName.LibraryA.il"), AssemblerOptions.Library).ConfigureAwait(false);
+			var libraryB = await Tester.AssembleIL(Path.Combine(TestCasePath, "AmbiguousIvtName.LibraryB.il"), AssemblerOptions.Library).ConfigureAwait(false);
+			try
+			{
+				await Run();
+			}
+			finally
+			{
+				Tester.RepeatOnIOError(() => File.Delete(libraryA));
+				Tester.RepeatOnIOError(() => File.Delete(libraryB));
+			}
+		}
+
+		[Test]
 		public async Task CrossRootMemberCollision()
 		{
 			var ilFile = Path.Combine(TestCasePath, "CrossRootMemberCollision.il");

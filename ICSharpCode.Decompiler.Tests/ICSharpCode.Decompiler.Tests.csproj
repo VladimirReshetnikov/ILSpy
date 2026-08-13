@@ -276,6 +276,8 @@
     <None Include="TestCases\ILPretty\ProtectedInternalCrossAssemblyOverride.cs" />
     <Compile Remove="TestCases\ILPretty\ProtectedInternalFriendAssemblyOverride.cs" />
     <None Include="TestCases\ILPretty\ProtectedInternalFriendAssemblyOverride.cs" />
+    <Compile Remove="TestCases\ILPretty\AmbiguousIvtName.cs" />
+    <None Include="TestCases\ILPretty\AmbiguousIvtName.cs" />
     <Compile Remove="TestCases\ILPretty\AmbiguousTrailingOptionalArguments.cs" />
     <None Include="TestCases\ILPretty\AmbiguousTrailingOptionalArguments.cs" />
     <Compile Remove="TestCases\ILPretty\ExpressionTreeDeinlinedInArrayInitializer.cs" />

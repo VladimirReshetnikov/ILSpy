@@ -1686,7 +1686,7 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 					IType firstResult = null;
 					foreach (var importedNamespace in u.Usings)
 					{
-						ITypeDefinition def = importedNamespace.GetTypeDefinition(identifier, typeArguments.Count);
+						ITypeDefinition def = GetAccessibleTypeDefinition(importedNamespace, identifier, typeArguments.Count);
 						if (def != null)
 						{
 							IType resultType;
@@ -1731,7 +1731,7 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 				}
 			}
 			// then look for a type
-			ITypeDefinition def = n.GetTypeDefinition(identifier, k);
+			ITypeDefinition def = GetAccessibleTypeDefinition(n, identifier, k);
 			if (def != null && TopLevelTypeDefinitionIsAccessible(def))
 			{
 				IType result = def;
@@ -1745,6 +1745,30 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 					return new TypeResolveResult(result);
 			}
 			return null;
+		}
+
+		/// <summary>
+		/// Looks up a top-level type in the given namespace, preferring a definition that is
+		/// accessible from the current compilation's main module. A namespace merged over several
+		/// modules yields a single definition per name even when multiple modules declare it; when
+		/// that pick is an inaccessible internal type of another assembly, an equally-named internal
+		/// type of a different module may still be accessible via InternalsVisibleTo. csc counts
+		/// such a type during simple name lookup (making the name ambiguous with equally-named
+		/// types from other imported namespaces), so accessibility must be decided against the
+		/// visible copy, not against whichever copy the merged namespace happens to return.
+		/// </summary>
+		ITypeDefinition GetAccessibleTypeDefinition(INamespace ns, string name, int typeParameterCount)
+		{
+			ITypeDefinition def = ns.GetTypeDefinition(name, typeParameterCount);
+			if (def == null || TopLevelTypeDefinitionIsAccessible(def))
+				return def;
+			foreach (IModule module in ns.ContributingModules)
+			{
+				ITypeDefinition candidate = module.GetTypeDefinition(ns.FullName, name, typeParameterCount);
+				if (candidate != null && TopLevelTypeDefinitionIsAccessible(candidate))
+					return candidate;
+			}
+			return def;
 		}
 
 		bool TopLevelTypeDefinitionIsAccessible(ITypeDefinition typeDef)
