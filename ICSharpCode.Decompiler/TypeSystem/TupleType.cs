@@ -234,6 +234,55 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				return type;
 			}
 		}
+
+		/// <summary>
+		/// Gets whether any tuple anywhere within <paramref name="type"/> carries an element name.
+		/// </summary>
+		internal static bool ContainsNamedElements(IType type)
+		{
+			var visitor = new NamedElementPresenceVisitor();
+			type.AcceptVisitor(visitor);
+			return visitor.Found;
+		}
+
+		sealed class NamedElementPresenceVisitor : TypeVisitor
+		{
+			public bool Found { get; private set; }
+
+			public override IType VisitTupleType(TupleType type)
+			{
+				if (type.ElementNames.Any(n => n != null))
+					Found = true;
+				return base.VisitTupleType(type);
+			}
+		}
+
+		/// <summary>
+		/// Returns a copy of <paramref name="type"/> with the element names removed from every
+		/// tuple within it. All other type information is preserved.
+		/// </summary>
+		internal static IType RemoveAllElementNames(IType type)
+		{
+			return type.AcceptVisitor(RemoveElementNamesVisitor.Instance);
+		}
+
+		sealed class RemoveElementNamesVisitor : TypeVisitor
+		{
+			public static readonly RemoveElementNamesVisitor Instance = new RemoveElementNamesVisitor();
+
+			public override IType VisitTupleType(TupleType type)
+			{
+				var elementTypes = ImmutableArray.CreateBuilder<IType>(type.ElementTypes.Length);
+				foreach (var elementType in type.ElementTypes)
+				{
+					elementTypes.Add(elementType.AcceptVisitor(this));
+				}
+				return new TupleType(
+					type.Compilation,
+					elementTypes.MoveToImmutable(),
+					valueTupleAssembly: type.GetDefinition()?.ParentModule);
+			}
+		}
 #nullable restore
 
 		static ParameterizedType CreateUnderlyingType(ICompilation compilation, ImmutableArray<IType> elementTypes, IModule valueTupleAssembly)

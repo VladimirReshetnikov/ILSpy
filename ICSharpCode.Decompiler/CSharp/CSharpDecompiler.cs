@@ -2956,6 +2956,10 @@ namespace ICSharpCode.Decompiler.CSharp
 					methodDecl.Name = "Main";
 				}
 				FixParameterNames(methodDecl);
+				if (settings.TupleTypes)
+				{
+					DropTupleNamesRequiredAbsentByNoPiaInterface(method, methodDecl, typeSystemAstBuilder);
+				}
 				var methodDefinition = metadata.GetMethodDefinition((MethodDefinitionHandle)method.MetadataToken);
 				if (!settings.LocalFunctions && LocalFunctionDecompiler.LocalFunctionNeedsAccessibilityChange(method.ParentModule!.MetadataFile, (MethodDefinitionHandle)method.MetadataToken))
 				{
@@ -3025,6 +3029,122 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				DecompilerEventSource.Log.DecompileMemberStop(method, DecompiledMemberKind.Method);
 			}
+		}
+
+		/// <summary>
+		/// A method implementing an interface member must repeat that member's tuple element names
+		/// exactly (CS8141). When the interface is an embedded No-PIA local type ([TypeIdentifier]),
+		/// the embedding process drops TupleElementNamesAttribute from its signatures, so printing
+		/// the implementation's names faithfully yields code that cannot compile against the local
+		/// type. Drop the names from the printed signature in exactly that case: the method
+		/// implements a member of a [TypeIdentifier] type, and no implemented member carries names
+		/// in the affected signature slot. Conversions between tuple types ignore element names, so
+		/// the body compiles unchanged against the name-free signature.
+		/// </summary>
+		void DropTupleNamesRequiredAbsentByNoPiaInterface(IMethod method, EntityDeclaration methodDecl, TypeSystemAstBuilder typeSystemAstBuilder)
+		{
+			if (methodDecl is not MethodDeclaration decl)
+				return;
+			if (decl.Parameters.Count != method.Parameters.Count)
+				return;
+			bool returnHasNames = TupleType.ContainsNamedElements(method.ReturnType);
+			if (!returnHasNames && !method.Parameters.Any(p => TupleType.ContainsNamedElements(p.Type)))
+				return;
+			var implementedMethods = GetImplementedInterfaceMethods(method).ToList();
+			if (!implementedMethods.Any(m => IsNoPiaLocalType(m.DeclaringTypeDefinition)))
+				return;
+			if (returnHasNames && implementedMethods.All(m => !TupleType.ContainsNamedElements(m.ReturnType)))
+			{
+				decl.ReturnType = typeSystemAstBuilder.ConvertType(TupleType.RemoveAllElementNames(method.ReturnType));
+			}
+			foreach (var (i, parameterDecl) in decl.Parameters.WithIndex())
+			{
+				if (!TupleType.ContainsNamedElements(method.Parameters[i].Type))
+					continue;
+				if (implementedMethods.All(m => !TupleType.ContainsNamedElements(m.Parameters[i].Type)))
+				{
+					IType strippedType = TupleType.RemoveAllElementNames(method.Parameters[i].Type);
+					if (strippedType is ByReferenceType byReferenceType)
+					{
+						// The parameter declaration carries the ref/out/in modifier itself.
+						strippedType = byReferenceType.ElementType;
+					}
+					parameterDecl.Type = typeSystemAstBuilder.ConvertType(strippedType);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Gets the interface methods implemented by <paramref name="method"/>: the explicitly
+		/// implemented members, or for a public instance method, the members of the declaring
+		/// type's interfaces with an erasure-equivalent signature that no other member of the
+		/// type implements explicitly.
+		/// </summary>
+		static IEnumerable<IMethod> GetImplementedInterfaceMethods(IMethod method)
+		{
+			if (method.IsExplicitInterfaceImplementation)
+			{
+				foreach (var interfaceMethod in method.ExplicitlyImplementedInterfaceMembers.OfType<IMethod>())
+				{
+					yield return interfaceMethod;
+				}
+				yield break;
+			}
+			if (method.IsStatic || method.Accessibility != Accessibility.Public)
+				yield break;
+			ITypeDefinition? declaringType = method.DeclaringTypeDefinition;
+			if (declaringType == null || declaringType.Kind is not (TypeKind.Class or TypeKind.Struct))
+				yield break;
+			foreach (IType interfaceType in declaringType.GetAllBaseTypes())
+			{
+				if (interfaceType.Kind != TypeKind.Interface)
+					continue;
+				foreach (IMethod interfaceMethod in interfaceType.GetMethods(
+					m => m.Name == method.Name
+						&& m.Parameters.Count == method.Parameters.Count
+						&& m.TypeParameters.Count == method.TypeParameters.Count,
+					GetMemberOptions.IgnoreInheritedMembers))
+				{
+					if (!SignaturesMatchModuloDecorations(method, interfaceMethod))
+						continue;
+					if (HasExplicitImplementation(declaringType, interfaceMethod))
+						continue;
+					yield return interfaceMethod;
+				}
+			}
+		}
+
+		static bool SignaturesMatchModuloDecorations(IMethod method, IMethod interfaceMethod)
+		{
+			if (!NormalizeTypeVisitor.TypeErasure.EquivalentTypes(method.ReturnType, interfaceMethod.ReturnType))
+				return false;
+			for (int i = 0; i < method.Parameters.Count; i++)
+			{
+				if (method.Parameters[i].ReferenceKind != interfaceMethod.Parameters[i].ReferenceKind)
+					return false;
+				if (!NormalizeTypeVisitor.TypeErasure.EquivalentTypes(method.Parameters[i].Type, interfaceMethod.Parameters[i].Type))
+					return false;
+			}
+			return true;
+		}
+
+		static bool HasExplicitImplementation(ITypeDefinition type, IMethod interfaceMethod)
+		{
+			foreach (IMethod candidate in type.Methods)
+			{
+				if (candidate.IsExplicitInterfaceImplementation
+					&& candidate.ExplicitlyImplementedInterfaceMembers.Any(m => m.Equals(interfaceMethod)))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		static bool IsNoPiaLocalType(ITypeDefinition? type)
+		{
+			return type != null && type.GetAttributes().Any(
+				a => a.AttributeType.FullName == "System.Runtime.InteropServices.TypeIdentifierAttribute");
 		}
 
 		private bool IsCovariantReturnOverride(IEntity entity)

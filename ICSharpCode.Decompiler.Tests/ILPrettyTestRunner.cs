@@ -710,6 +710,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task NoPiaTupleNames()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task OrderByThenByRangeVariable()
 		{
 			await Run();
