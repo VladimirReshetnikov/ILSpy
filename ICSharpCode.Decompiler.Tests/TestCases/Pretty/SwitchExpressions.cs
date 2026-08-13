@@ -60,6 +60,37 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			};
 		}
 
+		public static Tuple<string, bool, bool?> SwitchWithoutNaturalTypeAsGenericCallArgument(string combined, int num)
+		{
+#if EXPECTED_OUTPUT
+			string item = combined.Substring(1);
+			bool item2 = (num & 1) == 1;
+			return Tuple.Create<string, bool, bool?>(item, item2, (num & -2) switch {
+#else
+			return Tuple.Create<string, bool, bool?>(combined.Substring(1), (num & 1) == 1, (num & -2) switch {
+#endif
+				0 => null,
+				2 => false,
+				4 => true,
+				_ => throw new ArgumentException("Unsupported prefix: " + combined),
+			});
+		}
+
+		public static Tuple<string, string> SwitchWithNaturalTypeAsGenericCallArgument(int num)
+		{
+#if EXPECTED_OUTPUT
+			string item = num.ToString();
+			return Tuple.Create(item, num switch {
+#else
+			return Tuple.Create(num.ToString(), num switch {
+#endif
+				0 => "zero",
+				2 => null,
+				4 => "four",
+				_ => "other",
+			});
+		}
+
 		public static string SparseIntegerSwitch(int i)
 		{
 			Console.WriteLine("SparseIntegerSwitch: " + i);

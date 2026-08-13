@@ -704,6 +704,23 @@ namespace ICSharpCode.Decompiler.CSharp
 			return typeArguments;
 		}
 
+		static ResolveResult GetResolveResultForTypeInference(TranslatedExpression argument)
+		{
+			if (GetLambdaResolveResult(argument.ResolveResult) is LambdaResolveResult lambda)
+				return lambda;
+			// A switch expression whose printed arms have no natural type contributes nothing to
+			// the compiler's type inference; its resolve result still carries the IL-level type,
+			// which would let the check below conclude that inference succeeds. Erase the type so
+			// a type parameter only such an argument could pin makes inference fail and the call
+			// is emitted with explicit type arguments. A cast around the switch keeps its type.
+			if (argument.Expression is SwitchExpression
+				&& argument.Expression.Annotation<SwitchExpressionWithoutNaturalTypeAnnotation>() != null)
+			{
+				return new ResolveResult(SpecialType.UnknownType);
+			}
+			return argument.ResolveResult;
+		}
+
 		static LambdaResolveResult? GetLambdaResolveResult(ResolveResult resolveResult)
 		{
 			return resolveResult switch {
@@ -1786,7 +1803,7 @@ namespace ICSharpCode.Decompiler.CSharp
 						index => index >= 0 ? method.Parameters[index].Type : SpecialType.UnknownType
 					);
 			var inferredTypes = typeInference.InferTypeArguments(method.TypeParameters,
-				argumentList.Arguments.SelectReadOnlyArray(a => (ResolveResult?)GetLambdaResolveResult(a.ResolveResult) ?? a.ResolveResult), paramTypesInArgumentOrder,
+				argumentList.Arguments.SelectReadOnlyArray(GetResolveResultForTypeInference), paramTypesInArgumentOrder,
 				out bool success);
 			if (!success)
 				return TypeArgumentInferenceResult.Failed;

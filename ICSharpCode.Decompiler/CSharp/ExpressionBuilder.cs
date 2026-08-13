@@ -73,6 +73,20 @@ namespace ICSharpCode.Decompiler.CSharp
 	///      * Otherwise, the C# type of the resulting expression shall match the IL stack type,
 	///        and the evaluated values shall be the same.
 	/// </remarks>
+	/// <summary>
+	/// Marks a printed <see cref="SwitchExpression"/> whose arms give it no natural type, so it is
+	/// only valid where the context supplies a target type. Consumers that would rely on the
+	/// expression's own type (e.g. generic method type inference over an argument) must not.
+	/// </summary>
+	sealed class SwitchExpressionWithoutNaturalTypeAnnotation
+	{
+		public static readonly SwitchExpressionWithoutNaturalTypeAnnotation Instance = new();
+
+		private SwitchExpressionWithoutNaturalTypeAnnotation()
+		{
+		}
+	}
+
 	sealed class ExpressionBuilder : ILVisitor<TranslationContext, TranslatedExpression>
 	{
 		internal readonly StatementBuilder statementBuilder;
@@ -4680,6 +4694,19 @@ namespace ICSharpCode.Decompiler.CSharp
 				switchExpr.SwitchSections.Add(defaultSES);
 			}
 
+			// Record whether the printed switch expression has a natural type as the C# compiler
+			// computes it from the arms alone: throw arms contribute nothing, a printed 'null'
+			// literal is typeless, and every arm must implicitly convert to a best common type
+			// that is the type of one of the arms. The conversions applied above lifted the arm
+			// resolve results to resultType, so the arms' own types are recovered from the printed
+			// expressions. Uses of the expression where no target type exists - most importantly
+			// an argument slot whose generic parameter type is left to type inference - consult
+			// this annotation, because a target-typed-only switch contributes nothing there.
+			if (!PrintedSwitchExpressionHasNaturalType(switchExpr))
+			{
+				switchExpr.AddAnnotation(SwitchExpressionWithoutNaturalTypeAnnotation.Instance);
+			}
+
 			var switchResult = switchExpr.WithILInstruction(inst).WithRR(new ResolveResult(resultType));
 			if (anchorResultType)
 			{
@@ -4693,6 +4720,56 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				return translatedBodies[section].ConvertTo(resultType, this, allowImplicitConversion: true);
 			}
+		}
+
+		/// <summary>
+		/// Determines whether the switch expression, as printed, has a natural type: a best common
+		/// type over the arm expressions' own types that is itself one of those types, to which
+		/// every arm (including a typeless 'null' arm) implicitly converts. Implicit conversions
+		/// that were applied without printing a cast are looked through, so each arm contributes
+		/// the type the C# compiler would see in the emitted source.
+		/// </summary>
+		bool PrintedSwitchExpressionHasNaturalType(SwitchExpression switchExpr)
+		{
+			var armTypes = new List<ResolveResult>();
+			bool hasTypelessNullArm = false;
+			foreach (var section in switchExpr.SwitchSections)
+			{
+				Expression body = section.Body;
+				if (body is ThrowExpression)
+					continue;
+				if (body is NullReferenceExpression)
+				{
+					hasTypelessNullArm = true;
+					continue;
+				}
+				ResolveResult rr = body.GetResolveResult();
+				while (body is not CastExpression && rr is ConversionResolveResult { Conversion.IsImplicit: true } conversionResult)
+				{
+					rr = conversionResult.Input;
+				}
+				if (rr.Type.Kind is TypeKind.Unknown or TypeKind.None or TypeKind.Null)
+				{
+					// An arm whose printed type cannot be determined (e.g. a lambda or method
+					// group) is conservatively treated as denying the switch a natural type.
+					return false;
+				}
+				armTypes.Add(rr);
+			}
+			if (armTypes.Count == 0)
+				return false;
+			IType bestCommonType = typeInference.GetBestCommonType(armTypes, out bool success);
+			if (!success || !armTypes.Any(r => r.Type.Equals(bestCommonType)))
+				return false;
+			var conversions = CSharpConversions.Get(compilation);
+			foreach (var armType in armTypes)
+			{
+				if (!conversions.ImplicitConversion(armType.Type, bestCommonType).IsValid)
+					return false;
+			}
+			if (hasTypelessNullArm && bestCommonType.IsReferenceType != true && !NullableType.IsNullable(bestCommonType))
+				return false;
+			return true;
 		}
 
 		protected internal override TranslatedExpression VisitAddressOf(AddressOf inst, TranslationContext context)
