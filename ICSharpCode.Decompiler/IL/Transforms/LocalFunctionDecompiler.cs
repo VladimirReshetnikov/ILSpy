@@ -1031,8 +1031,26 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return false;
 			}
 			info.UnresolvedClosureArguments.Remove(arg);
-			// determine the capture scope of closureVar and the declaration scope of the function 
+			// determine the capture scope of closureVar and the declaration scope of the function
 			var additionalScope = BlockContainer.FindClosestContainer(initializer);
+			if (closureVar.Type.UnwrapByRef().GetDefinition() is { Kind: TypeKind.Struct })
+			{
+				// A display struct has no initializer instruction, so its "initializer" above is just
+				// the first address use in tree order; that use may sit in a nested container (e.g. a
+				// fetch loop storing one captured variable) that does not contain the struct's other
+				// uses. The struct's storage must be visible at every use, so widen the scope to the
+				// closest container enclosing all of its address uses - including the local-function
+				// call sites, which pass the closure by reference.
+				foreach (var addressUse in closureVar.AddressInstructions)
+				{
+					var useScope = BlockContainer.FindClosestContainer(addressUse);
+					if (useScope != null && useScope != additionalScope)
+					{
+						additionalScope = FindCommonAncestorInstruction<BlockContainer>(additionalScope, useScope)
+							?? additionalScope;
+					}
+				}
+			}
 			if (closureVar.CaptureScope == null)
 				closureVar.CaptureScope = additionalScope;
 			else

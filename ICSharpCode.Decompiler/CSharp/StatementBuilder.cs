@@ -1409,7 +1409,11 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				case ContainerKind.Loop:
 					continueTarget = container.EntryPoint;
-					blockStatement = ConvertBlockContainer(container, true);
+					// Use the overload without DeclareLocalFunctions: local functions are declared
+					// below, after the trailing 'continue;' is removed. Declaring them earlier would
+					// append them after that 'continue;' (unreachable), and declaring them in both
+					// places would emit every local function twice (CS0128).
+					blockStatement = ConvertBlockContainer(new BlockStatement(), container, container.Blocks, true);
 					Debug.Assert(continueCount < container.EntryPoint.IncomingEdgeCount);
 					Debug.Assert(blockStatement.Statements.First() is LabelStatement);
 					if (container.EntryPoint.IncomingEdgeCount == continueCount + 1)
