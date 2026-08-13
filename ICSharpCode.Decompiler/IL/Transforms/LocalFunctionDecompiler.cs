@@ -462,7 +462,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				{
 					foreach (var v in f.Variables)
 					{
-						if (TransformDisplayClassUsage.IsClosure(context, v, out var varType, out _) && typeMatches(varType))
+						if (TransformDisplayClassUsage.IsClosure(context, v, out var varType) && typeMatches(varType))
 							return v;
 					}
 				}

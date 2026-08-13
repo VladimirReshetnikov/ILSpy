@@ -878,13 +878,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			}
 		}
 
-		internal static bool IsClosure(ILTransformContext context, ILVariable variable, out ITypeDefinition closureType, out ILInstruction initializer)
+		internal static bool IsClosure(ILTransformContext context, ILVariable variable, out ITypeDefinition closureType)
 		{
 			closureType = null;
-			initializer = null;
 			if (variable.IsSingleDefinition && variable.StoreInstructions.SingleOrDefault() is StLoc inst)
 			{
-				initializer = inst;
 				if (IsClosureInit(context, inst, out closureType))
 				{
 					return true;
@@ -894,7 +892,6 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (context.Settings.LocalFunctions && closureType?.Kind == TypeKind.Struct
 				&& variable.UsesInitialValue && IsPotentialClosure(context, closureType))
 			{
-				initializer = Block.GetContainingStatement(variable.AddressInstructions.OrderBy(i => i.StartILOffset).First());
 				return true;
 			}
 			return false;
