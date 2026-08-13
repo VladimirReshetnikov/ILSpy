@@ -158,6 +158,8 @@
     <None Include="TestCases\ILPretty\RefLocalUninitialized.il" />
     <None Include="TestCases\ILPretty\RefLocalUninitialized.Library.il" />
     <None Include="TestCases\ILPretty\SkipInitUnavailable.il" />
+    <None Include="TestCases\ILPretty\UnalignedAccessUnavailable.il" />
+    <None Include="TestCases\ILPretty\UnalignedAccessUnavailable.cs" />
     <None Include="TestCases\ILPretty\LockOutVariableSlotReuse.il" />
     <None Include="TestCases\ILPretty\SelfReferencingDelegate.il" />
     <None Include="TestCases\ILPretty\VarianceBoundDelegateClosure.il" />
@@ -364,6 +366,7 @@
     <Compile Remove="TestCases\ILPretty\RefLocalUninitialized.cs" />
     <None Include="TestCases\ILPretty\RefLocalUninitialized.cs" />
     <Compile Remove="TestCases\ILPretty\SkipInitUnavailable.cs" />
+    <Compile Remove="TestCases\ILPretty\UnalignedAccessUnavailable.cs" />
     <None Include="TestCases\ILPretty\SkipInitUnavailable.cs" />
     <Compile Remove="TestCases\ILPretty\LockOutVariableSlotReuse.cs" />
     <None Include="TestCases\ILPretty\LockOutVariableSlotReuse.cs" />

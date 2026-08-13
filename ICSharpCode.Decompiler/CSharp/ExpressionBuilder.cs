@@ -1587,6 +1587,37 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 		}
 
+		bool? unsafeReadUnalignedIsAvailable;
+		bool? unsafeWriteUnalignedIsAvailable;
+
+		/// <summary>
+		/// Whether <c>System.Runtime.CompilerServices.Unsafe.ReadUnaligned&lt;T&gt;</c> resolves in
+		/// the current compilation. Old target frameworks (e.g. .NET Framework) do not have the
+		/// type; emitting a call that does not resolve would not compile (CS0234/CS0117). Unaligned
+		/// accesses then fall back to the plain dereference: the recompiled IL loses the
+		/// 'unaligned.' prefix, which only matters on strict-alignment platforms and has no
+		/// spelling on such frameworks anyway.
+		/// </summary>
+		bool UnsafeReadUnalignedIsAvailable()
+		{
+			unsafeReadUnalignedIsAvailable ??= compilation.FindType(KnownTypeCode.Unsafe)
+				.GetMethods(m => m.Name == "ReadUnaligned")
+				.Any(m => m.IsStatic && m.TypeParameters.Count == 1 && m.Parameters.Count == 1);
+			return unsafeReadUnalignedIsAvailable.Value;
+		}
+
+		/// <summary>
+		/// Whether <c>System.Runtime.CompilerServices.Unsafe.WriteUnaligned&lt;T&gt;</c> resolves in
+		/// the current compilation. See <see cref="UnsafeReadUnalignedIsAvailable"/>.
+		/// </summary>
+		bool UnsafeWriteUnalignedIsAvailable()
+		{
+			unsafeWriteUnalignedIsAvailable ??= compilation.FindType(KnownTypeCode.Unsafe)
+				.GetMethods(m => m.Name == "WriteUnaligned")
+				.Any(m => m.IsStatic && m.TypeParameters.Count == 1 && m.Parameters.Count == 2);
+			return unsafeWriteUnalignedIsAvailable.Value;
+		}
+
 		internal TranslatedExpression CallUnsafeIntrinsic(string name, Expression[] arguments, IType returnType, ILInstruction? inst = null, IEnumerable<IType>? typeArguments = null)
 		{
 			var target = new MemberReferenceExpression {
@@ -3048,7 +3079,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				loadType = context.TypeHint;
 			}
-			if (inst.UnalignedPrefix != 0)
+			if (inst.UnalignedPrefix != 0 && UnsafeReadUnalignedIsAvailable())
 			{
 				// Use one of: Unsafe.ReadUnaligned<T>(void*)
 				//         or: Unsafe.ReadUnaligned<T>(ref byte)
@@ -3194,7 +3225,11 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		protected internal override TranslatedExpression VisitStObj(StObj inst, TranslationContext context)
 		{
-			if (inst.UnalignedPrefix != 0 || (inst.Target.ResultType != StackType.Ref && !inst.Type.IsUnmanagedType(settings.IntroduceUnmanagedConstraint)))
+			// A managed type stored through a pointer has no dereference spelling, so it always goes
+			// through the helper call, resolvable or not; an unaligned store only does when
+			// Unsafe.WriteUnaligned resolves, and otherwise falls back to the plain store below.
+			bool managedTypeViaPointer = inst.Target.ResultType != StackType.Ref && !inst.Type.IsUnmanagedType(settings.IntroduceUnmanagedConstraint);
+			if (managedTypeViaPointer || (inst.UnalignedPrefix != 0 && UnsafeWriteUnalignedIsAvailable()))
 			{
 				return StObjViaHelperCall(inst);
 			}

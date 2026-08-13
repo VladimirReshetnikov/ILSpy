@@ -815,6 +815,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task UnalignedAccessUnavailable()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task LockOutVariableSlotReuse()
 		{
 			await Run();
