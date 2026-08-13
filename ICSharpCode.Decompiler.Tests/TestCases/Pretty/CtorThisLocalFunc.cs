@@ -10,10 +10,10 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public CtorThisLocalFunc(IEventSource3 added, IEventSource3 removed)
 		{
-			added.Advise(delegate {
+			added.Advise(() => {
 				Record("added");
 			});
-			removed.Advise(delegate {
+			removed.Advise(() => {
 				Record("removed");
 			});
 			void Record(string kind)

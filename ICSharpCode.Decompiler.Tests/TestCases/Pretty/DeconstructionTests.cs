@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
@@ -421,6 +422,26 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			Console.WriteLine(value);
 			Console.WriteLine(myInt4);
 			Console.WriteLine(value2);
+		}
+
+		public void LocalVariable_Nested_StructInnerFirstElement()
+		{
+			var ((value, value2), value3) = GetSource<StructDeconstructionSource<int, string>, int>();
+			Console.WriteLine(value);
+			Console.WriteLine(value2);
+			Console.WriteLine(value3);
+		}
+
+		public void LocalVariable_ElementOfElementRead_ThenDeconstruct()
+		{
+			((StructDeconstructionSource<int, string>, int), int) tuple = GetTuple<(StructDeconstructionSource<int, string>, int), int>();
+			(StructDeconstructionSource<int, string>, int) item = tuple.Item1;
+			StructDeconstructionSource<int, string> item2 = item.Item1;
+			var (value, value2) = item2;
+			Console.WriteLine(value);
+			Console.WriteLine(value2);
+			Console.WriteLine(item.Item2);
+			Console.WriteLine(tuple.Item2);
 		}
 
 		public void LocalVariable_Nested_Depth3()
@@ -988,6 +1009,44 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			Console.WriteLine(first);
 			Console.WriteLine(second);
 #endif
+		}
+
+		public async Task<int> DeconstructionAssignmentToCapturedLocals(string file)
+		{
+			int a = 0;
+			int b = 0;
+			await Task.Run(() => {
+				(a, b) = GetTuple<int, int>();
+			});
+			return a + b;
+		}
+
+		public void NestedDesignation_RestChainedInnerTuple()
+		{
+			var (value, (value2, value3, value4, value5, value6, value7, value8, value9)) = GetTuple<int, (int, int, int, int, int, int, int, int)>();
+			Console.WriteLine(value);
+			Console.WriteLine(value2);
+			Console.WriteLine(value3);
+			Console.WriteLine(value4);
+			Console.WriteLine(value5);
+			Console.WriteLine(value6);
+			Console.WriteLine(value7);
+			Console.WriteLine(value8);
+			Console.WriteLine(value9);
+		}
+
+		public bool DeconstructStructParameter(StructDeconstructionSource<int, string> point)
+		{
+			var (num2, value) = point;
+			Console.WriteLine(value);
+			return num2 >= 0;
+		}
+
+		public void DeconstructStructLocal()
+		{
+			StructDeconstructionSource<int, string> structSource = GetStructSource<int, string>();
+			var (num2, text2) = structSource;
+			Console.WriteLine(num2 + text2 + structSource.Dummy);
 		}
 	}
 

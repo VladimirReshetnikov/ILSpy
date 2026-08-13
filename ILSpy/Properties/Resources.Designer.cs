@@ -1695,15 +1695,6 @@ namespace ICSharpCode.ILSpy.Properties {
         }
 
         /// <summary>
-        ///   Looks up a localized string similar to Use &apos;field&apos; keyword in semi-auto-properties.
-        /// </summary>
-        public static string DecompilerSettings_UseFieldKeyword {
-            get {
-                return ResourceManager.GetString("DecompilerSettings.UseFieldKeyword", resourceCulture);
-            }
-        }
-
-        /// <summary>
         ///   Looks up a localized string similar to Use implicit conversions between tuple types.
         /// </summary>
         public static string DecompilerSettings_UseImplicitConversionsBetweenTupleTypes {

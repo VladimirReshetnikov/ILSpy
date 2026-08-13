@@ -49,19 +49,6 @@ using Microsoft.Extensions.Hosting;
 
 namespace ICSharpCode.ILSpyCmd
 {
-	/// <summary>
-	/// Implements the <c>ilspycmd</c> command-line surface and dispatches each invocation to the selected decompilation lane.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// Mode dispatch is intentionally precedence-based rather than fully combinatorial. The execution order is:
-	/// project generation, Mermaid diagram generation, then per-file actions (list, IL, PDB, package dump,
-	/// resource listing, resource extraction, C# decompilation).
-	/// </para>
-	/// <para>
-	/// This makes automation behavior predictable when callers accidentally combine mutually overshadowing flags.
-	/// </para>
-	/// </remarks>
 	[Command(Name = "ilspycmd", Description = "dotnet tool for decompiling .NET assemblies and generating portable PDBs",
 		ExtendedHelpText = @"
 Remarks:
@@ -105,76 +92,38 @@ Examples:
 	{
 		// https://natemcmaster.github.io/CommandLineUtils/docs/advanced/generic-host.html
 		// https://github.com/natemcmaster/CommandLineUtils/blob/main/docs/samples/dependency-injection/generic-host/Program.cs
-		/// <summary>
-		/// Program entry point for the <c>ilspycmd</c> command-line host.
-		/// </summary>
-		/// <param name="args">Raw command-line arguments.</param>
-		/// <returns>The process exit code.</returns>
 		public static Task<int> Main(string[] args) => new HostBuilder().RunCommandLineApplicationAsync<ILSpyCmdProgram>(args);
 
-		/// <summary>
-		/// Input assembly paths to process.
-		/// </summary>
 		[FilesExist]
 		[Required]
 		[Argument(0, "Assembly file name(s)", "The list of assemblies that is being decompiled. This argument is mandatory.")]
 		public string[] InputAssemblyNames { get; }
 
-		/// <summary>
-		/// Destination directory for generated files; when omitted, output is written to standard output where applicable.
-		/// </summary>
 		[Option("-o|--outputdir <directory>", "The output directory, if omitted decompiler output is written to standard out.", CommandOptionType.SingleValue)]
 		public string OutputDirectory { get; }
 
-		/// <summary>
-		/// Emits a compilable project instead of single-file decompilation output.
-		/// </summary>
 		[Option("-p|--project", "Decompile assembly as compilable project. This requires the output directory option.", CommandOptionType.NoValue)]
 		public bool CreateCompilableProjectFlag { get; }
 
-		/// <summary>
-		/// Restricts decompilation to a single type. Accepts the full reflection name, a namespace-qualified
-		/// name, a bare simple name, or a trailing '.'-separated name path; the value must resolve to exactly
-		/// one type or the run fails.
-		/// </summary>
 		[Option("-t|--type <type-name>", "The fully qualified name of the type to decompile.", CommandOptionType.SingleValue)]
 		public string TypeName { get; }
 
-		/// <summary>
-		/// Restricts decompilation to a single member, named by an XML documentation id string or
-		/// a metadata token.
-		/// </summary>
 		[Option("-m|--member <doc-id-or-token>", "The single member to decompile: an XML documentation id string (e.g. \"M:System.String.Concat(System.String,System.String)\", as also accepted by the UI's --navigateto option) or a metadata token (e.g. 0x06000005).", CommandOptionType.SingleValue)]
 		public string MemberIdString { get; }
 
-		/// <summary>
-		/// Outputs IL instead of high-level source code.
-		/// </summary>
 		[Option("-il|--ilcode", "Show IL code.", CommandOptionType.NoValue)]
 		public bool ShowILCodeFlag { get; }
 
-		/// <summary>
-		/// Includes sequence point markers when emitting IL output.
-		/// </summary>
 		[Option("--il-sequence-points", "Show IL with sequence points. Implies -il.", CommandOptionType.NoValue)]
 		public bool ShowILSequencePointsFlag { get; }
 
-		/// <summary>
-		/// Generates a portable PDB for the input assembly.
-		/// </summary>
 		[Option("-genpdb|--generate-pdb", "Generate PDB.", CommandOptionType.NoValue)]
 		public bool CreateDebugInfoFlag { get; }
 
-		/// <summary>
-		/// Optional PDB path to use as variable-name source during decompilation.
-		/// </summary>
 		[FileExistsOrNull]
 		[Option("-usepdb|--use-varnames-from-pdb", "Use variable names from PDB.", CommandOptionType.SingleOrNoValue)]
 		public (bool IsSet, string Value) InputPDBFile { get; }
 
-		/// <summary>
-		/// Lists metadata entities by selected type categories instead of decompiling source.
-		/// </summary>
 		[Option("-l|--list <entity-type(s)>", "Lists all entities of the specified type(s). Valid types: c(lass), i(nterface), s(truct), d(elegate), e(num)", CommandOptionType.MultipleValue)]
 		public string[] EntityTypes { get; } = Array.Empty<string>();
 
@@ -193,71 +142,44 @@ Examples:
 		[Option("--json", "Output as JSON. Currently only supported together with --dump-table.", CommandOptionType.NoValue)]
 		public bool JsonOutputFlag { get; }
 
-		/// <summary>
-		/// Multi-line version banner for the tool and decompiler engine.
-		/// </summary>
 		public string DecompilerVersion => "ilspycmd: " + typeof(ILSpyCmdProgram).Assembly.GetName().Version.ToString() +
 				Environment.NewLine
 				+ "ICSharpCode.Decompiler: " +
 				typeof(FullTypeName).Assembly.GetName().Version.ToString();
 
-		/// <summary>
-		/// C# language version used for syntax shaping decisions during decompilation.
-		/// </summary>
 		[Option("-lv|--languageversion <version>", "C# Language version: CSharp1, CSharp2, CSharp3, " +
 			"CSharp4, CSharp5, CSharp6, CSharp7, CSharp7_1, CSharp7_2, CSharp7_3, CSharp8_0, CSharp9_0, " +
 			"CSharp10_0, CSharp11_0, CSharp12_0, CSharp13_0, Preview or Latest", CommandOptionType.SingleValue)]
 		public LanguageVersion LanguageVersion { get; } = LanguageVersion.Latest;
 
-		/// <summary>
-		/// Optional ILSpy settings file. When it loads successfully its decompiler settings replace the
-		/// defaults wholesale, so -lv, --no-dead-code, --no-dead-stores and --nested-directories are ignored;
-		/// only -ds overrides are still applied on top.
-		/// </summary>
 		[FileExists]
 		[Option("--ilspy-settingsfile <path>", "Path to an ILSpy settings file.", CommandOptionType.SingleValue)]
 		public string ILSpySettingsFile { get; }
 
-		/// <summary>
-		/// One or more explicit decompiler setting overrides in <c>name=value</c> form.
-		/// </summary>
 		[Option("-ds|--decompiler-setting <name>=<value>", "Set a decompiler setting. Use multiple times to set multiple settings.", CommandOptionType.MultipleValue)]
 		public string[] DecompilerSettingOverrides { get; set; } = Array.Empty<string>();
 
-		/// <summary>
-		/// Additional probe paths for dependency resolution.
-		/// </summary>
 		[DirectoryExists]
 		[Option("-r|--referencepath <path>", "Path to a directory containing dependencies of the assembly that is being decompiled.", CommandOptionType.MultipleValue)]
 		public string[] ReferencePaths { get; }
 
-		/// <summary>
-		/// Enables removal of dead code blocks in decompilation transforms.
-		/// </summary>
+		[Option("--ignore-decompilation-errors", "Exit with success even when parts of the assembly could not be decompiled. " +
+			"The affected code carries the error text in the output and the failures are listed on stderr either way; " +
+			"only the exit status changes.", CommandOptionType.NoValue)]
+		public bool IgnoreDecompilationErrorsFlag { get; }
+
 		[Option("--no-dead-code", "Remove dead code.", CommandOptionType.NoValue)]
 		public bool RemoveDeadCode { get; }
 
-		/// <summary>
-		/// Enables removal of dead local stores in decompilation transforms.
-		/// </summary>
 		[Option("--no-dead-stores", "Remove dead stores.", CommandOptionType.NoValue)]
 		public bool RemoveDeadStores { get; }
 
-		/// <summary>
-		/// Extracts assemblies from an input package into the output directory.
-		/// </summary>
 		[Option("-d|--dump-package", "Dump package assemblies into a folder. This requires the output directory option.", CommandOptionType.NoValue)]
 		public bool DumpPackageFlag { get; }
 
-		/// <summary>
-		/// Writes project output into nested namespace directories.
-		/// </summary>
 		[Option("--nested-directories", "Use nested directories for namespaces.", CommandOptionType.NoValue)]
 		public bool NestedDirectories { get; }
 
-		/// <summary>
-		/// Disables online update checks to avoid network calls in automated workflows.
-		/// </summary>
 		[Option("--disable-updatecheck", "If using ilspycmd in a tight loop or fully automated scenario, you might want to disable the automatic update check.", CommandOptionType.NoValue)]
 		public bool DisableUpdateCheck { get; }
 
@@ -268,36 +190,21 @@ Examples:
 			exclude = generateDiagrammerCmd + "-exclude",
 			include = generateDiagrammerCmd + "-include";
 
-		/// <summary>
-		/// Generates the Mermaid-based HTML type diagram application for selected types.
-		/// </summary>
 		[Option(generateDiagrammerCmd, "Generates an interactive HTML diagrammer app from selected types in the target assembly" +
 			" - to the --outputdir or in a 'diagrammer' folder next to to the assembly by default.", CommandOptionType.NoValue)]
 		public bool GenerateDiagrammer { get; }
 
-		/// <summary>
-		/// Include filter regular expression for diagram generation.
-		/// </summary>
 		[Option(include, "An optional regular expression matching Type.FullName used to whitelist types to include in the generated diagrammer.", CommandOptionType.SingleValue)]
 		public string Include { get; set; }
 
-		/// <summary>
-		/// Exclude filter regular expression for diagram generation.
-		/// </summary>
 		[Option(exclude, "An optional regular expression matching Type.FullName used to blacklist types to exclude from the generated diagrammer.", CommandOptionType.SingleValue)]
 		public string Exclude { get; set; }
 
-		/// <summary>
-		/// Emits a diagnostic report explaining why candidate types were excluded from the generated diagram.
-		/// </summary>
 		[Option(generateDiagrammerCmd + "-report-excluded", "Outputs a report of types excluded from the generated diagrammer" +
 			$" - whether by default because compiler-generated, explicitly by '{exclude}' or implicitly by '{include}'." +
 			" You may find this useful to develop and debug your regular expressions.", CommandOptionType.NoValue)]
 		public bool ReportExcludedTypes { get; set; }
 
-		/// <summary>
-		/// Optional XML documentation source used to annotate generated diagram content.
-		/// </summary>
 		[Option(generateDiagrammerCmd + "-docs", "The path or file:// URI of the XML file containing the target assembly's documentation comments." +
 			" You only need to set this if a) you want your diagrams annotated with them and b) the file name differs from that of the assembly." +
 			" To enable XML documentation output for your assembly, see https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/xmldoc/#create-xml-documentation-output",
@@ -309,9 +216,6 @@ Examples:
 			" Note that the order matters: e.g. replace 'System.Collections' before 'System' to remove both of them completely.", CommandOptionType.MultipleValue)]
 		public string[] StrippedNamespaces { get; set; }
 
-		/// <summary>
-		/// Emits <c>model.json</c> without embedding it into the HTML shell.
-		/// </summary>
 		[Option(generateDiagrammerCmd + "-json-only",
 			"Whether to generate a model.json file instead of baking it into the HTML template." +
 			" This is useful for the HTML/JS/CSS development loop.", CommandOptionType.NoValue,
@@ -320,10 +224,6 @@ Examples:
 		#endregion
 
 		private readonly IHostEnvironment _env;
-		/// <summary>
-		/// Initializes a command instance bound to the current host environment.
-		/// </summary>
-		/// <param name="env">Host environment that provides content root and execution context.</param>
 		public ILSpyCmdProgram(IHostEnvironment env)
 		{
 			_env = env;
@@ -359,7 +259,7 @@ Examples:
 					{
 						string projectFileName = Path.Combine(outputDirectory, Path.GetFileNameWithoutExtension(InputAssemblyNames[0]) + ".csproj");
 						DecompileAsProject(InputAssemblyNames[0], projectFileName);
-						return 0;
+						return ExitCodeForDecompilationErrors();
 					}
 					var projects = new List<ProjectItem>();
 					foreach (var file in InputAssemblyNames)
@@ -370,7 +270,7 @@ Examples:
 						projects.Add(new ProjectItem(projectFileName, projectId.PlatformName, projectId.Guid, projectId.TypeGuid));
 					}
 					SolutionCreator.WriteSolutionFile(Path.Combine(outputDirectory, Path.GetFileNameWithoutExtension(outputDirectory) + ".sln"), projects);
-					return 0;
+					return ExitCodeForDecompilationErrors();
 				}
 				else if (GenerateDiagrammer)
 				{
@@ -400,7 +300,7 @@ Examples:
 						if (result != 0)
 							return result;
 					}
-					return 0;
+					return ExitCodeForDecompilationErrors();
 				}
 			}
 			catch (Exception ex)
@@ -727,6 +627,34 @@ Examples:
 			return 0;
 		}
 
+		readonly List<DecompilerException> decompilationErrors = new();
+
+		/// <summary>
+		/// Lists what the decompiler could not handle. The output was still written - with the error
+		/// text in place of the affected code - so this is the only sign anything went wrong, and
+		/// <see cref="ExitCodeForDecompilationErrors"/> keeps it from passing silently in a script.
+		/// </summary>
+		void ReportDecompilationErrors(string assemblyFileName, IReadOnlyList<DecompilerException> errors)
+		{
+			if (errors.Count == 0)
+				return;
+			decompilationErrors.AddRange(errors);
+			Console.Error.WriteLine($"While decompiling {assemblyFileName}:");
+			foreach (string line in CSharpDecompiler.GetErrorSummaryLines(errors.Count))
+			{
+				Console.Error.WriteLine(line);
+			}
+			foreach (var error in errors)
+			{
+				Console.Error.WriteLine("  " + CSharpDecompiler.GetErrorHeadline(error));
+			}
+		}
+
+		int ExitCodeForDecompilationErrors()
+		{
+			return decompilationErrors.Count == 0 || IgnoreDecompilationErrorsFlag ? 0 : ProgramExitCodes.EX_SOFTWARE;
+		}
+
 		ProjectId DecompileAsProject(string assemblyFileName, string projectFileName)
 		{
 			var module = new PEFile(assemblyFileName);
@@ -750,8 +678,11 @@ Examples:
 			{
 				decompiler = new WholeProjectDecompiler(settings, resolver, null, resolver, debugInfo);
 			}
-			using (var projectFileWriter = new StreamWriter(File.OpenWrite(projectFileName)))
-				return decompiler.DecompileProject(module, Path.GetDirectoryName(projectFileName), projectFileWriter);
+			ProjectId projectId;
+			using (var projectFileWriter = new StreamWriter(File.Create(projectFileName)))
+				projectId = decompiler.DecompileProject(module, Path.GetDirectoryName(projectFileName), projectFileWriter);
+			ReportDecompilationErrors(assemblyFileName, decompiler.Errors);
+			return projectId;
 		}
 
 		int Decompile(string assemblyFileName, TextWriter output, string typeName = null)
@@ -761,6 +692,7 @@ Examples:
 			if (typeName == null)
 			{
 				output.Write(decompiler.DecompileWholeModuleAsString());
+				ReportDecompilationErrors(assemblyFileName, decompiler.Errors);
 				return 0;
 			}
 
@@ -771,6 +703,7 @@ Examples:
 			}
 
 			output.Write(decompiler.DecompileTypeAsString(typeDefinition.FullTypeName));
+			ReportDecompilationErrors(assemblyFileName, decompiler.Errors);
 			return 0;
 		}
 
@@ -785,6 +718,7 @@ Examples:
 			}
 
 			output.Write(decompiler.DecompileAsString(handle));
+			ReportDecompilationErrors(assemblyFileName, decompiler.Errors);
 			return 0;
 		}
 

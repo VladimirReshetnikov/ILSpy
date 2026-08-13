@@ -129,6 +129,7 @@
     <None Include="TestCases\ILPretty\ExtensionEncodingV2.il" />
     <None Include="testcases\ilpretty\ExtensionEncodingV1.il" />
     <None Include="TestCases\ILPretty\GuessAccessors.il" />
+    <None Include="TestCases\ILPretty\InaccessibleParameterTypes.il" />
     <None Include="TestCases\ILPretty\Issue2260SwitchString.il" />
     <None Include="TestCases\ILPretty\Issue3442.il" />
     <None Include="TestCases\ILPretty\Issue3344CkFinite.il" />
@@ -345,6 +346,8 @@
     <None Include="TestCases\ILPretty\FSharpUsing_Release.cs" />
     <Compile Remove="TestCases\ILPretty\GuessAccessors.cs" />
     <None Include="TestCases\ILPretty\GuessAccessors.cs" />
+    <Compile Remove="TestCases\ILPretty\InaccessibleParameterTypes.cs" />
+    <None Include="TestCases\ILPretty\InaccessibleParameterTypes.cs" />
     <Compile Remove="TestCases\ILPretty\NoAccessorProperties.cs" />
     <None Include="TestCases\ILPretty\NoAccessorProperties.cs" />
     <Compile Remove="TestCases\ILPretty\Issue1145.cs" />
@@ -388,6 +391,8 @@
     <Compile Remove="TestCases\ILPretty\FileLocalTypes.cs" />
     <None Include="TestCases\ILPretty\FileLocalTypes.cs" />
     <None Include="TestCases\ILPretty\FileLocalTypes.il" />
+    <Compile Remove="TestCases\Pretty\FieldKeyword.cs" />
+    <None Include="TestCases\Pretty\FieldKeyword.cs" />
     <Compile Remove="TestCases\Pretty\IndexRangeTest.cs" />
     <None Include="TestCases\Pretty\IndexRangeTest.cs" />
     <Compile Remove="TestCases\Pretty\MetadataAttributes.cs" />
@@ -414,6 +419,8 @@
     <None Include="TestCases\Ugly\NoDecimalConstants.Expected.cs" />
     <Compile Remove="TestCases\Ugly\NoExtensionMethods.Expected.cs" />
     <None Include="TestCases\Ugly\NoExtensionMethods.Expected.cs" />
+    <Compile Remove="TestCases\Ugly\NoFieldKeyword.Expected.cs" />
+    <None Include="TestCases\Ugly\NoFieldKeyword.Expected.cs" />
     <Compile Remove="TestCases\Ugly\NoForEachStatement.Expected.cs" />
     <None Include="TestCases\Ugly\NoForEachStatement.Expected.cs" />
     <Compile Remove="TestCases\Ugly\NoLocalFunctions.Expected.cs" />

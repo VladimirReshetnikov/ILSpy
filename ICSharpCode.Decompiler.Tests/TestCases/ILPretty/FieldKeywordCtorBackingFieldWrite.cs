@@ -5,33 +5,30 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 {
 	public class FieldKeywordCtorBackingFieldWrite
 	{
-		[AllowNull]
 		[CompilerGenerated]
-		private readonly string _003CText_003Ek__BackingField;
-
-		[CompilerGenerated]
-		private string _003CExternallyWritten_003Ek__BackingField;
+		private string ExternallyWritten__BackingField;
 
 		public readonly string Fallback;
 
+		[field: AllowNull]
 		public string Text {
 			[CompilerGenerated]
 			get {
-				return _003CText_003Ek__BackingField ?? Fallback;
+				return field ?? Fallback;
 			}
 		}
 
-		public string ExternallyWritten => _003CExternallyWritten_003Ek__BackingField ?? Fallback;
+		public string ExternallyWritten => ExternallyWritten__BackingField ?? Fallback;
 
 		public FieldKeywordCtorBackingFieldWrite(string customText, string fallback)
 		{
 			Fallback = fallback;
-			this._003CText_003Ek__BackingField = customText;
+			Text = customText;
 		}
 
 		public void SetExternallyWritten(string value)
 		{
-			_003CExternallyWritten_003Ek__BackingField = value;
+			ExternallyWritten__BackingField = value;
 		}
 	}
 
@@ -39,15 +36,13 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 	{
 		public readonly string Fallback;
 
-		[AllowNull]
-		private readonly string m_Text;
-
-		public string Text => this.m_Text ?? Fallback;
+		[field: AllowNull]
+		public string Text => field ?? Fallback;
 
 		public FieldKeywordCtorBackingFieldWriteGeneric(string customText, string fallback)
 		{
 			Fallback = fallback;
-			this.m_Text = customText;
+			Text = customText;
 		}
 	}
 }

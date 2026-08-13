@@ -112,18 +112,18 @@ namespace ICSharpCode.ILSpy.Languages
 
 		public override void WriteCommentLine(ITextOutput output, string comment) => output.WriteLine("// " + comment);
 
-		// Parity with WPF's CSharpLanguage: map an IL member back to its C# source via the
-		// decompiler, so compiler-generated members (lambdas, async/iterator state machines)
-		// resolve to their declaring method/part rather than only the declaring type (the
-		// base Language fallback). Used by analyzers / navigation.
+		// Maps an IL member back to its C# source via the decompiler, so compiler-generated
+		// members (lambdas, async/iterator state machines) resolve to their declaring
+		// method/part rather than only the declaring type (the base Language fallback).
+		// Used by analyzers / navigation.
 		public override CodeMappingInfo GetCodeMappingInfo(MetadataFile module, EntityHandle member)
 		{
 			return CSharpDecompiler.GetCodeMappingInfo(module, member);
 		}
 
-		// Parity with WPF's CSharpLanguage: produce C#-styled entity names (generics as
-		// <T>, nested types joined with '.'). Without this the base Language emits IL-style
-		// names (`1 arity suffixes, escaped identifiers).
+		// Produces C#-styled entity names (generics as <T>, nested types joined with '.').
+		// Without this the base Language emits IL-style names (`1 arity suffixes, escaped
+		// identifiers).
 		public override string GetEntityName(MetadataFile module, EntityHandle handle, bool fullName, bool omitGenerics)
 		{
 			MetadataReader metadata = module.Metadata;
@@ -555,8 +555,22 @@ namespace ICSharpCode.ILSpy.Languages
 				targetDirectory,
 				WholeProjectDecompiler.CleanUpFileName(module.Name, ProjectFileExtension));
 			ProjectId? id;
-			using (var writer = new System.IO.StreamWriter(projectFileName))
-				id = decompiler.DecompileProject(module, targetDirectory, writer, options.CancellationToken);
+			try
+			{
+				using (var writer = new System.IO.StreamWriter(projectFileName))
+					id = decompiler.DecompileProject(module, targetDirectory, writer, options.CancellationToken);
+			}
+			finally
+			{
+				// The export does not abort on what it cannot decompile; hand the failures to the
+				// caller, whose result report - not this ITextOutput - is what the user sees when it
+				// finishes. Sources carrying error text are already on disk even if the export went
+				// on to fail, so this belongs in the finally.
+				foreach (var error in decompiler.Errors)
+				{
+					options.DecompilationErrors.Add(error);
+				}
+			}
 			output.WriteLine("// Project written to " + targetDirectory);
 			return id;
 		}

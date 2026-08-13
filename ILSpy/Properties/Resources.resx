@@ -444,6 +444,9 @@ Are you sure you want to continue?</value>
   <data name="DecompilerSettings.FSpecificOptions" xml:space="preserve">
     <value>F#-specific options</value>
   </data>
+  <data name="DecompilerSettings.FieldKeyword" xml:space="preserve">
+    <value>Use the 'field' keyword in property accessors</value>
+  </data>
   <data name="DecompilerSettings.FileScopedNamespaces" xml:space="preserve">
     <value>Use file-scoped namespace declarations</value>
   </data>
@@ -593,9 +596,6 @@ Are you sure you want to continue?</value>
   </data>
   <data name="DecompilerSettings.UseExtensionMethodSyntax" xml:space="preserve">
     <value>Use extension method syntax</value>
-  </data>
-  <data name="DecompilerSettings.UseFieldKeyword" xml:space="preserve">
-    <value>Use 'field' keyword in semi-auto-properties</value>
   </data>
   <data name="DecompilerSettings.UseImplicitConversionsBetweenTupleTypes" xml:space="preserve">
     <value>Use implicit conversions between tuple types</value>

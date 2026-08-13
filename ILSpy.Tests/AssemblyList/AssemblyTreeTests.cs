@@ -1575,7 +1575,7 @@ public class AssemblyTreeTests
 	public void ExitCommand_Is_Exported_To_File_Menu_With_Resources_E_xit_Header()
 	{
 		// File → Exit must be MEF-discovered and parented to the File menu at MenuOrder=99999
-		// (last entry, mirrors WPF). Headless app lifetime isn't IClassicDesktopStyleApplicationLifetime,
+		// (last entry). Headless app lifetime isn't IClassicDesktopStyleApplicationLifetime,
 		// so Execute() is a safe no-op under tests — we don't actually shut down the test runner,
 		// but the metadata + CanExecute path is the regression-worthy surface.
 
@@ -1604,12 +1604,10 @@ public class AssemblyTreeTests
 	[AvaloniaTest]
 	public async Task Active_Search_Term_Does_Not_Hide_Member_Tree_Nodes()
 	{
-		// Pre-existing port misstep: commit 45461ddde wired the search-pane's term into
-		// LanguageSettings.SearchTerm and made SearchTermMatches gate visibility on it.
-		// WPF intentionally makes SearchTermMatches a no-op (returns true) so the assembly
-		// tree stays independent of the search pane. After fixing parity, FieldTreeNode.Filter
-		// must NOT return Hidden purely because the field's name doesn't contain the active
-		// SearchTerm — only ShowApiLevel + ShowMember remain valid hiding criteria.
+		// SearchTermMatches is deliberately a no-op (returns true) so the assembly tree stays
+		// independent of the search pane. FieldTreeNode.Filter must therefore NOT return
+		// Hidden purely because the field's name doesn't contain the active SearchTerm —
+		// only ShowApiLevel + ShowMember remain valid hiding criteria.
 
 		var (_, vm) = await TestHarness.BootAsync();
 

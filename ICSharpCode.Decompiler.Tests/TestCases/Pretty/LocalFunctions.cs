@@ -363,7 +363,7 @@ namespace LocalFunctions
 
 		private int field;
 
-		private Lazy<object> nonCapturinglocalFunctionInLambda = new Lazy<object>(delegate {
+		private Lazy<object> nonCapturinglocalFunctionInLambda = new Lazy<object>(() => {
 			return CreateValue();
 
 #if CS80
@@ -376,7 +376,7 @@ namespace LocalFunctions
 			}
 		});
 
-		private Lazy<object> capturinglocalFunctionInLambda = new Lazy<object>(delegate {
+		private Lazy<object> capturinglocalFunctionInLambda = new Lazy<object>(() => {
 			int x = 42;
 			return Do();
 
@@ -730,7 +730,7 @@ namespace LocalFunctions
 
 		public static int LocalFunctionInLambda(IEnumerable<int> xs)
 		{
-			return xs.First(delegate (int x) {
+			return xs.First((int x) => {
 				return Do();
 
 				bool Do()
@@ -879,20 +879,20 @@ namespace LocalFunctions
 				{
 					t0 = 0;
 					int t2 = t0;
-					return ((Func<int>)delegate {
+					return ((Func<int>)(() => {
 						t0 = 0;
 						t2 = 0;
 						return ZZZ2();
-					})();
+					}))();
 				}
 				int ZZZ2()
 				{
 					t0 = 0;
 					int t3 = t0;
 #if !OPT
-					Func<int> func = delegate {
+					Func<int> func = () => {
 #else
-					return ((Func<int>)delegate {
+					return ((Func<int>)(() => {
 #endif
 						t0 = 0;
 						t3 = 0;
@@ -901,7 +901,7 @@ namespace LocalFunctions
 					};
 					return func();
 #else
-					})();
+					}))();
 #endif
 				}
 			}
@@ -922,20 +922,20 @@ namespace LocalFunctions
 				{
 					t0 = 0;
 					int t2 = t0;
-					return ((Func<int>)delegate {
+					return ((Func<int>)(() => {
 						t0 = 0;
 						t2 = 0;
 						return ZZZ2();
-					})();
+					}))();
 				}
 				int ZZZ2()
 				{
 					t0 = 0;
 					int t3 = t0;
 #if !OPT
-					Func<int> func = delegate {
+					Func<int> func = () => {
 #else
-					return ((Func<int>)delegate {
+					return ((Func<int>)(() => {
 #endif
 						t0 = 0;
 						t3 = 0;
@@ -944,7 +944,7 @@ namespace LocalFunctions
 					};
 					return func();
 #else
-					})();
+					}))();
 #endif
 				}
 			}

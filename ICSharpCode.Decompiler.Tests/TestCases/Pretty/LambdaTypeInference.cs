@@ -39,7 +39,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 #if EXPECTED_OUTPUT
 #if OPT
-			return source.Select<int, ResultBase>(delegate (int item) {
+			return source.Select<int, ResultBase>((int item) => {
 				if (item < 0)
 				{
 					return new ResultA();
@@ -50,7 +50,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return source.Select<int, ResultBase>((int item) => (item < 0) ? new ResultA() : (flag ? new ResultA() : new ResultB()));
 #endif
 #else
-			return source.Select<int, ResultBase>(delegate (int item) {
+			return source.Select<int, ResultBase>((int item) => {
 				if (item < 0)
 				{
 					return new ResultA();

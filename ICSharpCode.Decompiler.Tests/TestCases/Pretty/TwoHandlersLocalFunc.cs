@@ -24,14 +24,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 	{
 		public static void BindWithCondition<T>(IProp2<T> target, IProp2<T> source, T initial, Func<T, bool> acceptT, Func<T, bool> acceptS, Cookie2 cookie, Propagation2 prop)
 		{
-			target.Advise(delegate (int lt, T v) {
-				cookie.Execute(delegate {
+			target.Advise((int lt, T v) => {
+				cookie.Execute(() => {
 					T val = WhenInvalid(target, source, initial);
 					source.Value = ((acceptT == null || acceptT(v)) ? target.Value : val);
 				});
 			});
-			source.Advise(delegate (int lt, T v) {
-				cookie.Execute(delegate {
+			source.Advise((int lt, T v) => {
+				cookie.Execute(() => {
 					T val = WhenInvalid2(source, target, initial);
 					target.Value = ((acceptS == null || acceptS(v)) ? source.Value : val);
 				});

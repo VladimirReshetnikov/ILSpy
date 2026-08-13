@@ -52,6 +52,12 @@ namespace ICSharpCode.Decompiler.Tests
 			}
 		}
 
+		[Test]
+		public async Task AnonymousMethodEdgeCases()
+		{
+			await Run();
+		}
+
 		[Test, Ignore("Need to decide how to represent virtual methods without 'newslot' flag")]
 		public async Task Issue379()
 		{
@@ -828,6 +834,12 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public async Task VarianceBoundDelegateClosure()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task InaccessibleParameterTypes()
 		{
 			await Run();
 		}

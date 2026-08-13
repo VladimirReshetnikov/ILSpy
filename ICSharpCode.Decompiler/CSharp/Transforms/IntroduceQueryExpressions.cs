@@ -619,10 +619,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		}
 
-		bool IsNullConditional(Expression target)
-		{
-			return target is UnaryOperatorExpression uoe && uoe.Operator == UnaryOperatorType.NullConditional;
-		}
+		bool IsNullConditional(Expression target) => target switch {
+			UnaryOperatorExpression { Operator: UnaryOperatorType.NullConditional } => true,
+			MemberReferenceExpression member => IsNullConditional(member.Target),
+			InvocationExpression invocation => IsNullConditional(invocation.Target),
+			IndexerExpression { Target: { } indexerTarget } => IsNullConditional(indexerTarget),
+			_ => false
+		};
 
 		/// <summary>
 		/// Determines whether a null-conditional access ('?.') appears anywhere in the receiver chain

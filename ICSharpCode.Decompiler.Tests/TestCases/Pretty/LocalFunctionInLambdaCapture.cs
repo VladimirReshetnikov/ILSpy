@@ -12,7 +12,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 	{
 		public static void Bind<T>(IProp<T> property, T initial)
 		{
-			property.Advise(delegate (int lt, T v) {
+			property.Advise((int lt, T v) => {
 				property.Value = Pick();
 				T Pick()
 				{

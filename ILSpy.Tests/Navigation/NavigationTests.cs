@@ -132,8 +132,8 @@ public class NavigationTests
 		// Assert 1 — newest-first ordering: index 0 is the immediate previous selection
 		// (methodB), index 1 is the one before that (methodA). Each menu item carries a
 		// TreeNodeEntry wrapping the original tree node, and the header reads the richer
-		// NavigationText (mirrors WPF — disambiguates "Empty" from other "Empty" methods by
-		// prefixing the declaring type).
+		// NavigationText, which disambiguates "Empty" from other "Empty" methods by
+		// prefixing the declaring type.
 		var items = flyout.Items.OfType<MenuItem>().ToList();
 		((string)items[0].Header!).Should().Be((string)methodB.NavigationText);
 		((string)items[1].Header!).Should().Be((string)methodA.NavigationText);
@@ -197,6 +197,6 @@ public class NavigationTests
 		((string)baseTypesEntry.Header!).Should().Contain("Exception",
 			"the dropdown header must disambiguate generic grouping nodes via NavigationText");
 		((string)baseTypesEntry.Header!).Should().NotBe((string)baseTypes.Text,
-			"falling back to bare Text would reproduce the WPF parity gap");
+			"falling back to bare Text would leave the grouping nodes indistinguishable");
 	}
 }

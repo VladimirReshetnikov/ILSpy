@@ -20,14 +20,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection.PortableExecutable;
-using System.Resources;
-using System.Threading.Tasks;
 
 using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.ProjectDecompiler;
+using ICSharpCode.Decompiler.CSharp.Syntax;
+using ICSharpCode.Decompiler.CSharp.Transforms;
 using ICSharpCode.Decompiler.Metadata;
-using ICSharpCode.Decompiler.Tests.Helpers;
+using ICSharpCode.Decompiler.TypeSystem;
 
 using NUnit.Framework;
 
@@ -42,8 +41,7 @@ public sealed class WholeProjectDecompilerTests
 		string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
 		TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
 		decompiler.Settings.UseNestedDirectoriesForNamespaces = true;
-		using PEFile module = new("ICSharpCode.Decompiler.dll");
-		decompiler.DecompileProject(module, targetDirectory);
+		decompiler.DecompileProject(new PEFile("ICSharpCode.Decompiler.dll"), targetDirectory);
 		AssertDirectoryDoesntExist(targetDirectory);
 
 		string projectDecompilerDirectory = Path.Combine(targetDirectory, "ICSharpCode", "Decompiler", "CSharp", "ProjectDecompiler");
@@ -62,8 +60,7 @@ public sealed class WholeProjectDecompilerTests
 		string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
 		TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
 		decompiler.Settings.UseNestedDirectoriesForNamespaces = false;
-		using PEFile module = new("ICSharpCode.Decompiler.dll");
-		decompiler.DecompileProject(module, targetDirectory);
+		decompiler.DecompileProject(new PEFile("ICSharpCode.Decompiler.dll"), targetDirectory);
 		AssertDirectoryDoesntExist(targetDirectory);
 
 		string projectDecompilerDirectory = Path.Combine(targetDirectory, "ICSharpCode.Decompiler.CSharp.ProjectDecompiler");
@@ -76,676 +73,76 @@ public sealed class WholeProjectDecompilerTests
 		}
 	}
 
+	/// <summary>
+	/// Everything an export can fail at - decompiling a source file, creating one, the assembly-info
+	/// file, a resource - is reported and skipped; the export itself always runs to completion, so a
+	/// single unsupported member cannot cost the user the whole project (issue #3510).
+	/// </summary>
 	[Test]
-	public async Task FileLocalTypesFromOneFileShareOneOutputFile()
+	public void FailuresDoNotAbortTheExport()
 	{
-		// File-local types are only visible inside their declaring file, so the pair the
-		// config-binder generator emits (the interceptor class and the attribute it carries)
-		// must come out in one file - split apart, the attribute reference cannot resolve.
-		// Which file that was is recorded in the <file>F<hash>__Name mangling: same hash,
-		// same file.
-		string ilFile = Path.Combine(Tester.TestCasePath, "ILPretty", "FileLocalTypes.il");
-		string assemblyPath = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
 		string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
-		TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(assemblyPath, false, null));
-		using PEFile module = new(assemblyPath);
-		decompiler.DecompileProject(module, targetDirectory);
+		TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
+		decompiler.ConfigureDecompiler = d => d.AstTransforms.Add(new ThrowingAstTransform(nameof(WholeProjectDecompiler)));
+		decompiler.FailResourceEnumeration = true;
+		decompiler.FailFileCreationFor = new[] { nameof(TargetServices) + ".cs", "AssemblyInfo.cs" };
+
+		StringWriter projectFileWriter = new();
+		decompiler.DecompileProject(new PEFile("ICSharpCode.Decompiler.dll"), targetDirectory, projectFileWriter);
 		AssertDirectoryDoesntExist(targetDirectory);
 
-		string mergedFile = Path.Combine(targetDirectory, "Helpers_g.AB12CD34.cs");
+		string failedFile = Path.Combine(targetDirectory, "ICSharpCode.Decompiler.CSharp.ProjectDecompiler", $"{nameof(WholeProjectDecompiler)}.cs");
 		using (Assert.EnterMultipleScope())
 		{
-			Assert.That(decompiler.Files.ContainsKey(mergedFile), Is.True);
-			string source = decompiler.Files[mergedFile].ToString();
-			Assert.That(source, Does.Contain("file class Holder"));
-			Assert.That(source, Does.Contain("file static class Support"));
+			Assert.That(decompiler.Errors.Select(e => e.InnerException?.Message), Is.EquivalentTo(new[] {
+				ThrowingAstTransform.Failure,
+				TestFriendlyProjectDecompiler.ResourceFailure,
+				TestFriendlyProjectDecompiler.FileCreationFailure + nameof(TargetServices) + ".cs",
+				TestFriendlyProjectDecompiler.FileCreationFailure + "AssemblyInfo.cs",
+			}));
+			Assert.That(decompiler.Files[failedFile].ToString(), Does.Contain(ThrowingAstTransform.Failure),
+				"the error text takes the place of the file's contents");
+			Assert.That(decompiler.Files, Has.Count.GreaterThan(100), "all other files are still written");
+			Assert.That(projectFileWriter.ToString(), Does.Contain("<Project"), "the project file is still written");
 		}
 	}
 
+	/// <summary>
+	/// A resource that cannot be written must cost that resource alone. Recovering around the
+	/// enumeration cannot do this - an iterator is finished once it throws - so the export has to
+	/// recover per resource, and this pins that.
+	/// </summary>
 	[Test]
-	public async Task GeneratedRegexProjectDoesNotReplayGeneratorScaffolding()
+	public void OneFailingResourceDoesNotDropTheOthers()
 	{
-		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "GeneratedRegexProject.il");
-		string assemblyPath = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
-		try
-		{
-			string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
-			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(assemblyPath, false, null));
-			using PEFile module = new(assemblyPath);
-			decompiler.DecompileProject(module, targetDirectory);
-			AssertDirectoryDoesntExist(targetDirectory);
+		string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
+		TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
+		decompiler.FailResourceWriting = true;
 
-			string helperSource = decompiler.SourceContaining("class GeneratedRegexHelper");
-			string consumerSource = decompiler.SourceContaining("class Consumer");
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(helperSource, Does.Contain("internal sealed class GeneratedRegexHelper"));
-				Assert.That(helperSource, Does.Not.Contain("file sealed class GeneratedRegexHelper"));
-				Assert.That(consumerSource, Does.Contain("GeneratedRegexHelper.Instance"));
-				Assert.That(consumerSource, Does.Not.Contain("[GeneratedRegex("));
-				Assert.That(consumerSource, Does.Contain("[GeneratedCode("));
-			}
-		}
-		finally
+		StringWriter projectFileWriter = new();
+		// Two embedded .resources containers and nothing else, so both go through WriteResourceToFile
+		// and the test never touches the disk.
+		decompiler.DecompileProject(new PEFile("Microsoft.DiaSymReader.Converter.Xml.dll"), targetDirectory, projectFileWriter);
+		AssertDirectoryDoesntExist(targetDirectory);
+
+		using (Assert.EnterMultipleScope())
 		{
-			Tester.RepeatOnIOError(() => File.Delete(assemblyPath));
+			Assert.That(decompiler.WrittenResources, Has.Count.EqualTo(2),
+				"the resource after the failing one is still written");
+			Assert.That(decompiler.Errors.Select(e => e.InnerException?.Message),
+				Is.EqualTo(new[] { TestFriendlyProjectDecompiler.ResourceFailure }));
 		}
 	}
 
-	[Test]
-	public async Task LibraryImportProjectDoesNotReplayGeneratedImplementations()
+	sealed class ThrowingAstTransform(string typeName) : IAstTransform
 	{
-		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "LibraryImportProject.il");
-		string assemblyPath = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
-		try
+		public const string Failure = "Simulated AST transform failure";
+
+		public void Run(AstNode rootNode, TransformContext context)
 		{
-			UniversalAssemblyResolver resolver = new(assemblyPath, false, null);
-			string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
-			TestFriendlyProjectDecompiler projectDecompiler = new(resolver);
-			using PEFile module = new(assemblyPath);
-			projectDecompiler.DecompileProject(module, targetDirectory);
-			AssertDirectoryDoesntExist(targetDirectory);
-
-			string projectSource = projectDecompiler.SourceContaining("class NativeMethods");
-			CSharpDecompiler singleFileDecompiler = new(assemblyPath, resolver, new DecompilerSettings());
-			string singleFileSource = singleFileDecompiler.DecompileWholeModuleAsString();
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(projectSource, Does.Not.Contain("LibraryImport(\"materialized\")"));
-				Assert.That(projectSource, Does.Not.Contain("LibraryImport(\"native\")"));
-				Assert.That(projectSource, Does.Contain("[GeneratedCode(\"Microsoft.Interop.LibraryImportGenerator\", \"1.0\")]"));
-				Assert.That(projectSource, Does.Contain("[Marker(\"keep\")]"));
-				Assert.That(projectSource, Does.Contain("[DllImport(\"native\")]"));
-				Assert.That(projectSource, Does.Contain("[LibraryImport(\"ordinary\")]"));
-
-				Assert.That(singleFileSource, Does.Contain("[LibraryImport(\"materialized\")]"));
-				Assert.That(singleFileSource, Does.Contain("[LibraryImport(\"native\")]"));
-				Assert.That(singleFileSource, Does.Contain("[LibraryImport(\"ordinary\")]"));
-			}
+			if (rootNode.Descendants.OfType<TypeDeclaration>().Any(td => td.Name == typeName))
+				throw new InvalidOperationException(Failure);
 		}
-		finally
-		{
-			Tester.RepeatOnIOError(() => File.Delete(assemblyPath));
-		}
-	}
-
-	[Test]
-	public async Task GeneratedComProjectDoesNotReplayGeneratorScaffolding()
-	{
-		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "GeneratedComProject.il");
-		string assemblyPath = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
-		try
-		{
-			UniversalAssemblyResolver resolver = new(assemblyPath, false, null);
-			string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
-			TestFriendlyProjectDecompiler projectDecompiler = new(resolver);
-			using PEFile module = new(assemblyPath);
-			projectDecompiler.DecompileProject(module, targetDirectory);
-			AssertDirectoryDoesntExist(targetDirectory);
-
-			string generatedInterfaceSource = projectDecompiler.SourceContaining("interface MaterializedInterface");
-			string generatedClassSource = projectDecompiler.SourceContaining("class MaterializedClass");
-			string ordinaryInterfaceSource = projectDecompiler.SourceContaining("interface OrdinaryInterface");
-			string ordinaryClassSource = projectDecompiler.SourceContaining("class OrdinaryClass");
-			CSharpDecompiler singleFileDecompiler = new(assemblyPath, resolver, new DecompilerSettings());
-			string singleFileSource = singleFileDecompiler.DecompileWholeModuleAsString();
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(generatedInterfaceSource, Does.Not.Contain("[GeneratedComInterface]"));
-				Assert.That(generatedInterfaceSource, Does.Contain("[IUnknownDerived<InterfaceInformation, InterfaceImplementation>]"));
-				Assert.That(generatedInterfaceSource, Does.Contain("[Marker(\"interface\")]"));
-				Assert.That(generatedClassSource, Does.Not.Contain("[GeneratedComClass]"));
-				Assert.That(generatedClassSource, Does.Contain("[ComExposedClass<ComClassInformation>]"));
-				Assert.That(generatedClassSource, Does.Contain("[Marker(\"class\")]"));
-				Assert.That(ordinaryInterfaceSource, Does.Contain("[GeneratedComInterface]"));
-				Assert.That(ordinaryClassSource, Does.Contain("[GeneratedComClass]"));
-				Assert.That(singleFileSource, Does.Contain($"[GeneratedComInterface]{Environment.NewLine}public interface MaterializedInterface"));
-				Assert.That(singleFileSource, Does.Contain($"[GeneratedComClass]{Environment.NewLine}[Marker(\"class\")]{Environment.NewLine}public sealed class MaterializedClass"));
-			}
-		}
-		finally
-		{
-			Tester.RepeatOnIOError(() => File.Delete(assemblyPath));
-		}
-	}
-
-	[Test]
-	public async Task EmbeddedInteropEventInterfaceIsLegalizedForProjectExport()
-	{
-		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "EmbeddedInteropEventProject.il");
-		string assemblyPath = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
-		string rebuiltAssembly = Path.Combine(Path.GetTempPath(), $"EmbeddedInteropEventProject-{Guid.NewGuid():N}");
-		try
-		{
-			UniversalAssemblyResolver resolver = new(assemblyPath, false, null);
-			string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
-			TestFriendlyProjectDecompiler projectDecompiler = new(resolver);
-			using PEFile module = new(assemblyPath);
-			projectDecompiler.DecompileProject(module, targetDirectory);
-			AssertDirectoryDoesntExist(targetDirectory);
-
-			string eventWrapperSource = projectDecompiler.SourceContaining("interface EventWrapper");
-			string guidedEventWrapperSource = projectDecompiler.SourceContaining("interface GuidedEventWrapper");
-			string applicationSource = projectDecompiler.SourceContaining("interface Application");
-			CSharpDecompiler singleFileDecompiler = new(assemblyPath, resolver, new DecompilerSettings());
-			string singleFileSource = singleFileDecompiler.DecompileWholeModuleAsString();
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(eventWrapperSource, Does.Not.Contain("[ComImport]"));
-				Assert.That(eventWrapperSource, Does.Contain("[CompilerGenerated]"));
-				Assert.That(eventWrapperSource, Does.Contain("[ComEventInterface(typeof(EventSource), typeof(EventSource))]"));
-				Assert.That(eventWrapperSource, Does.Contain("[TypeIdentifier(\"fixture-scope\", \"Interop.EventWrapper\")]"));
-				Assert.That(guidedEventWrapperSource, Does.Contain("[ComImport]"));
-				Assert.That(guidedEventWrapperSource, Does.Contain("[Guid(\"22222222-2222-2222-2222-222222222222\")]"));
-				Assert.That(applicationSource, Does.Contain("[ComImport]"));
-				Assert.That(applicationSource, Does.Contain("[Guid(\"33333333-3333-3333-3333-333333333333\")]"));
-				Assert.That(applicationSource, Does.Contain("interface Application : EventWrapper"));
-				Assert.That(singleFileSource, Does.Contain($"[ComImport]{Environment.NewLine}[CompilerGenerated]{Environment.NewLine}[ComEventInterface(typeof(EventSource), typeof(EventSource))]{Environment.NewLine}[TypeIdentifier(\"fixture-scope\", \"Interop.EventWrapper\")]{Environment.NewLine}public interface EventWrapper"));
-			}
-
-			Dictionary<string, string> sourceFiles = projectDecompiler.Files
-				.Where(file => Path.GetExtension(file.Key) == ".cs")
-				.ToDictionary(file => file.Key, file => file.Value.ToString());
-			Tester.CompileCSharpWithPdb(rebuiltAssembly, sourceFiles, CompilerOptions.Library);
-		}
-		finally
-		{
-			Tester.RepeatOnIOError(() => File.Delete(assemblyPath));
-			Tester.RepeatOnIOError(() => File.Delete(rebuiltAssembly + ".dll"));
-			Tester.RepeatOnIOError(() => File.Delete(rebuiltAssembly + ".pdb"));
-		}
-	}
-
-	[Test]
-	public async Task CompilerGeneratedFileLocalHelperReferencedAcrossFilesIsEmitted()
-	{
-		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "CompilerGeneratedFileLocalProject.il");
-		string assemblyPath = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
-		try
-		{
-			string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
-			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(assemblyPath, false, null));
-			using PEFile module = new(assemblyPath);
-			decompiler.DecompileProject(module, targetDirectory);
-			AssertDirectoryDoesntExist(targetDirectory);
-
-			string helperSource = decompiler.SourceContaining("class BytesToStringHelper");
-			string consumerSource = decompiler.SourceContaining("class Consumer");
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(helperSource, Does.Contain("internal sealed class BytesToStringHelper"));
-				Assert.That(helperSource, Does.Not.Contain("file sealed class BytesToStringHelper"));
-				Assert.That(helperSource, Does.Contain("internal sealed class SourceDeclaredHelper"));
-				Assert.That(helperSource, Does.Not.Contain("file sealed class SourceDeclaredHelper"));
-				Assert.That(consumerSource, Does.Contain("BytesToStringHelper.GetValue()"));
-				Assert.That(consumerSource, Does.Contain("SourceDeclaredHelper.GetValue()"));
-			}
-		}
-		finally
-		{
-			Tester.RepeatOnIOError(() => File.Delete(assemblyPath));
-		}
-	}
-
-	[Test]
-	public async Task ProjectAssemblyInfoDropsUsingsForRemovedCompilerGeneratedAttributes()
-	{
-		string targetIlFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "ForwarderUsingTarget.il");
-		string projectIlFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "ForwarderUsingProject.il");
-		string targetAssembly = null;
-		string projectAssembly = null;
-		CompilerResults rebuilt = null;
-		string decompiledSourceFile = null;
-		try
-		{
-			targetAssembly = await Tester.AssembleIL(targetIlFile, AssemblerOptions.Library);
-			projectAssembly = await Tester.AssembleIL(projectIlFile, AssemblerOptions.Library);
-			UniversalAssemblyResolver resolver = new(projectAssembly, false, null,
-				streamOptions: PEStreamOptions.PrefetchEntireImage);
-			string targetDirectory = Path.Combine(Environment.CurrentDirectory, Path.GetRandomFileName());
-			TestFriendlyProjectDecompiler projectDecompiler = new(resolver);
-			using PEFile module = new(projectAssembly);
-			projectDecompiler.DecompileProject(module, targetDirectory);
-			AssertDirectoryDoesntExist(targetDirectory);
-
-			string assemblyInfoPath = Path.Combine(targetDirectory, "Properties", "AssemblyInfo.cs");
-			Assert.That(projectDecompiler.Files.ContainsKey(assemblyInfoPath), Is.True);
-			string projectAssemblyInfo = projectDecompiler.Files[assemblyInfoPath].ToString();
-
-			CSharpDecompiler singleFileDecompiler = new(projectAssembly, resolver, new DecompilerSettings());
-			string singleFileSource = singleFileDecompiler.DecompileWholeModuleAsString();
-
-			decompiledSourceFile = Path.Combine(Path.GetTempPath(), $"ForwarderUsingProject-{Guid.NewGuid():N}.cs");
-			File.WriteAllText(decompiledSourceFile, projectAssemblyInfo);
-			rebuilt = await Tester.CompileCSharp(decompiledSourceFile,
-				CompilerOptions.UseRoslynLatest | CompilerOptions.Library,
-				additionalReferences: [targetAssembly, typeof(System.Diagnostics.Process).Assembly.Location]);
-
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(projectAssemblyInfo, Does.Not.Contain("using System.Diagnostics;"));
-				Assert.That(projectAssemblyInfo, Does.Not.Contain("[assembly: Debuggable("));
-				Assert.That(projectAssemblyInfo, Does.Contain("using System.Reflection;"));
-				Assert.That(projectAssemblyInfo, Does.Contain("using System.Runtime.CompilerServices;"));
-				Assert.That(projectAssemblyInfo, Does.Contain("using Forwarded;"));
-				Assert.That(projectAssemblyInfo, Does.Contain("[assembly: AssemblyTitle(\"keep\")]"));
-				Assert.That(projectAssemblyInfo, Does.Contain("[assembly: TypeForwardedTo(typeof(Process))]"));
-
-				Assert.That(singleFileSource, Does.Contain("using System.Diagnostics;"));
-				Assert.That(singleFileSource, Does.Contain("[assembly: Debuggable("));
-			}
-		}
-		finally
-		{
-			rebuilt?.DeleteTempFiles();
-			if (projectAssembly != null)
-				Tester.RepeatOnIOError(() => File.Delete(projectAssembly));
-			if (targetAssembly != null)
-				Tester.RepeatOnIOError(() => File.Delete(targetAssembly));
-			if (decompiledSourceFile != null && File.Exists(decompiledSourceFile))
-				File.Delete(decompiledSourceFile);
-		}
-	}
-
-	[TestCase(true, true)]
-	[TestCase(true, false)]
-	[TestCase(false, true)]
-	[TestCase(false, false)]
-	public void ProjectWriterEmitsNullableContextWhenEnabled(bool useSdkStyleProjectFormat, bool nullableReferenceTypes)
-	{
-		UniversalAssemblyResolver assemblyResolver = new(null, false, null);
-		TestProjectInfoProvider project = new(assemblyResolver, nullableReferenceTypes);
-		IProjectFileWriter writer = useSdkStyleProjectFormat ? ProjectFileWriterSdkStyle.Default : ProjectFileWriterDefault.Instance;
-		using StringWriter output = new();
-		using PEFile module = new("ICSharpCode.Decompiler.dll");
-		writer.Write(output, project, [], module);
-		string projectFile = output.ToString();
-		if (nullableReferenceTypes)
-		{
-			Assert.That(projectFile, Does.Contain("<Nullable>annotations</Nullable>"));
-		}
-		else
-		{
-			Assert.That(projectFile, Does.Not.Contain("<Nullable>"));
-		}
-	}
-
-	[Test]
-	public void SdkStyleProjectWriterPreservesResXMetadata()
-	{
-		UniversalAssemblyResolver assemblyResolver = new(null, false, null);
-		TestProjectInfoProvider project = new(assemblyResolver, nullableReferenceTypes: false);
-		ProjectItemInfo resource = new ProjectItemInfo("EmbeddedResource", "Strings.resx")
-			.With("LogicalName", "Test.Strings.resources")
-			.With("WithCulture", "false");
-		using StringWriter output = new();
-		using PEFile module = new("ICSharpCode.Decompiler.dll");
-		ProjectFileWriterSdkStyle.Default.Write(output, project, [resource], module);
-
-		Assert.That(output.ToString(), Does.Contain(
-			"<EmbeddedResource Update=\"Strings.resx\" LogicalName=\"Test.Strings.resources\" WithCulture=\"false\" />"));
-	}
-
-	[TestCase(true)]
-	[TestCase(false)]
-	public void WholeProjectDecompilerProvidesNullableReferenceTypeSetting(bool nullableReferenceTypes)
-	{
-		DecompilerSettings settings = new() { NullableReferenceTypes = nullableReferenceTypes };
-		WholeProjectDecompiler decompiler = new(settings, new UniversalAssemblyResolver(null, false, null),
-			projectWriter: null, assemblyReferenceClassifier: null, debugInfoProvider: null);
-		Assert.That(((INullableProjectInfoProvider)decompiler).NullableReferenceTypes, Is.EqualTo(nullableReferenceTypes));
-	}
-
-	[Test]
-	public async Task GeneratedInternalTypeHelperDependsOnXamlBuildItems()
-	{
-		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "GeneratedInternalTypeHelper.il");
-		string assembly = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
-		try
-		{
-			using PEFile module = new(assembly);
-			TestFriendlyProjectDecompiler rawResourceDecompiler = new(new UniversalAssemblyResolver(assembly, false, null));
-			using StringWriter rawProject = new();
-			rawResourceDecompiler.DecompileProject(module, Path.GetRandomFileName(), rawProject);
-
-			TestFriendlyProjectDecompiler xamlDecompiler = new(new UniversalAssemblyResolver(assembly, false, null));
-			xamlDecompiler.ResourceItems.Add(new ProjectItemInfo("Page", "Test.xaml"));
-			using StringWriter xamlProject = new();
-			xamlDecompiler.DecompileProject(module, Path.GetRandomFileName(), xamlProject);
-
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(rawResourceDecompiler.ContainsSource("class GeneratedInternalTypeHelper"), Is.True);
-				Assert.That(xamlDecompiler.ContainsSource("class GeneratedInternalTypeHelper"), Is.False);
-			}
-		}
-		finally
-		{
-			Tester.RepeatOnIOError(() => File.Delete(assembly));
-		}
-	}
-
-	[Test]
-	public async Task EmbeddedReadonlySupportTypesArePreserved()
-	{
-		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "EmbeddedCompilerAttributes.il");
-		string assembly = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
-		try
-		{
-			using PEFile module = new(assembly);
-			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(assembly, false, null));
-			using StringWriter project = new();
-			decompiler.DecompileProject(module, Path.GetRandomFileName(), project);
-
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(decompiler.ContainsSource("class IsReadOnlyAttribute"), Is.True);
-				Assert.That(decompiler.ContainsSource("class IsByRefLikeAttribute"), Is.False);
-				Assert.That(decompiler.ContainsSource("class EmbeddedAttribute"), Is.True);
-			}
-		}
-		finally
-		{
-			Tester.RepeatOnIOError(() => File.Delete(assembly));
-		}
-	}
-
-	[Test]
-	public async Task EmbeddedNullablePublicOnlyAttributeIsRemoved()
-	{
-		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "EmbeddedCompilerAttributes.il");
-		string assembly = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
-		try
-		{
-			using PEFile module = new(assembly);
-			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(assembly, false, null));
-			using StringWriter project = new();
-			decompiler.DecompileProject(module, Path.GetRandomFileName(), project);
-
-			using (Assert.EnterMultipleScope())
-			{
-				// The embedded attribute type definition must not be emitted as source.
-				Assert.That(decompiler.ContainsSource("class NullablePublicOnlyAttribute"), Is.False);
-				// The [module: NullablePublicOnly(false)] usage must not be emitted either.
-				Assert.That(decompiler.ContainsSource("NullablePublicOnly(false)"), Is.False);
-			}
-		}
-		finally
-		{
-			Tester.RepeatOnIOError(() => File.Delete(assembly));
-		}
-	}
-
-	[Test]
-	public async Task ProjectNullableContextPreservesAnnotatedExtensionMarkerName()
-	{
-		string sourceFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "ObliviousExtensionBlock.cs");
-		CompilerResults original = await Tester.CompileCSharp(sourceFile,
-			CompilerOptions.UseRoslynLatest | CompilerOptions.Preview | CompilerOptions.NullableEnable | CompilerOptions.Library);
-		CompilerResults rebuilt = null;
-		string decompiledSourceFile = null;
-		try
-		{
-			using PEFile module = new(original.PathToAssembly);
-			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(original.PathToAssembly, false, null));
-			using StringWriter project = new();
-			decompiler.DecompileProject(module, Path.GetRandomFileName(), project);
-			string source = decompiler.SourceContaining("extension(string value)");
-
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(source, Does.Not.Contain("#nullable disable annotations"));
-				Assert.That(source, Does.Not.Contain("#nullable restore annotations"));
-			}
-
-			decompiledSourceFile = Path.Combine(Path.GetTempPath(), $"ObliviousExtensionBlock-{Guid.NewGuid():N}.cs");
-			File.WriteAllText(decompiledSourceFile, source);
-			rebuilt = await Tester.CompileCSharp(decompiledSourceFile,
-				CompilerOptions.UseRoslynLatest | CompilerOptions.Preview | CompilerOptions.NullableEnable | CompilerOptions.Library);
-
-			using PEFile rebuiltModule = new(rebuilt.PathToAssembly);
-			Assert.That(GetExtensionMarkerTypeNames(rebuiltModule), Is.EqualTo(GetExtensionMarkerTypeNames(module)));
-		}
-		finally
-		{
-			rebuilt?.DeleteTempFiles();
-			original.DeleteTempFiles();
-			if (decompiledSourceFile != null && File.Exists(decompiledSourceFile))
-				File.Delete(decompiledSourceFile);
-		}
-	}
-
-	[Test]
-	public async Task ProjectNullableContextPreservesObliviousExtensionMarkerName()
-	{
-		string ilFile = Path.Combine(Tester.TestCasePath, "ProjectDecompiler", "ObliviousExtensionBlock.il");
-		string assembly = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
-		CompilerResults rebuilt = null;
-		string decompiledSourceFile = null;
-		try
-		{
-			using PEFile module = new(assembly);
-			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(assembly, false, null));
-			using StringWriter project = new();
-			decompiler.DecompileProject(module, Path.GetRandomFileName(), project);
-			string source = decompiler.SourceContaining("extension(string receiver)");
-
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(source, Does.Contain("#nullable disable annotations"));
-				Assert.That(source, Does.Contain("#nullable restore annotations"));
-			}
-
-			decompiledSourceFile = Path.Combine(Path.GetTempPath(), $"ObliviousExtensionBlock-{Guid.NewGuid():N}.cs");
-			File.WriteAllText(decompiledSourceFile, source);
-			rebuilt = await Tester.CompileCSharp(decompiledSourceFile,
-				CompilerOptions.UseRoslynLatest | CompilerOptions.Preview | CompilerOptions.NullableEnable | CompilerOptions.Library);
-
-			using PEFile rebuiltModule = new(rebuilt.PathToAssembly);
-			Assert.That(GetExtensionMarkerTypeNames(rebuiltModule), Is.EqualTo(GetExtensionMarkerTypeNames(module)));
-		}
-		finally
-		{
-			rebuilt?.DeleteTempFiles();
-			Tester.RepeatOnIOError(() => File.Delete(assembly));
-			if (decompiledSourceFile != null && File.Exists(decompiledSourceFile))
-				File.Delete(decompiledSourceFile);
-		}
-	}
-
-	[Test]
-	public void StringOnlyResourcesAreConvertedToResX()
-	{
-		string targetDirectory = CreateTemporaryDirectory();
-		try
-		{
-			byte[] input = CreateResources();
-			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
-			using MemoryStream stream = new(input, writable: false);
-
-			ProjectItemInfo item = decompiler.WriteResource(targetDirectory, "Strings.resources", "Test.Strings.resources", stream);
-			string outputFile = Path.Combine(targetDirectory, "Strings.resx");
-
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(item.ItemType, Is.EqualTo("EmbeddedResource"));
-				Assert.That(item.FileName, Is.EqualTo("Strings.resx"));
-				Assert.That(item.AdditionalProperties["LogicalName"], Is.EqualTo("Test.Strings.resources"));
-				Assert.That(item.AdditionalProperties["WithCulture"], Is.EqualTo("false"));
-				Assert.That(File.Exists(outputFile), Is.True);
-				Assert.That(File.Exists(Path.Combine(targetDirectory, "Strings.resources")), Is.False);
-			}
-			Assert.That(File.ReadAllText(outputFile), Does.Contain("<data name=\"Greeting\"").And.Contain("<value>Hello</value>"));
-		}
-		finally
-		{
-			Directory.Delete(targetDirectory, recursive: true);
-		}
-	}
-
-	[TestCase(NonStringResourceKind.ByteArray)]
-	[TestCase(NonStringResourceKind.Stream)]
-	[TestCase(NonStringResourceKind.Integer)]
-	public void ResourcesWithNonStringEntriesStayBinary(NonStringResourceKind resourceKind)
-	{
-		string targetDirectory = CreateTemporaryDirectory();
-		try
-		{
-			byte[] input = CreateResources(resourceKind);
-			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
-			using MemoryStream stream = new(input, writable: false);
-
-			ProjectItemInfo item = decompiler.WriteResource(targetDirectory, "Mixed.resources", "Test.Mixed.resources", stream);
-			string outputFile = Path.Combine(targetDirectory, "Mixed.resources");
-
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(item.ItemType, Is.EqualTo("EmbeddedResource"));
-				Assert.That(item.FileName, Is.EqualTo("Mixed.resources"));
-				Assert.That(item.AdditionalProperties["LogicalName"], Is.EqualTo("Test.Mixed.resources"));
-				Assert.That(item.AdditionalProperties["WithCulture"], Is.EqualTo("false"));
-				Assert.That(File.Exists(outputFile), Is.True);
-				Assert.That(File.Exists(Path.Combine(targetDirectory, "Mixed.resx")), Is.False);
-			}
-			Assert.That(File.ReadAllBytes(outputFile), Is.EqualTo(input));
-		}
-		finally
-		{
-			Directory.Delete(targetDirectory, recursive: true);
-		}
-	}
-
-	[TestCase(false)]
-	[TestCase(true)]
-	public void EmptyResourcesStayBinary(bool extractIndividualResources)
-	{
-		string targetDirectory = CreateTemporaryDirectory();
-		try
-		{
-			byte[] input = CreateEmptyResources();
-			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
-			decompiler.ExtractResources = extractIndividualResources;
-			using MemoryStream stream = new(input, writable: false);
-
-			ProjectItemInfo item = decompiler.WriteResource(targetDirectory, "Empty.resources", "Test.Empty.resources", stream);
-			string outputFile = Path.Combine(targetDirectory, "Empty.resources");
-
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(item.ItemType, Is.EqualTo("EmbeddedResource"));
-				Assert.That(item.FileName, Is.EqualTo("Empty.resources"));
-				Assert.That(item.AdditionalProperties["LogicalName"], Is.EqualTo("Test.Empty.resources"));
-				Assert.That(item.AdditionalProperties["WithCulture"], Is.EqualTo("false"));
-				Assert.That(File.Exists(outputFile), Is.True);
-				Assert.That(File.Exists(Path.Combine(targetDirectory, "Empty.resx")), Is.False);
-			}
-			Assert.That(File.ReadAllBytes(outputFile), Is.EqualTo(input));
-		}
-		finally
-		{
-			Directory.Delete(targetDirectory, recursive: true);
-		}
-	}
-
-	[Test]
-	public void StreamOnlyResourcesStayInTheirContainerByDefault()
-	{
-		string targetDirectory = CreateTemporaryDirectory();
-		try
-		{
-			byte[] input = CreateStreamOnlyResources();
-			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
-
-			ProjectItemInfo item = decompiler.WriteResource(
-				targetDirectory, new ByteArrayResource("Test.g.resources", input));
-			string outputFile = Path.Combine(targetDirectory, "Test.g.resources");
-
-			using (Assert.EnterMultipleScope())
-			{
-				Assert.That(item.ItemType, Is.EqualTo("EmbeddedResource"));
-				Assert.That(item.FileName, Is.EqualTo("Test.g.resources"));
-				Assert.That(item.AdditionalProperties["LogicalName"], Is.EqualTo("Test.g.resources"));
-				Assert.That(item.AdditionalProperties["WithCulture"], Is.EqualTo("false"));
-				Assert.That(File.Exists(outputFile), Is.True);
-				Assert.That(File.Exists(Path.Combine(targetDirectory, "Views", "MainWindow.baml")), Is.False);
-			}
-			Assert.That(File.ReadAllBytes(outputFile), Is.EqualTo(input));
-		}
-		finally
-		{
-			Directory.Delete(targetDirectory, recursive: true);
-		}
-	}
-
-	[Test]
-	public void EmbeddedResourcesDisableCultureInference()
-	{
-		string targetDirectory = CreateTemporaryDirectory();
-		try
-		{
-			TestFriendlyProjectDecompiler decompiler = new(new UniversalAssemblyResolver(null, false, null));
-			using MemoryStream stream = new([1, 2, 3, 4], writable: false);
-
-			ProjectItemInfo item = decompiler.WriteResource(
-				targetDirectory, "Certificate.ca.crt", "Test.Certificate.ca.crt", stream);
-
-			Assert.That(item.AdditionalProperties["WithCulture"], Is.EqualTo("false"));
-		}
-		finally
-		{
-			Directory.Delete(targetDirectory, recursive: true);
-		}
-	}
-
-	static string CreateTemporaryDirectory()
-	{
-		string directory = Path.Combine(TestContext.CurrentContext.WorkDirectory, Path.GetRandomFileName());
-		Directory.CreateDirectory(directory);
-		return directory;
-	}
-
-	static byte[] CreateResources(NonStringResourceKind? resourceKind = null)
-	{
-		MemoryStream output = new();
-		using (ResourceWriter writer = new(output))
-		{
-			writer.AddResource("Greeting", "Hello");
-			switch (resourceKind)
-			{
-				case NonStringResourceKind.ByteArray:
-					writer.AddResource("Binary", new byte[] { 1, 2, 3, 4 });
-					break;
-				case NonStringResourceKind.Stream:
-					writer.AddResource("Binary", new MemoryStream([1, 2, 3, 4]), closeAfterWrite: true);
-					break;
-				case NonStringResourceKind.Integer:
-					writer.AddResource("Number", 42);
-					break;
-			}
-			writer.Generate();
-		}
-		return output.ToArray();
-	}
-
-	static byte[] CreateEmptyResources()
-	{
-		MemoryStream output = new();
-		using (ResourceWriter writer = new(output))
-		{
-			writer.Generate();
-		}
-		return output.ToArray();
-	}
-
-	static byte[] CreateStreamOnlyResources()
-	{
-		MemoryStream output = new();
-		using (ResourceWriter writer = new(output))
-		{
-			writer.AddResource("Views/MainWindow.baml", new MemoryStream([1, 2, 3, 4]), closeAfterWrite: true);
-			writer.Generate();
-		}
-		return output.ToArray();
 	}
 
 	static void AssertDirectoryDoesntExist(string directory)
@@ -757,29 +154,23 @@ public sealed class WholeProjectDecompilerTests
 		}
 	}
 
-	static string[] GetExtensionMarkerTypeNames(PEFile module)
-	{
-		var metadata = module.Metadata;
-		return metadata.TypeDefinitions
-			.Select(handle => metadata.GetString(metadata.GetTypeDefinition(handle).Name))
-			.Where(name => name.StartsWith("<M>$", StringComparison.Ordinal))
-			.Order()
-			.ToArray();
-	}
-
 	sealed class TestFriendlyProjectDecompiler(IAssemblyResolver assemblyResolver) : WholeProjectDecompiler(assemblyResolver)
 	{
 		public Dictionary<string, StringWriter> Files { get; } = [];
 		public HashSet<string> Directories { get; } = [];
-		public List<ProjectItemInfo> ResourceItems { get; } = [];
-		public bool ExtractResources { get; set; }
+		public Action<CSharpDecompiler>? ConfigureDecompiler { get; set; }
 
-		public bool ContainsSource(string text) => Files.Values.Any(writer => writer.ToString().Contains(text));
-
-		public string SourceContaining(string text) => Files.Values.Select(writer => writer.ToString()).Single(source => source.Contains(text));
+		protected override CSharpDecompiler CreateDecompiler(DecompilerTypeSystem ts)
+		{
+			var decompiler = base.CreateDecompiler(ts);
+			ConfigureDecompiler?.Invoke(decompiler);
+			return decompiler;
+		}
 
 		protected override TextWriter CreateFile(string path)
 		{
+			if (FailFileCreationFor.Any(name => path.EndsWith(name, StringComparison.Ordinal)))
+				throw new IOException(FileCreationFailure + Path.GetFileName(path));
 			StringWriter writer = new();
 			lock (Files)
 			{
@@ -798,45 +189,37 @@ public sealed class WholeProjectDecompilerTests
 
 		protected override IEnumerable<ProjectItemInfo> WriteMiscellaneousFilesInProject(PEFile module) => [];
 
-		protected override IEnumerable<ProjectItemInfo> WriteResourceFilesInProject(MetadataFile module) => ResourceItems;
-		protected override bool ExtractIndividualResources => ExtractResources;
+		public const string ResourceFailure = "Simulated resource failure";
+		public const string FileCreationFailure = "Simulated file creation failure: ";
 
-		public ProjectItemInfo WriteResource(string targetDirectory, string fileName, string resourceName, Stream stream)
+		public bool FailResourceEnumeration { get; set; }
+
+		public bool FailResourceWriting { get; set; }
+
+		public string[] FailFileCreationFor { get; set; } = Array.Empty<string>();
+
+		public List<string> WrittenResources { get; } = [];
+
+		protected override IEnumerable<ProjectItemInfo> WriteResourceFilesInProject(MetadataFile module)
 		{
-			TargetDirectory = targetDirectory;
-			return WriteResourceToFile(fileName, resourceName, stream).Single();
+			if (FailResourceWriting)
+				return base.WriteResourceFilesInProject(module);
+			return FailResourceEnumeration
+				? Enumerable.Range(0, 1).Select<int, ProjectItemInfo>(_ => throw new InvalidOperationException(ResourceFailure))
+				: [];
 		}
 
-		public ProjectItemInfo WriteResource(string targetDirectory, Resource resource)
+		// Fails on the first resource only, so the test can tell "recovered per resource" from
+		// "gave up on the rest of them".
+		protected override IEnumerable<ProjectItemInfo> WriteResourceToFile(string fileName, string resourceName, Stream entryStream)
 		{
-			TargetDirectory = targetDirectory;
-			return WriteResourceFile(resource).Single();
+			if (WrittenResources.Count == 0)
+			{
+				WrittenResources.Add(fileName);
+				throw new InvalidOperationException(ResourceFailure);
+			}
+			WrittenResources.Add(fileName);
+			return new[] { new ProjectItemInfo("EmbeddedResource", fileName) };
 		}
-	}
-
-	sealed class TestProjectInfoProvider(IAssemblyResolver assemblyResolver, bool nullableReferenceTypes) : IProjectInfoProvider, INullableProjectInfoProvider
-	{
-		public IAssemblyResolver AssemblyResolver => assemblyResolver;
-
-		public IAssemblyReferenceClassifier AssemblyReferenceClassifier { get; } = new AssemblyReferenceClassifier();
-
-		public CSharp.LanguageVersion LanguageVersion => CSharp.LanguageVersion.CSharp14_0;
-
-		public bool CheckForOverflowUnderflow => false;
-
-		public bool NullableReferenceTypes => nullableReferenceTypes;
-
-		public Guid ProjectGuid { get; } = Guid.NewGuid();
-
-		public string TargetDirectory => Environment.CurrentDirectory;
-
-		public string StrongNameKeyFile => null;
-	}
-
-	public enum NonStringResourceKind
-	{
-		ByteArray,
-		Stream,
-		Integer
 	}
 }

@@ -136,9 +136,8 @@ namespace ICSharpCode.ILSpy.TextView
 
 			// Wrap rather than NoWrap so a signature wider than the popup's MaxWidth folds
 			// to multiple lines instead of being clipped at the right edge — the outer
-			// ScrollViewer disables horizontal scrolling, so NoWrap meant "the right half
-			// of long generic method signatures is invisible". WPF parity: the equivalent
-			// FlowDocument Paragraph wraps by default (Paragraph doesn't even support NoWrap).
+			// ScrollViewer disables horizontal scrolling, so NoWrap would leave the right
+			// half of long generic method signatures invisible.
 			var block = new SelectableTextBlock {
 				FontFamily = codeFont,
 				FontSize = fontSize,
@@ -161,7 +160,7 @@ namespace ICSharpCode.ILSpy.TextView
 			}
 			catch (XmlException)
 			{
-				// Malformed XML in the .xml file — ignore as WPF does.
+				// Malformed XML in the .xml file — ignore it rather than failing the tooltip.
 			}
 		}
 

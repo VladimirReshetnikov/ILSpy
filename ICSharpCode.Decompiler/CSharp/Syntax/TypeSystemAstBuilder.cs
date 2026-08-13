@@ -3305,23 +3305,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				var baseMember = member.ExplicitlyImplementedInterfaceMembers.FirstOrDefault();
 				if (baseMember != null)
-				{
-					IType interfaceType = baseMember.DeclaringType;
-					// The MethodImpl reference that yields baseMember carries no TupleElementNamesAttribute,
-					// so its tuple type arguments are unnamed; the implementing type's base-interface list
-					// does carry the names. Prefer that named variant so the explicit-implementation
-					// qualifier's tuple element names match the member signature (otherwise CS8141).
-					// Match a base interface that differs only in tuple element names (not nullability):
-					// equivalent when both names and nullability are ignored, but NOT equivalent when only
-					// nullability is ignored. This recovers the names without altering the nullability that
-					// the MethodImpl reference already encodes.
-					IType? named = member.DeclaringType.GetAllBaseTypes().FirstOrDefault(
-						t => t.Kind == TypeKind.Interface
-							&& !t.Equals(interfaceType)
-							&& NormalizeTypeVisitor.IgnoreNullabilityAndTuples.EquivalentTypes(t, interfaceType)
-							&& !NormalizeTypeVisitor.IgnoreNullability.EquivalentTypes(t, interfaceType));
-					return ConvertType(named ?? interfaceType);
-				}
+					return ConvertType(baseMember.DeclaringType.GetInterfaceAsImplementedBy(member.DeclaringType));
 			}
 			return null;
 		}

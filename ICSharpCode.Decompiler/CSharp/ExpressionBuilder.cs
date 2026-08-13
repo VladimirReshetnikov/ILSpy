@@ -318,6 +318,21 @@ namespace ICSharpCode.Decompiler.CSharp
 			return !(target.Expression is ThisReferenceExpression || target.Expression is BaseReferenceExpression);
 		}
 
+		/// <summary>
+		/// True when the field access has no target at all (already-collapsed `this` access) or
+		/// loads it from `this`, directly or through the address of `this` that a struct
+		/// accessor uses.
+		/// </summary>
+		static bool TargetIsThis(ILInstruction? targetInstruction)
+		{
+			return targetInstruction switch {
+				null => true,
+				var inst when inst.MatchLdThis() => true,
+				LdLoca { Variable.Kind: VariableKind.Parameter, Variable.Index: < 0 } => true,
+				_ => false,
+			};
+		}
+
 		ExpressionWithResolveResult ConvertField(IField field, ILInstruction? targetInstruction = null)
 		{
 			if (settings.AutomaticEvents && IsBackingFieldOfAutomaticEvent(field, out var ev))
@@ -336,6 +351,29 @@ namespace ICSharpCode.Decompiler.CSharp
 				return eventReference.WithRR(eventResolveResult);
 			}
 
+			if (settings.FieldKeyword
+				&& decompilationContext.CurrentMember is IProperty accessedProperty
+				&& accessedProperty.Parameters.Count == 0
+				// Ask exactly the question PatternStatementTransform asks when it decides whether
+				// the field declaration can go away. A looser test here prints `field` inside a
+				// property whose declaration then keeps explicit accessors and its field: on
+				// recompile the keyword binds to a freshly synthesized backing field while the
+				// original one stays declared and unwritten - silently different storage.
+				&& PatternStatementTransform.TryGetBackingField(accessedProperty, out var backingField)
+				&& field.MemberDefinition.Equals(backingField.MemberDefinition)
+				// Only THIS instance's field is the `field` keyword. IL can load another
+				// instance's backing field inside an accessor (weavers, obfuscators, hand-written
+				// IL); rendering that as `field` would redirect the access, and drop whatever
+				// side effect producing the target had.
+				&& (field.IsStatic || TargetIsThis(targetInstruction)))
+			{
+				// Inside its own property's get/set/init accessor (including nested lambdas and
+				// local functions), the backing field is the C# 14 "field" keyword. It must stay
+				// unqualified: "this.field" would refer to a real member named "field".
+				return new IdentifierExpression("field")
+					.WithRR(new MemberResolveResult(null, field));
+			}
+
 			var target = TranslateTarget(targetInstruction,
 				nonVirtualInvocation: true,
 				memberStatic: field.IsStatic,
@@ -351,6 +389,13 @@ namespace ICSharpCode.Decompiler.CSharp
 				&& (property.CanSet || settings.GetterOnlyAutomaticProperties))
 			{
 				requireTarget = RequiresQualifier(property, target);
+			}
+			else if (settings.FieldKeyword && field.Name == "field"
+				&& decompilationContext.CurrentMember is IProperty { Parameters.Count: 0 })
+			{
+				// In a C# 14 property accessor a bare "field" identifier binds to the backing
+				// field keyword, so a genuine field of that name needs a qualifier.
+				requireTarget = true;
 			}
 			else
 			{
@@ -2702,6 +2747,12 @@ namespace ICSharpCode.Decompiler.CSharp
 				attributeSections.Add(new AttributeSection(astBuilder.ConvertAttribute(attr)) { AttributeTarget = "return" });
 			}
 
+			bool parametersAreUsed = (
+				from ident in body.Descendants.OfType<IdentifierExpression>()
+				let v = ident.GetILVariable()
+				where v != null && v.Function == function && v.Kind == VariableKind.Parameter
+				select ident).Any();
+
 			bool isLambda = false;
 			if (ame.Parameters.Any(p => p.Type is null))
 			{
@@ -2721,18 +2772,19 @@ namespace ICSharpCode.Decompiler.CSharp
 				// C# 10 lambdas can have attributes, but anonymous methods cannot
 				isLambda = true;
 			}
-			else if (settings.UseLambdaSyntax && ame.Parameters.All(p => p.ParameterModifier == ReferenceKind.None && !p.IsParams))
+			else if (settings.UseLambdaSyntax && ame.Parameters.All(p => p.ParameterModifier == ReferenceKind.None && !p.IsParams)
+				&& (parametersAreUsed || (ParameterTypesAreAccessible(function) && ParametersAreNameable(function))))
 			{
-				// otherwise use lambda only if an expression lambda is possible
-				isLambda = (body.Statements.Count == 1 && body.Statements.Single() is ReturnStatement);
+				// Lambdas cover statement bodies too. Anonymous method syntax remains where
+				// dropping the parameter list is the better rendering: for ref/out/in and
+				// params parameters (expressible in an explicitly typed lambda list, but
+				// conservatively left alone), and for unused parameters that a list would have
+				// to name or type from nothing to keep. The parameter-list-less "delegate {}"
+				// form is compatible with any delegate signature, so it is always legal there.
+				isLambda = true;
 			}
 			// Remove the parameter list from an AnonymousMethodExpression if the parameters are not used in the method body
-			var parameterReferencingIdentifiers =
-				from ident in body.Descendants.OfType<IdentifierExpression>()
-				let v = ident.GetILVariable()
-				where v != null && v.Function == function && v.Kind == VariableKind.Parameter
-				select ident;
-			if (!isLambda && !parameterReferencingIdentifiers.Any())
+			if (!isLambda && !parametersAreUsed)
 			{
 				ame.Parameters.Clear();
 			}
@@ -2778,6 +2830,47 @@ namespace ICSharpCode.Decompiler.CSharp
 			TranslatedExpression translatedLambda = replacement.WithILInstruction(function).WithRR(rr);
 			return new CastExpression(ConvertType(delegateType), translatedLambda)
 				.WithRR(new ConversionResolveResult(delegateType, rr, LambdaConversion.Instance));
+		}
+
+		/// <summary>
+		/// True when every parameter carries a name that can be written out as-is. Unused
+		/// parameters whose metadata names are missing or not identifiers (ilasm's synthetic
+		/// A_0/A_1 for unnamed Param rows, "&lt;p0&gt;" from an anonymous method declared without a
+		/// parameter list, obfuscated names) would have to be invented for a lambda's mandatory
+		/// parameter list; "delegate {}" drops the list instead of presenting a made-up name as
+		/// if it came from the source.
+		/// </summary>
+		static bool ParametersAreNameable(ILFunction function)
+		{
+			return function.Parameters.All(
+				p => !string.IsNullOrWhiteSpace(p.Name) && AssignVariableNames.IsValidName(p.Name));
+		}
+
+		bool ParameterTypesAreAccessible(ILFunction function)
+		{
+			var currentTypeDefinition = resolver.CurrentTypeDefinition;
+			if (currentTypeDefinition == null)
+				return true;
+			var lookup = new MemberLookup(currentTypeDefinition, currentTypeDefinition.ParentModule);
+			return function.Parameters.All(p => IsAccessible(p.Type));
+
+			bool IsAccessible(IType type)
+			{
+				switch (type)
+				{
+					case ParameterizedType pt:
+						return IsAccessible(pt.GenericType) && pt.TypeArguments.All(IsAccessible);
+					case TypeWithElementType t:
+						return IsAccessible(t.ElementType);
+					default:
+						for (var td = type.GetDefinition(); td != null; td = td.DeclaringTypeDefinition)
+						{
+							if (!lookup.IsAccessible(td, allowProtectedAccess: true))
+								return false;
+						}
+						return true;
+				}
+			}
 		}
 
 		protected internal override TranslatedExpression VisitILFunction(ILFunction function, TranslationContext context)
@@ -2999,6 +3092,20 @@ namespace ICSharpCode.Decompiler.CSharp
 							.WithoutILInstruction();
 					}
 					translatedTarget = EnsureTargetNotNullable(translatedTarget, target);
+					if (translatedTarget.Expression is ThisReferenceExpression)
+					{
+						// Give an explicit `this` the same resolve result the base-reference branch
+						// above gives `base`, and that the resolver gives the unqualified spelling of
+						// the same access. ConvertVariable annotates it as an ordinary local, so
+						// without this a consumer asking "does this expression reach instance state"
+						// gets a different answer depending on whether the qualifier happened to be
+						// printed - and the qualifier is printed for reasons (a parameter of the same
+						// name, AlwaysQualifyMemberReferences) that have nothing to do with the
+						// question being asked.
+						translatedTarget = new ThisReferenceExpression()
+							.WithILInstruction(target)
+							.WithRR(new ThisResolveResult(translatedTarget.Type, nonVirtualInvocation));
+					}
 					return translatedTarget;
 				}
 			}

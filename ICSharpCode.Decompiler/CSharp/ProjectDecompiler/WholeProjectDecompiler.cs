@@ -37,7 +37,6 @@ using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.Solution;
 using ICSharpCode.Decompiler.TypeSystem;
-using ICSharpCode.Decompiler.TypeSystem.Implementation;
 using ICSharpCode.Decompiler.Util;
 
 using static ICSharpCode.Decompiler.Metadata.MetadataExtensions;
@@ -49,7 +48,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 	/// <summary>
 	/// Decompiles an assembly into a visual studio project file.
 	/// </summary>
-	public class WholeProjectDecompiler : IProjectInfoProvider, INullableProjectInfoProvider
+	public class WholeProjectDecompiler : IProjectInfoProvider
 	{
 		const int maxSegmentLength = 255;
 
@@ -87,8 +86,6 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		}
 
 		bool IProjectInfoProvider.CheckForOverflowUnderflow => Settings.CheckForOverflowUnderflow;
-
-		bool INullableProjectInfoProvider.NullableReferenceTypes => Settings.NullableReferenceTypes;
 
 		public IAssemblyResolver AssemblyResolver { get; }
 
@@ -154,8 +151,81 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 
 		// per-run members
 		HashSet<string> directories = new HashSet<string>(Platform.FileNameComparer);
+		readonly List<DecompilerException> errors = new List<DecompilerException>();
 		readonly IProjectFileWriter projectWriter;
-		bool xamlBuildRegeneratesInternalTypeHelper;
+
+		/// <summary>
+		/// Everything that went wrong during the last <see cref="DecompileProject(MetadataFile, string, CancellationToken)"/>.
+		/// An export never aborts on a member, file or resource it cannot handle; it writes the
+		/// error text where the content would have gone and continues, so a single unsupported
+		/// method still yields a complete project. Callers should show this list to the user -
+		/// otherwise the failures ship silently and never get reported.
+		/// </summary>
+		public IReadOnlyList<DecompilerException> Errors => errors;
+
+		void RecordError(DecompilerException error)
+		{
+			lock (errors)
+			{
+				errors.Add(error);
+			}
+		}
+
+		/// <summary>
+		/// Yields the items of <paramref name="items"/> until one of them throws; the failure is
+		/// recorded instead of aborting the export.
+		/// </summary>
+		IEnumerable<T> RecordingErrors<T>(IEnumerable<T> items, MetadataFile file, string what)
+		{
+			using var enumerator = items.GetEnumerator();
+			bool lastMoveFailed = false;
+			while (true)
+			{
+				T item;
+				try
+				{
+					if (!enumerator.MoveNext())
+						yield break;
+					item = enumerator.Current;
+				}
+				catch (Exception ex) when (!(ex is OperationCanceledException))
+				{
+					RecordError(ex as DecompilerException ?? new DecompilerException(file, $"Error writing {what}", ex));
+					// Skip the item that failed and try the next one, but give up once two attempts
+					// in a row fail: an enumerator that throws without advancing - which nothing
+					// stops an override from being - would otherwise loop forever.
+					if (lastMoveFailed)
+						yield break;
+					lastMoveFailed = true;
+					continue;
+				}
+				lastMoveFailed = false;
+				yield return item;
+			}
+		}
+
+		/// <summary>
+		/// Puts the error text where the file's contents would have gone. The writer itself may be
+		/// what failed - a full disk, a stream already closed - so a second failure while reporting
+		/// the first is dropped rather than allowed to take the export down.
+		/// </summary>
+		static void WriteErrorComment(TextWriter? writer, Exception error)
+		{
+			if (writer == null)
+				return;
+			try
+			{
+				// The failure may have interrupted the output visitor mid-line.
+				writer.WriteLine();
+				foreach (string line in CSharpDecompiler.GetErrorCommentLines(error))
+				{
+					writer.WriteLine("// " + line);
+				}
+			}
+			catch (Exception ex) when (!(ex is OperationCanceledException))
+			{
+			}
+		}
 
 		public void DecompileProject(MetadataFile file, string targetDirectory, CancellationToken cancellationToken = default(CancellationToken))
 		{
@@ -186,16 +256,16 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			{
 				TargetDirectory = targetDirectory;
 				directories.Clear();
-				var resources = WriteResourceFilesInProject(file).ToList();
+				errors.Clear();
+				var resources = RecordingErrors(WriteResourceFilesInProject(file), file, "resource files").ToList();
 				resourceFileCount = resources.Count;
-				xamlBuildRegeneratesInternalTypeHelper = resources.Any(item => item.ItemType is "Page" or "ApplicationDefinition");
 				var files = WriteCodeFilesInProject(file, resources.SelectMany(r => r.PartialTypes ?? Enumerable.Empty<PartialTypeInfo>()).ToList(), cancellationToken).ToList();
 				codeFileCount = files.Count;
 				files.AddRange(resources);
 				var module = file as PEFile;
 				if (module != null)
 				{
-					files.AddRange(WriteMiscellaneousFilesInProject(module));
+					files.AddRange(RecordingErrors(WriteMiscellaneousFilesInProject(module), file, "miscellaneous files"));
 				}
 				if (StrongNameKeyFile != null)
 				{
@@ -222,37 +292,11 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			string ns = metadata.GetString(typeDef.Namespace);
 			if (name == "<Module>" || CSharpDecompiler.MemberIsHidden(module, type, Settings))
 				return false;
-			if (xamlBuildRegeneratesInternalTypeHelper
-				&& ns == "XamlGeneratedNamespace" && name == "GeneratedInternalTypeHelper")
+			if (ns == "XamlGeneratedNamespace" && name == "GeneratedInternalTypeHelper")
 				return false;
-			string fullName = ns + "." + name;
-			if (!typeDef.IsNested && RemoveEmbeddedAttributes.attributeNames.Contains(fullName)
-				&& typeDef.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.Embedded)
-				&& !PreserveEmbeddedReadonlySupportType(metadata, fullName))
+			if (!typeDef.IsNested && RemoveEmbeddedAttributes.attributeNames.Contains(ns + "." + name))
 				return false;
 			return true;
-		}
-
-		static bool PreserveEmbeddedReadonlySupportType(MetadataReader metadata, string fullName)
-		{
-			const string embeddedAttribute = "Microsoft.CodeAnalysis.EmbeddedAttribute";
-			const string isReadOnlyAttribute = "System.Runtime.CompilerServices.IsReadOnlyAttribute";
-			if (fullName == isReadOnlyAttribute)
-				return true;
-			if (fullName != embeddedAttribute)
-				return false;
-
-			// Recompiling readonly syntax uses the local marker when it is present. Keep the marker's
-			// own EmbeddedAttribute definition as well so its source remains self-contained.
-			foreach (var handle in metadata.GetTopLevelTypeDefinitions())
-			{
-				var type = metadata.GetTypeDefinition(handle);
-				if (metadata.GetString(type.Namespace) == "System.Runtime.CompilerServices"
-					&& metadata.GetString(type.Name) == "IsReadOnlyAttribute"
-					&& type.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.Embedded))
-					return true;
-			}
-			return false;
 		}
 
 		protected virtual TextWriter CreateFile(string path)
@@ -279,11 +323,6 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			decompiler.DebugInfoProvider = DebugInfoProvider;
 			decompiler.AstTransforms.Add(new EscapeInvalidIdentifiers());
 			decompiler.AstTransforms.Add(new RemoveCLSCompliantAttribute());
-			decompiler.AstTransforms.Add(new PrepareEmbeddedInteropTypesForProjectExport());
-			decompiler.AstTransforms.Add(new PrepareCompilerGeneratedFileLocalTypesForProjectExport());
-			decompiler.AstTransforms.Add(new PrepareGeneratedComForProjectExport());
-			decompiler.AstTransforms.Add(new PrepareGeneratedRegexForProjectExport());
-			decompiler.AstTransforms.Add(new PrepareLibraryImportsForProjectExport());
 			return decompiler;
 		}
 
@@ -291,10 +330,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		{
 			var decompiler = CreateDecompiler(ts);
 			decompiler.CancellationToken = cancellationToken;
-			var introduceUsingDeclarations = decompiler.AstTransforms.Single(t => t is IntroduceUsingDeclarations);
-			decompiler.AstTransforms.Insert(
-				decompiler.AstTransforms.IndexOf(introduceUsingDeclarations),
-				new RemoveCompilerGeneratedAssemblyAttributes());
+			decompiler.AstTransforms.Add(new RemoveCompilerGeneratedAssemblyAttributes());
 			SyntaxTree syntaxTree = decompiler.DecompileModuleAndAssemblyAttributes();
 
 			const string prop = "Properties";
@@ -316,6 +352,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			var progressReporter = ProgressIndicator;
 			var progress = new DecompilationProgress { TotalUnits = files.Count, Title = "Exporting project..." };
 			DecompilerTypeSystem ts = new DecompilerTypeSystem(module, AssemblyResolver, Settings);
+			var missingFiles = new ConcurrentBag<string>();
 			var workList = new HashSet<TypeDefinitionHandle>();
 			var processedTypes = new HashSet<TypeDefinitionHandle>();
 			ProcessFiles(files);
@@ -329,27 +366,26 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 				progress.TotalUnits = files.Count;
 			}
 
-			return files.Select(f => new ProjectItemInfo("Compile", f.Key)).Concat(WriteAssemblyInfo(ts, cancellationToken));
+			// The assembly-level attributes are a single file like any other: failing to decompile
+			// them costs that file, not the export.
+			IEnumerable<ProjectItemInfo> assemblyInfo;
+			try
+			{
+				assemblyInfo = WriteAssemblyInfo(ts, cancellationToken);
+			}
+			catch (Exception ex) when (!(ex is OperationCanceledException))
+			{
+				RecordError(ex as DecompilerException ?? new DecompilerException(module, "Error decompiling the module and assembly attributes", ex));
+				assemblyInfo = Enumerable.Empty<ProjectItemInfo>();
+			}
+
+			return files.Select(f => f.Key).Except(missingFiles, Platform.FileNameComparer)
+				.Select(f => new ProjectItemInfo("Compile", f)).Concat(assemblyInfo);
 
 			string GetFileFileNameForHandle(TypeDefinitionHandle h)
 			{
 				var type = metadata.GetTypeDefinition(h);
-				string metadataName = metadata.GetString(type.Name);
-				if (FileLocalTypeName.TryParse(metadataName, out _, out string? fileHash))
-				{
-					// Every file-local type carrying the same hash was declared in one source
-					// file, and only inside that file can they see each other - the config
-					// binder generator emits its interceptor class and the
-					// InterceptsLocationAttribute it is decorated with as one such pair. They
-					// have to come out in one file again, and because the members of that file
-					// may span namespaces, the group cannot take part in the per-namespace
-					// directory layout either.
-					int filePartEnd = fileHash.IndexOf('>');
-					string filePart = filePartEnd > 1 ? fileHash.Substring(1, filePartEnd - 1) : "FileLocal";
-					string hashPart = fileHash.Substring(filePartEnd + 2);
-					return CleanUpFileName(filePart + "." + hashPart.Substring(0, Math.Min(8, hashPart.Length)), ".cs");
-				}
-				string file = CleanUpFileName(metadataName, ".cs");
+				string file = CleanUpFileName(metadata.GetString(type.Name), ".cs");
 				string ns = metadata.GetString(type.Namespace);
 				if (string.IsNullOrEmpty(ns))
 				{
@@ -379,10 +415,14 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 					delegate (IGrouping<string, TypeDefinitionHandle> file) {
 						var declaredTypes = file.ToArray();
 						DecompilerEventSource.Log.ProjectFileStart(file.Key, declaredTypes.Length);
+						// Everything that can fail for this one file - creating it included, which is
+						// where a path too long for the file system surfaces - belongs inside the try.
+						TextWriter? w = null;
+						CSharpDecompiler? decompiler = null;
 						try
 						{
-							using var w = CreateFile(Path.Combine(TargetDirectory, file.Key));
-							CSharpDecompiler decompiler = CreateDecompiler(ts);
+							w = CreateFile(Path.Combine(TargetDirectory, file.Key));
+							decompiler = CreateDecompiler(ts);
 
 							foreach (var partialType in partialTypes)
 							{
@@ -391,10 +431,6 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 
 							decompiler.CancellationToken = cancellationToken;
 							var syntaxTree = decompiler.DecompileTypes(declaredTypes);
-							if (Settings.NullableReferenceTypes)
-							{
-								PreserveObliviousExtensionReceivers(syntaxTree);
-							}
 
 							foreach (var node in syntaxTree.Descendants)
 							{
@@ -405,14 +441,8 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 								{
 									td = td.DeclaringTypeDefinition;
 								}
-								if (td != null && td.MetadataToken is { IsNil: false } token && !processedTypes.Contains((TypeDefinitionHandle)token)
-									&& !CSharpDecompiler.MemberIsHidden(module, token, Settings))
+								if (td != null && td.MetadataToken is { IsNil: false } token && !processedTypes.Contains((TypeDefinitionHandle)token))
 								{
-									// Types that are decompiled inline into their usage (anonymous types,
-									// closure/state-machine display classes, ...) are never emitted as their own
-									// file. Without this guard a stray reference to such a type in the decompiled
-									// output (e.g. an anonymous type surfacing in an explicit variable declaration)
-									// would queue it here and produce an empty source file for it.
 									lock (workList)
 									{
 										workList.Add((TypeDefinitionHandle)token);
@@ -420,14 +450,44 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 								}
 							}
 
-							syntaxTree.AcceptVisitor(new CSharpOutputVisitor(w, Settings.CSharpFormattingOptions));
+							// A member the output visitor cannot write is replaced by the error text
+							// rather than truncating the file where it failed.
+							var outputVisitor = new ErrorTolerantOutputVisitor(w, Settings.CSharpFormattingOptions);
+							syntaxTree.AcceptVisitor(outputVisitor);
+							foreach (var outputError in outputVisitor.Errors)
+							{
+								RecordError(new DecompilerException(module, $"Error writing '{file.Key}'", outputError));
+							}
 						}
-						catch (Exception innerException) when (!(innerException is OperationCanceledException || innerException is DecompilerException))
+						catch (Exception innerException) when (!(innerException is OperationCanceledException))
 						{
-							throw new DecompilerException(module, $"Error decompiling for '{file.Key}'", innerException);
+							// Whatever the decompiler could not cope with here, the remaining files
+							// are unaffected and the user still gets a complete project; the error
+							// takes the place of the file's contents.
+							RecordError(innerException as DecompilerException ?? new DecompilerException(module, $"Error decompiling for '{file.Key}'", innerException));
+							if (w == null)
+							{
+								// Nothing was written, so nothing can carry the error text - and the
+								// project must not claim a file that is not there.
+								missingFiles.Add(file.Key);
+							}
+							WriteErrorComment(w, innerException);
 						}
 						finally
 						{
+							foreach (var error in decompiler?.Errors ?? (IReadOnlyList<DecompilerException>)Array.Empty<DecompilerException>())
+							{
+								RecordError(error);
+							}
+							try
+							{
+								w?.Dispose();
+							}
+							catch (Exception ex) when (!(ex is OperationCanceledException))
+							{
+								// Dispose flushes: on a full disk this is where the write actually fails.
+								RecordError(new DecompilerException(module, $"Error writing '{file.Key}'", ex));
+							}
 							DecompilerEventSource.Log.ProjectFileStop(file.Key);
 						}
 						progress.Status = file.Key;
@@ -436,93 +496,48 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 					});
 			}
 		}
-
-		static void PreserveObliviousExtensionReceivers(SyntaxTree syntaxTree)
-		{
-			foreach (var extension in syntaxTree.Descendants.OfType<ExtensionDeclaration>())
-			{
-				// An extension block is represented by a marker method carrying just the receiver.
-				// Anything else is not one we can read a receiver type off, so leave it alone.
-				if (extension.GetSymbol() is not IMethod { Parameters: [var receiver] }
-					|| !ContainsObliviousReferenceType(receiver.Type))
-				{
-					continue;
-				}
-
-				extension.AddLeadingTrivia(new PreProcessorDirective(PreProcessorDirectiveType.Nullable, "disable annotations"));
-				var restore = new PreProcessorDirective(PreProcessorDirectiveType.Nullable, "restore annotations");
-				if (extension.Members.FirstOrDefault() is { } firstMember)
-				{
-					firstMember.AddLeadingTrivia(restore);
-				}
-				else
-				{
-					extension.AddTrailingTrivia(restore);
-				}
-			}
-		}
-
-		static bool ContainsObliviousReferenceType(IType type)
-		{
-			if (type.Nullability == Nullability.Oblivious && type.IsReferenceType != false)
-				return true;
-			if (type is TypeWithElementType typeWithElementType
-				&& ContainsObliviousReferenceType(typeWithElementType.ElementType))
-			{
-				return true;
-			}
-			if (type is TupleType tuple && tuple.ElementTypes.Any(ContainsObliviousReferenceType))
-				return true;
-			return type.TypeArguments.Any(ContainsObliviousReferenceType);
-		}
 		#endregion
 
 		#region WriteResourceFilesInProject
-		/// <summary>
-		/// Controls whether .resources containers are split into their individual entries before being
-		/// written to disk. Resource handlers match on the names of entries inside a .resources
-		/// container, so the container must be split for <see cref="WriteResourceToFile"/> to ever be
-		/// offered an individual entry. The base implementation returns false, emitting each container
-		/// as-is; override to return true so that derived decompilers can process individual entries
-		/// (e.g. .baml pages).
-		/// </summary>
-		protected virtual bool ExtractIndividualResources => false;
-
 		protected virtual IEnumerable<ProjectItemInfo> WriteResourceFilesInProject(MetadataFile module)
 		{
 			foreach (var r in module.Resources.Where(r => r.ResourceType == ResourceType.Embedded))
 			{
-				foreach (var item in WriteResourceFile(r))
+				List<ProjectItemInfo> items;
+				try
+				{
+					items = WriteResourceFileInProject(r).ToList();
+				}
+				catch (Exception ex) when (!(ex is OperationCanceledException))
+				{
+					// One resource nobody can decode - a mangled .resources blob, a BAML stream the
+					// decompiler chokes on - costs that resource, not the ones behind it.
+					RecordError(ex as DecompilerException ?? new DecompilerException(module, $"Error writing resource '{r.Name}'", ex));
+					continue;
+				}
+				foreach (var item in items)
 				{
 					yield return item;
 				}
 			}
 		}
 
-		/// <summary>
-		/// Writes a single embedded resource to the target directory and yields the project items
-		/// referencing the written file(s). When <see cref="ExtractIndividualResources"/> is true and
-		/// the resource is a .resources container whose entries are all streams, each entry is written
-		/// as its own file via <see cref="WriteResourceToFile"/>; otherwise the resource is written as
-		/// a single file. Override to customize how an entire resource is written.
-		/// </summary>
-		protected virtual IEnumerable<ProjectItemInfo> WriteResourceFile(Resource resource)
+		IEnumerable<ProjectItemInfo> WriteResourceFileInProject(Resource r)
 		{
-			using Stream? stream = resource.TryOpenStream();
+			Stream? stream = r.TryOpenStream();
 			if (stream == null)
 				yield break;
 
 			stream.Position = 0;
 
-			if (ExtractIndividualResources
-				&& resource.Name.EndsWith(".resources", StringComparison.OrdinalIgnoreCase))
+			if (r.Name.EndsWith(".resources", StringComparison.OrdinalIgnoreCase))
 			{
 				bool decodedIntoIndividualFiles;
 				var individualResources = new List<ProjectItemInfo>();
 				try
 				{
 					var resourcesFile = new ResourcesFile(stream);
-					if (resourcesFile.Any() && resourcesFile.AllEntriesAreStreams())
+					if (resourcesFile.AllEntriesAreStreams())
 					{
 						foreach (var (name, value) in resourcesFile)
 						{
@@ -558,15 +573,26 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 					{
 						yield return entry;
 					}
-					yield break;
+				}
+				else
+				{
+					stream.Position = 0;
+					string fileName = GetFileNameForResource(r.Name);
+					foreach (var entry in WriteResourceToFile(fileName, r.Name, stream))
+					{
+						yield return entry;
+					}
 				}
 			}
-
-			stream.Position = 0;
-			string resourceFileName = GetFileNameForResource(resource.Name);
-			foreach (var entry in WriteResourceToFile(resourceFileName, resource.Name, stream))
+			else
 			{
-				yield return entry;
+				string fileName = GetFileNameForResource(r.Name);
+				using (FileStream fs = new FileStream(Path.Combine(TargetDirectory, fileName), FileMode.Create, FileAccess.Write))
+				{
+					stream.Position = 0;
+					stream.CopyTo(fs);
+				}
+				yield return new ProjectItemInfo("EmbeddedResource", fileName).With("LogicalName", r.Name);
 			}
 		}
 
@@ -575,24 +601,17 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			if (fileName.EndsWith(".resources", StringComparison.OrdinalIgnoreCase))
 			{
 				string resx = Path.ChangeExtension(fileName, ".resx");
-				long initialPosition = entryStream.Position;
 				try
 				{
-					using (ResourcesFile resourcesFile = new ResourcesFile(entryStream))
+					using (FileStream fs = new FileStream(Path.Combine(TargetDirectory, resx), FileMode.Create, FileAccess.Write))
+					using (ResXResourceWriter writer = new ResXResourceWriter(fs))
 					{
-						if (resourcesFile.Any() && resourcesFile.All(entry => entry.Value is string))
+						foreach (var entry in new ResourcesFile(entryStream))
 						{
-							using (FileStream fs = new FileStream(Path.Combine(TargetDirectory, resx), FileMode.Create, FileAccess.Write))
-							using (ResXResourceWriter writer = new ResXResourceWriter(fs))
-							{
-								foreach (var entry in resourcesFile)
-								{
-									writer.AddResource(entry.Key, entry.Value);
-								}
-							}
-							return new[] { CreateEmbeddedResourceProjectItem(resx, resourceName) };
+							writer.AddResource(entry.Key, entry.Value);
 						}
 					}
+					return new[] { new ProjectItemInfo("EmbeddedResource", resx).With("LogicalName", resourceName) };
 				}
 				catch (BadImageFormatException)
 				{
@@ -602,26 +621,12 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 				{
 					// if the .resources can't be decoded, just save them as-is
 				}
-				finally
-				{
-					entryStream.Position = initialPosition;
-				}
 			}
 			using (FileStream fs = new FileStream(Path.Combine(TargetDirectory, fileName), FileMode.Create, FileAccess.Write))
 			{
 				entryStream.CopyTo(fs);
 			}
-			return new[] { CreateEmbeddedResourceProjectItem(fileName, resourceName) };
-		}
-
-		static ProjectItemInfo CreateEmbeddedResourceProjectItem(string fileName, string resourceName)
-		{
-			// All resources handled here were embedded in the main module. Disable MSBuild's
-			// filename-based culture inference so names such as Certificate.ca.crt are not
-			// silently moved into a satellite assembly.
-			return new ProjectItemInfo("EmbeddedResource", fileName)
-				.With("LogicalName", resourceName)
-				.With("WithCulture", "false");
+			return new[] { new ProjectItemInfo("EmbeddedResource", fileName).With("LogicalName", resourceName) };
 		}
 
 		string GetFileNameForResource(string fullName)
@@ -658,25 +663,56 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			if (resources == null)
 				yield break;
 
-			byte[]? appIcon = CreateApplicationIcon(resources);
-			if (appIcon != null)
-			{
+			// Each file is written on its own, so the one that fails is the only one lost.
+			foreach (var item in TryWrite(module, "app.ico", () => {
+				byte[]? appIcon = CreateApplicationIcon(resources);
+				if (appIcon == null)
+					return null;
 				File.WriteAllBytes(Path.Combine(TargetDirectory, "app.ico"), appIcon);
-				yield return new ProjectItemInfo("ApplicationIcon", "app.ico");
+				return new ProjectItemInfo("ApplicationIcon", "app.ico");
+			}))
+			{
+				yield return item;
 			}
 
-			byte[]? appManifest = CreateApplicationManifest(resources);
-			if (appManifest != null && !IsDefaultApplicationManifest(appManifest))
-			{
+			foreach (var item in TryWrite(module, "app.manifest", () => {
+				byte[]? appManifest = CreateApplicationManifest(resources);
+				if (appManifest == null || IsDefaultApplicationManifest(appManifest))
+					return null;
 				File.WriteAllBytes(Path.Combine(TargetDirectory, "app.manifest"), appManifest);
-				yield return new ProjectItemInfo("ApplicationManifest", "app.manifest");
+				return new ProjectItemInfo("ApplicationManifest", "app.manifest");
+			}))
+			{
+				yield return item;
 			}
 
-			var appConfig = module.FileName + ".config";
-			if (File.Exists(appConfig))
-			{
+			foreach (var item in TryWrite(module, "app.config", () => {
+				var appConfig = module.FileName + ".config";
+				if (!File.Exists(appConfig))
+					return null;
 				File.Copy(appConfig, Path.Combine(TargetDirectory, "app.config"), overwrite: true);
-				yield return new ProjectItemInfo("ApplicationConfig", Path.GetFileName(appConfig));
+				return new ProjectItemInfo("ApplicationConfig", Path.GetFileName(appConfig));
+			}))
+			{
+				yield return item;
+			}
+		}
+
+		IEnumerable<ProjectItemInfo> TryWrite(MetadataFile module, string what, Func<ProjectItemInfo?> write)
+		{
+			ProjectItemInfo? item;
+			try
+			{
+				item = write();
+			}
+			catch (Exception ex) when (!(ex is OperationCanceledException))
+			{
+				RecordError(ex as DecompilerException ?? new DecompilerException(module, $"Error writing '{what}'", ex));
+				yield break;
+			}
+			if (item.HasValue)
+			{
+				yield return item.Value;
 			}
 		}
 

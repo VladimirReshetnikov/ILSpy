@@ -1,4 +1,4 @@
-// Copyright (c) 2026 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2026 Siegfried Pammer
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,32 +16,43 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using AwesomeAssertions;
+using System;
 
-using Dock.Controls.DeferredContentControl;
-
-using ICSharpCode.ILSpy.ViewModels;
-
-using NUnit.Framework;
-
-namespace ICSharpCode.ILSpy.Tests;
-
-/// <summary>
-/// Regression guard: <see cref="ToolPaneModel"/> opts out of Dock's deferred content
-/// presentation so panes (search, analyzers, debug steps, etc.) materialise their views
-/// eagerly. Without this, tests can't reach descendants of a pane until it's
-/// focus-activated by the user — and the search-pane's startup tasks (assembly index
-/// scan, etc.) wouldn't kick off until first activation.
-/// </summary>
-[TestFixture]
-public class ToolPaneDeferredContentTests
+namespace ICSharpCode.Decompiler.Tests.TestCases.Ugly
 {
-	[Test]
-	public void ToolPaneModel_Opts_Out_Of_Dock_Deferred_Content_Presentation()
+	internal class NoFieldKeyword
 	{
-		var sentinel = new TestToolPane();
-		((IDeferredContentPresentation)sentinel).DeferContentPresentation.Should().BeFalse();
+		public int Clamped {
+			get {
+				return field;
+			}
+			set {
+				field = Math.Max(0, value);
+			}
+		}
+
+		public int WithInitializer {
+			get {
+				return field;
+			}
+			set {
+				field = value + 1;
+			}
+		} = 5;
 	}
 
-	sealed class TestToolPane : ToolPaneModel { }
+	internal class GenericHolder<T> where T : class
+	{
+		public T Value {
+			get {
+				return field;
+			}
+			set {
+				if (value != null)
+				{
+					field = value;
+				}
+			}
+		}
+	}
 }

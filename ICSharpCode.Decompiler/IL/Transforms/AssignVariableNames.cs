@@ -197,6 +197,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 							? parameter.Name
 							: ILReader.GetUniqueParameterName(usedParameterNames, parameter.Name, index)).ToArray();
 
+					if (context.Settings.FieldKeyword
+						&& function.Method?.AccessorOwner is IProperty { Parameters.Count: 0 })
+					{
+						// "field" is a keyword in C# 14 property accessors; a local of that name
+						// would shadow the backing field.
+						AddExistingName(reservedVariableNames, "field");
+					}
+
 					// handle implicit parameters of set or event accessors
 					if (function.Method != null && IsSetOrEventAccessor(function.Method) && function.Parameters.Count > 0)
 					{
@@ -294,6 +302,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 							AddExistingName(reservedVariableNames, name);
 							if (variables.TryGetValue(i, out var v))
 								variableMapping[v] = name;
+						}
+						else if (!IsValidName(name))
+						{
+							// Compiler-generated parameter names (e.g. "<p0>" on an anonymous method
+							// declared without a parameter list) are not valid C# identifiers. Skipping
+							// the reservation and the mapping leaves the parameter to AssignName, which
+							// generates a fresh name from the type for any name that fails IsValidName.
+							continue;
 						}
 						string nameWithoutNumber = SplitName(name, out int newIndex);
 						// A local function's parameter legitimately shadows an outer local of the same name,

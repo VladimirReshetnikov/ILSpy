@@ -875,19 +875,19 @@ namespace ICSharpCode.Decompiler
 		public partial bool ExtensionMembers { get; set; }
 
 		/// <summary>
-		/// Gets/Sets whether C# 14.0 semi-auto-properties using the 'field' contextual keyword
-		/// should be reconstructed (replacing the explicit compiler-generated backing field).
-		/// </summary>
-		[Description("DecompilerSettings.UseFieldKeyword")]
-		[DecompilerSetting(CSharp.LanguageVersion.CSharp14_0)]
-		public partial bool UseFieldKeyword { get; set; }
-
-		/// <summary>
 		/// Gets/Sets whether (ReadOnly)Span&lt;T&gt; should be treated like built-in types.
 		/// </summary>
 		[Description("DecompilerSettings.FirstClassSpanTypes")]
 		[DecompilerSetting(CSharp.LanguageVersion.CSharp14_0)]
 		public partial bool FirstClassSpanTypes { get; set; }
+
+		/// <summary>
+		/// Gets/Sets whether property accessors should use the C# 14.0 "field" keyword to
+		/// refer to the compiler-generated backing field.
+		/// </summary>
+		[Description("DecompilerSettings.FieldKeyword")]
+		[DecompilerSetting(CSharp.LanguageVersion.CSharp14_0)]
+		public partial bool FieldKeyword { get; set; }
 
 		/// <summary>
 		/// Gets/sets whether the decompiler should separate local variable declarations

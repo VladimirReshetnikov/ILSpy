@@ -13,13 +13,13 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		static CctorLocalFunc()
 		{
 			int n = 42;
-			E1 += delegate {
+			E1 += () => {
 				Use(n);
 			};
-			E2 += delegate {
+			E2 += () => {
 				Use(n);
 			};
-			E3 += delegate {
+			E3 += () => {
 				Use(n);
 			};
 			static void Use(int x)
