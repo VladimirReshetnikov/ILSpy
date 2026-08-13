@@ -24,6 +24,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
+using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.IL.Transforms;
@@ -196,6 +197,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				InsertVariableDeclarations(context);
 				UpdateAnnotations(rootNode);
 				InferLegacyScopedInParameters(rootNode);
+				HoistEscapingInArgumentTemporaries(rootNode);
 			}
 			finally
 			{
@@ -275,8 +277,131 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		bool ModuleUsesModernRefSafetyRules()
 		{
-			return context.TypeSystem.MainModule.GetModuleAttributes().Any(attribute =>
+			return ModuleUsesModernRefSafetyRules(context.TypeSystem.MainModule);
+		}
+
+		static bool ModuleUsesModernRefSafetyRules(IModule? module)
+		{
+			return module != null && module.GetModuleAttributes().Any(attribute =>
 				attribute.AttributeType.FullName == "System.Runtime.CompilerServices.RefSafetyRulesAttribute");
+		}
+
+		/// <summary>
+		/// Rewrites calls that cannot recompile under modern ref-safety rules because a constant fed
+		/// to an unannotated <c>in</c> parameter would live in a compiler temporary: when the callee
+		/// returns a ref struct, the temporary's reference may escape into the returned value, so the
+		/// result may not be assigned to a variable declared in an outer scope (CS8347/CS8349). The
+		/// constant is hoisted into a local declared in the destination variable's own scope, which
+		/// is exactly as far as the assignment lets the reference escape.
+		/// </summary>
+		void HoistEscapingInArgumentTemporaries(AstNode rootNode)
+		{
+			foreach (var invocation in rootNode.Descendants.OfType<InvocationExpression>().ToList())
+			{
+				if (invocation.GetSymbol() is not IMethod method || !method.ReturnType.IsByRefLike)
+					continue;
+				// Only an assignment whose target lives in an outer scope makes the call site
+				// illegal; a declaration initializer narrows the fresh variable's scope instead.
+				if (invocation.Parent is not AssignmentExpression {
+					Operator: AssignmentOperatorType.Assign,
+					Left: IdentifierExpression destination
+				} assignment
+					|| assignment.Right != invocation
+					|| assignment.Parent is not ExpressionStatement statement
+					|| statement.Parent is not BlockStatement statementBlock
+					|| destination.GetILVariable() is not { } destinationVariable)
+				{
+					continue;
+				}
+				var destinationDeclaration = rootNode.Descendants.OfType<VariableDeclarationStatement>()
+					.FirstOrDefault(candidate => candidate.Variables.Count == 1
+						&& candidate.Variables.Single().GetILVariable() == destinationVariable);
+				if (destinationDeclaration?.Parent is not BlockStatement destinationBlock
+					|| destinationBlock == statementBlock
+					|| !statement.Ancestors.Contains(destinationBlock))
+				{
+					continue;
+				}
+				// A method imported from a module without ref-safety metadata is bound under the
+				// legacy rules, where a reference to a temporary cannot escape into the result.
+				if (!ModuleUsesModernRefSafetyRules(method.ParentModule))
+					continue;
+				var arguments = invocation.Arguments.ToArray();
+				int parameterOffset = method.Parameters.Count - arguments.Length;
+				if (parameterOffset is not (0 or 1)
+					|| arguments.Any(argument => argument is NamedArgumentExpression)
+					|| invocation.Annotation<CSharpInvocationResolveResult>() is { IsExpandedForm: true })
+				{
+					continue;
+				}
+				for (int i = 0; i < arguments.Length; i++)
+				{
+					IParameter parameter = method.Parameters[i + parameterOffset];
+					Expression argument = arguments[i];
+					if (parameter.ReferenceKind is not (ReferenceKind.In or ReferenceKind.RefReadOnly)
+						|| parameter.Lifetime.ScopedRef
+						|| HasExplicitUnscopedRefAttribute(parameter)
+						|| parameter.Type is not ByReferenceType byReference
+						|| byReference.ElementType.IsByRefLike)
+					{
+						continue;
+					}
+					// An lvalue argument keeps the scope of the storage it names; only a constant
+					// may move to the destination's scope without changing observable behavior.
+					if (argument is IdentifierExpression or MemberReferenceExpression or DirectionExpression
+						|| argument.GetResolveResult() is not { IsCompileTimeConstant: true })
+					{
+						continue;
+					}
+					AstNode anchor = statement;
+					while (anchor.Parent != destinationBlock)
+					{
+						anchor = anchor.Parent!;
+					}
+					if (anchor is not Statement anchorStatement)
+						continue;
+					context.Step("Hoist in-argument temporary into the destination's scope", argument);
+					AstNode nameScope = statement.Ancestors.OfType<EntityDeclaration>().FirstOrDefault() ?? rootNode;
+					string name = PickUnusedVariableName(nameScope,
+						string.IsNullOrEmpty(parameter.Name) ? "value" : parameter.Name);
+					var variable = new ILVariable(VariableKind.Local, byReference.ElementType) {
+						Name = name
+					};
+					var replacement = new IdentifierExpression(name);
+					replacement.AddAnnotation(new ILVariableResolveResult(variable, byReference.ElementType));
+					argument.ReplaceWith(replacement);
+					var declaration = new VariableDeclarationStatement(
+						context.TypeSystemAstBuilder.ConvertType(byReference.ElementType), name, argument);
+					declaration.Variables.Single().AddAnnotation(new ILVariableResolveResult(variable, byReference.ElementType));
+					destinationBlock.Statements.InsertBefore(anchorStatement, declaration);
+					context.EndStep(declaration);
+				}
+			}
+		}
+
+		static string PickUnusedVariableName(AstNode rootNode, string baseName)
+		{
+			var usedNames = new HashSet<string>(StringComparer.Ordinal);
+			foreach (var node in rootNode.DescendantsAndSelf)
+			{
+				string? usedName = node switch {
+					IdentifierExpression identifier => identifier.Identifier,
+					VariableInitializer initializer => initializer.Name,
+					ParameterDeclaration parameter => parameter.Name,
+					SingleVariableDesignation designation => designation.Identifier,
+					_ => null
+				};
+				if (!string.IsNullOrEmpty(usedName))
+					usedNames.Add(usedName);
+			}
+			if (!usedNames.Contains(baseName))
+				return baseName;
+			for (int i = 2; ; i++)
+			{
+				string candidate = baseName + i;
+				if (!usedNames.Contains(candidate))
+					return candidate;
+			}
 		}
 
 		static bool HasExplicitUnscopedRefAttribute(IParameter parameter)

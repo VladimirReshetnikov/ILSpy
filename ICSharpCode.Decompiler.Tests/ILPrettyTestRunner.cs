@@ -891,6 +891,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ModernRefSafetyHoistedInArgument()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task SelfReferencingDelegate()
 		{
 			await Run();
