@@ -897,6 +897,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ConstructorHelperMethod()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task SelfReferencingDelegate()
 		{
 			await Run();

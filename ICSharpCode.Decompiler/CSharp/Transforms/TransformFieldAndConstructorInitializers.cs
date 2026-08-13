@@ -560,10 +560,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 				// Any local read inside the call arguments is illegal once the call becomes an
 				// initializer (the initializer runs before the body that declares the local), so
-				// fold its declaration into the arguments. Bail if that cannot be done safely.
+				// fold its declaration into the arguments. Where no expression can absorb the
+				// leading statements (a value built by loops or branches), extract them into a
+				// synthesized static helper method instead. Bail if neither can be done safely.
 				if (stmt != constructorDeclaration.Body.Statements.FirstOrDefault()
 					&& !TryFoldLeadingTemporariesIntoConstructorCall(
-						constructorDeclaration.Body, stmt, invocation, ctorMethod, ctor))
+						constructorDeclaration.Body, stmt, invocation, ctorMethod, ctor)
+					&& !TryExtractConstructorArgumentHelper(
+						constructorDeclaration, stmt, invocation, ctorMethod, ctor))
 				{
 					return false;
 				}
@@ -745,6 +749,280 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 
 				return true;
+			}
+
+			/// <summary>
+			/// Moves the statements preceding a chained constructor call into a synthesized private
+			/// static helper method returning the one argument that depends on them, and calls the
+			/// helper inside the constructor initializer. This covers argument values computed by
+			/// statement-level control flow (loops, branches) that no expression rewrite can absorb.
+			/// The statements must be pure local computation: anything that reads or writes the
+			/// object under construction, escapes a constructor parameter by reference, or leaks a
+			/// local past the call keeps the constructor as it is (and the output uncompilable, but
+			/// that is the fallback this method exists to avoid).
+			/// </summary>
+			private bool TryExtractConstructorArgumentHelper(ConstructorDeclaration constructorDeclaration,
+				Statement callStatement, AstNode invocation, IMethod currentConstructor, IMethod calledConstructor)
+			{
+				if (TypeDeclaration == null || constructorDeclaration.Parent != TypeDeclaration)
+					return false;
+				BlockStatement? body = constructorDeclaration.Body;
+				if (body == null)
+					return false;
+				var region = body.Statements.TakeWhile(s => s != callStatement).ToArray();
+				if (region.Length == 0)
+					return false;
+
+				// The region must be self-contained local computation a static method can host.
+				foreach (var node in region.SelectMany(s => s.DescendantsAndSelf))
+				{
+					switch (node)
+					{
+						case ThisReferenceExpression:
+						case BaseReferenceExpression:
+						case ReturnStatement:
+						case YieldReturnStatement:
+						case YieldBreakStatement:
+						case GotoStatement:
+						case GotoCaseStatement:
+						case GotoDefaultStatement:
+						case LabelStatement:
+						case LocalFunctionDeclarationStatement:
+							return false;
+						case IdentifierExpression identifier
+							when identifier.GetSymbol() is IMember { IsStatic: false }:
+							// An unqualified instance-member reference reads the object under
+							// construction, which a static helper cannot observe.
+							return false;
+						case AssignmentExpression { Left: IdentifierExpression assigned }
+							when assigned.GetILVariable() is { Kind: VariableKind.Parameter }:
+						case DirectionExpression { Expression: IdentifierExpression directed }
+							when directed.GetILVariable() is { Kind: VariableKind.Parameter }:
+						case UnaryOperatorExpression {
+							Operator: UnaryOperatorType.Increment or UnaryOperatorType.Decrement
+								or UnaryOperatorType.PostIncrement or UnaryOperatorType.PostDecrement,
+							Expression: IdentifierExpression mutated
+						} when mutated.GetILVariable() is { Kind: VariableKind.Parameter }:
+							// The helper receives parameters by value, so a write to one would be
+							// lost for the initializer arguments evaluated afterwards.
+							return false;
+					}
+				}
+
+				// Collect the constructor parameters the region reads and the locals it defines.
+				var parameterVariables = new List<ILVariable>();
+				var regionLocals = new HashSet<ILVariable>();
+				bool CollectVariables(IEnumerable<AstNode> nodes)
+				{
+					foreach (var node in nodes)
+					{
+						ILVariable? variable = node switch {
+							IdentifierExpression identifier => identifier.GetILVariable(),
+							VariableInitializer initializer => initializer.GetILVariable(),
+							SingleVariableDesignation designation => designation.Annotation<ILVariableResolveResult>()?.Variable,
+							_ => null
+						};
+						if (variable == null)
+							continue;
+						if (variable.Kind == VariableKind.Parameter)
+						{
+							if (variable.Index is not >= 0)
+								return false; // 'this'
+							if (!parameterVariables.Contains(variable))
+								parameterVariables.Add(variable);
+						}
+						else
+						{
+							regionLocals.Add(variable);
+						}
+					}
+					return true;
+				}
+				if (!CollectVariables(region.SelectMany(s => s.DescendantsAndSelf)))
+					return false;
+
+				// Exactly one argument may depend on the region's locals; it becomes the helper's
+				// return value. Named arguments keep their name, only the value moves.
+				var arguments = invocation.GetChildren(Slots.Argument).OfType<Expression>().ToArray();
+				static Expression ArgumentValue(Expression argument)
+					=> argument is NamedArgumentExpression named ? named.Expression : argument;
+				int dependentIndex = -1;
+				for (int i = 0; i < arguments.Length; i++)
+				{
+					bool referencesLocals = ArgumentValue(arguments[i]).DescendantsAndSelf
+						.OfType<IdentifierExpression>()
+						.Any(id => id.GetILVariable() is { Kind: not VariableKind.Parameter });
+					if (!referencesLocals)
+						continue;
+					if (dependentIndex >= 0)
+						return false;
+					dependentIndex = i;
+				}
+				if (dependentIndex < 0)
+					return false;
+				Expression dependentArgument = ArgumentValue(arguments[dependentIndex]);
+				if (dependentArgument.DescendantsAndSelf.Any(n => n is ThisReferenceExpression
+					or BaseReferenceExpression or DirectionExpression or StackAllocExpression))
+				{
+					return false;
+				}
+				if (!CollectVariables(dependentArgument.DescendantsAndSelf))
+					return false;
+
+				// The region's locals die inside the helper, so no use may survive elsewhere.
+				foreach (var identifier in body.DescendantsAndSelf.OfType<IdentifierExpression>())
+				{
+					if (identifier.GetILVariable() is not { } variable || !regionLocals.Contains(variable))
+						continue;
+					if (!region.Any(s => s.DescendantsAndSelf.Contains(identifier))
+						&& !dependentArgument.DescendantsAndSelf.Contains(identifier))
+					{
+						return false;
+					}
+				}
+
+				// Arguments printed before the dependent one will evaluate before the region's
+				// statements, which originally ran first; only values the reorder cannot observe
+				// may precede the helper call.
+				for (int i = 0; i < dependentIndex; i++)
+				{
+					if (!IsSafeToEvaluateBeforeHelper(ArgumentValue(arguments[i])))
+						return false;
+				}
+
+				// The helper's return type is the called constructor's parameter type, which also
+				// target-types the returned expression exactly like the argument position did.
+				var resolveResult = invocation.Annotation<CSharpInvocationResolveResult>();
+				int parameterIndex;
+				if (resolveResult != null)
+				{
+					if (resolveResult.IsExpandedForm)
+						return false;
+					var map = resolveResult.GetArgumentToParameterMap();
+					parameterIndex = map != null && dependentIndex < map.Count ? map[dependentIndex] : dependentIndex;
+				}
+				else if (arguments[dependentIndex] is NamedArgumentExpression)
+				{
+					return false;
+				}
+				else
+				{
+					parameterIndex = dependentIndex;
+				}
+				if (parameterIndex < 0 || parameterIndex >= calledConstructor.Parameters.Count)
+					return false;
+				var calledParameter = calledConstructor.Parameters[parameterIndex];
+				if (calledParameter.ReferenceKind != ReferenceKind.None)
+					return false;
+				IType returnType = calledParameter.Type;
+				if (returnType.Kind is TypeKind.Pointer or TypeKind.ByReference or TypeKind.FunctionPointer
+					or TypeKind.Unknown or TypeKind.None or TypeKind.ArgList)
+				{
+					return false;
+				}
+				foreach (var parameterVariable in parameterVariables)
+				{
+					var ctorParameter = currentConstructor.Parameters.ElementAtOrDefault(parameterVariable.Index!.Value);
+					if (ctorParameter == null || ctorParameter.ReferenceKind != ReferenceKind.None
+						|| string.IsNullOrEmpty(parameterVariable.Name))
+					{
+						return false;
+					}
+				}
+				parameterVariables.Sort((a, b) => a.Index!.Value.CompareTo(b.Index!.Value));
+
+				string helperName = PickHelperName(calledParameter.Name);
+
+				context.Step("Extract constructor argument computation into helper method", callStatement);
+				var helper = new MethodDeclaration {
+					Name = helperName,
+					Modifiers = Modifiers.Private | Modifiers.Static,
+					ReturnType = context.TypeSystemAstBuilder.ConvertType(returnType),
+				};
+				if (constructorDeclaration.HasModifier(Modifiers.Unsafe))
+					helper.Modifiers |= Modifiers.Unsafe;
+				foreach (var parameterVariable in parameterVariables)
+				{
+					var ctorParameter = currentConstructor.Parameters[parameterVariable.Index!.Value];
+					var parameterDeclaration = new ParameterDeclaration {
+						Type = context.TypeSystemAstBuilder.ConvertType(ctorParameter.Type),
+						Name = parameterVariable.Name!
+					};
+					parameterDeclaration.AddAnnotation(new ILVariableResolveResult(parameterVariable));
+					helper.Parameters.Add(parameterDeclaration);
+				}
+				helper.AddLeadingTrivia(new Comment(
+					" ILSpy synthesized this method: the argument it returns is computed by statements,"
+					+ " which a constructor initializer cannot contain."));
+				var helperBody = new BlockStatement();
+				foreach (var statement in region)
+				{
+					statement.Remove();
+					helperBody.Add(statement);
+				}
+				var helperCall = new InvocationExpression(new IdentifierExpression(helperName),
+					parameterVariables.Select(v => {
+						var argument = new IdentifierExpression(v.Name!);
+						argument.AddAnnotation(new ILVariableResolveResult(v));
+						return (Expression)argument;
+					}));
+				helperCall.AddAnnotation(new ResolveResult(returnType));
+				dependentArgument.ReplaceWith(helperCall);
+				helperBody.Add(new ReturnStatement(dependentArgument));
+				helper.Body = helperBody;
+				TypeDeclaration.Members.InsertAfter(constructorDeclaration, helper);
+				context.EndStep(helper);
+				return true;
+			}
+
+			/// <summary>
+			/// True for values that may be cloned ahead of the synthesized helper call without an
+			/// observable difference: stable values and fresh allocations built from them.
+			/// </summary>
+			private static bool IsSafeToEvaluateBeforeHelper(Expression expression)
+			{
+				if (IsStableValue(expression))
+					return true;
+				switch (expression)
+				{
+					case CastExpression cast:
+						return IsSafeToEvaluateBeforeHelper(cast.Expression);
+					case ArrayCreateExpression arrayCreate:
+						return arrayCreate.Arguments.All(IsSafeToEvaluateBeforeHelper)
+							&& (arrayCreate.Initializer == null
+								|| arrayCreate.Initializer.Elements.All(IsSafeToEvaluateBeforeHelper));
+					case ArrayInitializerExpression initializer:
+						return initializer.Elements.All(IsSafeToEvaluateBeforeHelper);
+					case CollectionExpression collection:
+						return collection.Elements.All(IsSafeToEvaluateBeforeHelper);
+					default:
+						return false;
+				}
+			}
+
+			private string PickHelperName(string parameterName)
+			{
+				string baseName = "ILSpyHelper_Compute" + (string.IsNullOrEmpty(parameterName)
+					? "Argument"
+					: char.ToUpperInvariant(parameterName[0]) + parameterName.Substring(1));
+				var usedNames = new HashSet<string>(StringComparer.Ordinal);
+				foreach (var member in TypeDefinition.GetMembers())
+					usedNames.Add(member.Name);
+				foreach (var nestedType in TypeDefinition.NestedTypes)
+					usedNames.Add(nestedType.Name);
+				if (TypeDeclaration != null)
+				{
+					foreach (var member in TypeDeclaration.Members)
+						usedNames.Add(member.Name);
+				}
+				if (!usedNames.Contains(baseName))
+					return baseName;
+				for (int i = 2; ; i++)
+				{
+					string candidate = baseName + i;
+					if (!usedNames.Contains(candidate))
+						return candidate;
+				}
 			}
 
 			private bool TryReplaceExplicitInTemporaryUse(AstNode invocation, IMethod currentConstructor,
