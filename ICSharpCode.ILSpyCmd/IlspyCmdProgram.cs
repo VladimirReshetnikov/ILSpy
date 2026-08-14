@@ -177,6 +177,9 @@ Examples:
 		[Option("-d|--dump-package", "Dump package assemblies into a folder. This requires the output directory option.", CommandOptionType.NoValue)]
 		public bool DumpPackageFlag { get; }
 
+		[Option("--generate-stub <assembly-simple-name>", "Generate a stub project for the named dependency: C# declarations of every type and member the input assemblies reference from it, reconstructed from their metadata. Repeatable; requires the output directory option. The inputs are only read, not decompiled.", CommandOptionType.MultipleValue)]
+		public string[] StubAssemblyNames { get; }
+
 		[Option("--nested-directories", "Use nested directories for namespaces.", CommandOptionType.NoValue)]
 		public bool NestedDirectories { get; }
 
@@ -253,7 +256,40 @@ Examples:
 
 			try
 			{
-				if (CreateCompilableProjectFlag)
+				if (StubAssemblyNames is { Length: > 0 })
+				{
+					var openedFiles = new List<PEFile>();
+					try
+					{
+						ICSharpCode.Decompiler.CSharp.ProjectDecompiler.StubAssemblyGenerator stubGenerator = null;
+						foreach (var file in InputAssemblyNames)
+						{
+							var consumer = new PEFile(file);
+							openedFiles.Add(consumer);
+							if (stubGenerator == null)
+							{
+								var stubResolver = new UniversalAssemblyResolver(file, false, consumer.Metadata.DetectTargetFrameworkId());
+								foreach (var path in (ReferencePaths ?? Array.Empty<string>()))
+								{
+									stubResolver.AddSearchDirectory(path);
+								}
+								stubGenerator = new ICSharpCode.Decompiler.CSharp.ProjectDecompiler.StubAssemblyGenerator(stubResolver);
+							}
+							stubGenerator.AddConsumer(consumer);
+						}
+						foreach (var stubName in StubAssemblyNames)
+						{
+							stubGenerator.GenerateProject(stubName, outputDirectory);
+						}
+					}
+					finally
+					{
+						foreach (var consumer in openedFiles)
+							consumer.Dispose();
+					}
+					return 0;
+				}
+				else if (CreateCompilableProjectFlag)
 				{
 					if (InputAssemblyNames.Length == 1)
 					{
