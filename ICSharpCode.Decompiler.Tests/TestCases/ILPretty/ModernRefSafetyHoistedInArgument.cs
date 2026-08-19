@@ -9,7 +9,7 @@ public static class StringExtensions
 
 	public static void Walk(string text)
 	{
-		ReadOnlySpan<char> span = MemoryExtensions.AsSpan(text).SliceOffAfterLast('.');
+		ReadOnlySpan<char> span = text.SliceOffAfterLast('.');
 		char delimiter = '.';
 		while (span.Length > 0)
 		{

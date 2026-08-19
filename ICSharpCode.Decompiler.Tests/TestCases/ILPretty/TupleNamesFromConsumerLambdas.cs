@@ -56,7 +56,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.ILPretty
 		public static int Conflict(IEnumerable<(int, int)> input)
 		{
 			IEnumerable<(int, int)> source = input.PassThrough();
-			return source.Select<(int, int), int>(((int left, int right) pair) => pair.left).First() + source.Select<(int, int), int>(((int x, int y) pair) => pair.y).First();
+			return source.Select(((int left, int right) pair) => pair.left).First() + source.Select(((int x, int y) pair) => pair.y).First();
 		}
 
 		public static (int left, int right)[] ProjectionQuery(IEnumerable<(int, int)> input)
