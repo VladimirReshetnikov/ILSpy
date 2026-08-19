@@ -347,11 +347,14 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		IEnumerable<ProjectItemInfo> WriteCodeFilesInProject(MetadataFile module, IList<PartialTypeInfo> partialTypes, CancellationToken cancellationToken)
 		{
 			var metadata = module.Metadata;
-			var files = module.Metadata.GetTopLevelTypeDefinitions().Where(td => IncludeTypeWhenDecompilingProject(module, td))
+			DecompilerTypeSystem ts = new DecompilerTypeSystem(module, AssemblyResolver, Settings);
+			var exportedTypes = module.Metadata.GetTopLevelTypeDefinitions().Where(td => IncludeTypeWhenDecompilingProject(module, td)).ToList();
+			// A file-local type has to share its generated file with the types that use it.
+			var fileLocalPlacement = FileLocalTypePlacement.Create(ts.MainModule, exportedTypes);
+			var files = exportedTypes
 				.GroupBy(GetFileFileNameForHandle, StringComparer.OrdinalIgnoreCase).ToList();
 			var progressReporter = ProgressIndicator;
 			var progress = new DecompilationProgress { TotalUnits = files.Count, Title = "Exporting project..." };
-			DecompilerTypeSystem ts = new DecompilerTypeSystem(module, AssemblyResolver, Settings);
 			var missingFiles = new ConcurrentBag<string>();
 			var workList = new HashSet<TypeDefinitionHandle>();
 			var processedTypes = new HashSet<TypeDefinitionHandle>();
@@ -385,8 +388,18 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			string GetFileFileNameForHandle(TypeDefinitionHandle h)
 			{
 				var type = metadata.GetTypeDefinition(h);
-				string file = CleanUpFileName(metadata.GetString(type.Name), ".cs");
-				string ns = metadata.GetString(type.Namespace);
+				string file;
+				string ns;
+				if (fileLocalPlacement?.GetPlacement(h) is { } placement)
+				{
+					file = CleanUpFileName(placement.SourceFile, ".cs");
+					ns = placement.Namespace;
+				}
+				else
+				{
+					file = CleanUpFileName(metadata.GetString(type.Name), ".cs");
+					ns = metadata.GetString(type.Namespace);
+				}
 				if (string.IsNullOrEmpty(ns))
 				{
 					return file;
