@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Reflection.Metadata;
 
@@ -989,8 +988,13 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			// container: that happens for members synthesized from metadata references which could
 			// not be resolved, where the declaring type stays an unresolved type reference rather
 			// than becoming a type definition.
+			// Such members reach this point routinely - the overload-resolution-priority comparison
+			// asks it of every candidate at a call site where resolution did not land on the expected
+			// method, and a missing dependency is the ordinary way to get there - so the answer is
+			// simply "no", never a crash.
 			var td = member.DeclaringTypeDefinition;
-			Debug.Assert(td != null, "IMember.DeclaringTypeDefinition should never be null");
+			if (td == null)
+				return null;
 			var info = td.DeclaringTypeDefinition?.ExtensionInfo ?? td.DeclaringTypeDefinition?.DeclaringTypeDefinition?.ExtensionInfo;
 			if (info == null)
 				return null;
