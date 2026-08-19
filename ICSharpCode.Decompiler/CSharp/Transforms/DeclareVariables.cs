@@ -1187,6 +1187,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 								init.AddAnnotation(annotation);
 							}
 						}
+						if (context.Settings.ScopedRef && v.ILVariable.IsScoped)
+						{
+							vds.Modifiers |= Modifiers.Scoped;
+						}
 						return vds;
 					}, "Combine variable declaration with initializer"));
 				}
@@ -1261,6 +1265,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						initializer = new DefaultValueExpression(type.Clone());
 					}
 					var vds = new VariableDeclarationStatement(type, v.Name, initializer);
+					if (context.Settings.ScopedRef && v.ILVariable.IsScopedWithoutInitializer)
+					{
+						vds.Modifiers |= Modifiers.Scoped;
+					}
 					vds.Variables.Single().AddAnnotation(new ILVariableResolveResult(ilVariable));
 					if (context.Settings.ScopedRef && v.Type.IsByRefLike
 						&& ShouldDeclareByRefLikeLocalScoped(v))

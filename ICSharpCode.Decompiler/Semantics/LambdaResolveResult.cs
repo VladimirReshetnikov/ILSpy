@@ -19,10 +19,10 @@
 using System;
 using System.Collections.Generic;
 
-using ICSharpCode.Decompiler.Semantics;
+using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.TypeSystem;
 
-namespace ICSharpCode.Decompiler.CSharp.Resolver
+namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
 	/// Represents an anonymous method or lambda expression.
@@ -93,11 +93,6 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 		/// Returns a resolve result for 'void' for statement lambdas.
 		/// </summary>
 		public abstract ResolveResult Body { get; }
-
-		public override IEnumerable<ResolveResult> GetChildResults()
-		{
-			return new[] { this.Body };
-		}
 	}
 
 	sealed class DecompiledLambdaResolveResult : LambdaResolveResult
@@ -111,6 +106,15 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 		/// performs an implicit conversion.
 		/// </summary>
 		public IType InferredReturnType;
+
+		/// <summary>
+		/// Set to true if overload resolution might be able to call
+		/// the wrong method if this lambda's parameter types are removed.
+		/// Also set on minor type mismatches (e.g. tuple element names)
+		/// that don't affect overload resolution, but could render the
+		/// lambda body invalid if the lambda's parameter types were removed.
+		/// </summary>
+		public bool AttemptedConversionWithTypeMismatch = false;
 
 		public DecompiledLambdaResolveResult(IL.ILFunction function,
 			IType delegateType,
@@ -142,7 +146,13 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 		{
 			// We don't know how to compute which type would be inferred if
 			// given other parameter types.
-			// Let's hope this is good enough:
+			// But: initially, our lambdas always have explicit parameter types
+			// (except anonymous types...),
+			// so it's correct to say that the parameter types of the delegate we're
+			// converting to don't matter -- we always have the inferred return type
+			// from our body.
+			// Later, we may drop explicit parameter types, but only if this
+			// doesn't change our actual parameter types.
 			return InferredReturnType;
 		}
 
@@ -155,11 +165,18 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 					return Conversion.None;
 				for (int i = 0; i < parameterTypes.Length; ++i)
 				{
+					if (parameterTypes[i].Equals(this.Parameters[i].Type))
+					{
+						continue;
+					}
+					this.AttemptedConversionWithTypeMismatch = true;
 					if (!conversions.IdentityConversion(parameterTypes[i], this.Parameters[i].Type))
 					{
 						if (IsImplicitlyTyped)
 						{
 							// it's possible that different parameter types also lead to a valid conversion
+							// Note that this case is currently only reachable when ExpressionBuilder
+							// omits lambda parameters due to anonymous methods.
 							return LambdaConversion.Instance;
 						}
 						else

@@ -32,7 +32,6 @@ using ICSharpCode.Decompiler.CSharp.OutputVisitor;
 using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Transforms;
-using ICSharpCode.Decompiler.CSharp.TypeSystem;
 using ICSharpCode.Decompiler.DebugSteps;
 using ICSharpCode.Decompiler.DebugInfo;
 using ICSharpCode.Decompiler.Disassembler;
@@ -183,6 +182,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				new RemoveRedundantReturn(),
 				new IntroduceDynamicTypeOnLocals(),
 				new IntroduceNativeIntTypeOnLocals(),
+				new IntroduceScopedModifierOnLocals(),
 				new IntroduceTupleElementNamesOnLocals(),
 				new AssignVariableNames(),
 				new AssignDefaultToUnassignedOutParameters(),
@@ -1791,7 +1791,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				methodDecl.Body.Add(commentStatement);
 				var forwardingTarget = new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name,
 					methodDecl.TypeParameters.Select(tp => new SimpleType(tp.Name)));
-				forwardingTarget.AddAnnotation(new MemberResolveResult(new ThisResolveResult(method.DeclaringType), method));
+				forwardingTarget.AddAnnotation(new MemberResolveResult(new TypeResolveResult(method.DeclaringType), method));
 				var forwardingCall = new InvocationExpression(forwardingTarget,
 					methodDecl.Parameters.Select(ForwardParameter)
 				);
@@ -2062,7 +2062,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				else
 				{
 					target = new ThisReferenceExpression();
-					targetResolveResult = new ThisResolveResult(property.DeclaringType);
+					targetResolveResult = new TypeResolveResult(property.DeclaringType);
 				}
 				var arguments = declaration.Parameters.Take(property.Parameters.Count).Select(ForwardParameter);
 				Expression access = property.IsIndexer
@@ -2207,7 +2207,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			InvocationExpression CreateForwardingCall(IMethod implementation, IEnumerable<Expression> arguments)
 			{
 				var target = new MemberReferenceExpression(new ThisReferenceExpression(), implementation.Name);
-				target.AddAnnotation(new MemberResolveResult(new ThisResolveResult(implementation.DeclaringType), implementation));
+				target.AddAnnotation(new MemberResolveResult(new TypeResolveResult(implementation.DeclaringType), implementation));
 				return new InvocationExpression(target, arguments);
 			}
 
@@ -2280,7 +2280,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				{
 					var getter = new Accessor { Body = new BlockStatement() };
 					var propertyReference = new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name);
-					propertyReference.AddAnnotation(new MemberResolveResult(new ThisResolveResult(property.DeclaringType), property));
+					propertyReference.AddAnnotation(new MemberResolveResult(new TypeResolveResult(property.DeclaringType), property));
 					var returnStatement = new ReturnStatement(propertyReference);
 					// Attach the comment as trivia rather than as a statement of its own, so a
 					// single-return getter still collapses to an expression-bodied property.
@@ -2293,7 +2293,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				{
 					var setter = new Accessor { Body = new BlockStatement() };
 					var propertyReference = new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name);
-					propertyReference.AddAnnotation(new MemberResolveResult(new ThisResolveResult(property.DeclaringType), property));
+					propertyReference.AddAnnotation(new MemberResolveResult(new TypeResolveResult(property.DeclaringType), property));
 					var assignmentStatement = new ExpressionStatement(new AssignmentExpression(
 						propertyReference,
 						new IdentifierExpression("value")));
@@ -2341,7 +2341,7 @@ namespace ICSharpCode.Decompiler.CSharp
 					{
 						propertyAccess = new MemberReferenceExpression(new ThisReferenceExpression(), memberDecl.Name);
 					}
-					propertyAccess.AddAnnotation(new MemberResolveResult(new ThisResolveResult(property.DeclaringType), property));
+					propertyAccess.AddAnnotation(new MemberResolveResult(new TypeResolveResult(property.DeclaringType), property));
 
 					Statement statement;
 					if (accessor.AccessorKind == System.Reflection.MethodSemanticsAttributes.Getter)
@@ -2396,7 +2396,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				// event symbol rather than from memberDecl, which would be empty for an automatic event.
 				var addAccessor = new Accessor { Body = new BlockStatement() };
 				var addReference = new MemberReferenceExpression(new ThisReferenceExpression(), @event.Name);
-				addReference.AddAnnotation(new MemberResolveResult(new ThisResolveResult(@event.DeclaringType), @event));
+				addReference.AddAnnotation(new MemberResolveResult(new TypeResolveResult(@event.DeclaringType), @event));
 				var addStatement = new ExpressionStatement(new AssignmentExpression(
 					addReference,
 					AssignmentOperatorType.Add, new IdentifierExpression("value")));
@@ -2405,7 +2405,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				eventDecl.AddAccessor = addAccessor;
 				var removeAccessor = new Accessor { Body = new BlockStatement() };
 				var removeReference = new MemberReferenceExpression(new ThisReferenceExpression(), @event.Name);
-				removeReference.AddAnnotation(new MemberResolveResult(new ThisResolveResult(@event.DeclaringType), @event));
+				removeReference.AddAnnotation(new MemberResolveResult(new TypeResolveResult(@event.DeclaringType), @event));
 				removeAccessor.Body.Add(new ExpressionStatement(new AssignmentExpression(
 					removeReference,
 					AssignmentOperatorType.Subtract, new IdentifierExpression("value"))));

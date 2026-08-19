@@ -16,35 +16,24 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.Collections.Generic;
 using System.Globalization;
 
-using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
 
-namespace ICSharpCode.Decompiler.CSharp.Resolver
+namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents a dynamic member-access operation (for example, <c>target.Member</c> where the runtime binder decides the member).
+	/// Represents the result of an access to a member of a dynamic object.
 	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// The result type is always <see cref="SpecialType.Dynamic"/>, because compile-time overload and member selection are deferred
-	/// to the C# dynamic runtime binder.
-	/// </para>
-	/// <para>
-	/// This node captures syntactic intent only: it records the access target and member name without proving that the member exists.
-	/// </para>
-	/// </remarks>
 	public class DynamicMemberResolveResult : ResolveResult
 	{
 		/// <summary>
-		/// Gets the dynamic access target expression.
+		/// Target of the member access (a dynamic object).
 		/// </summary>
 		public readonly ResolveResult Target;
 
 		/// <summary>
-		/// Gets the member name requested from <see cref="Target"/>.
+		/// Name of the accessed member.
 		/// </summary>
 		public readonly string Member;
 
@@ -54,12 +43,6 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 		/// </summary>
 		public readonly IMember Symbol;
 
-		/// <summary>
-		/// Initializes a dynamic member-access resolve result.
-		/// </summary>
-		/// <param name="target">The expression on which the member is accessed.</param>
-		/// <param name="member">The member name that will be looked up by the runtime binder.</param>
-		/// <param name="symbol">Optional synthesized member standing in for the member the binder will pick.</param>
 		public DynamicMemberResolveResult(ResolveResult target, string member, IMember symbol = null) : base(SpecialType.Dynamic)
 		{
 			this.Target = target;
@@ -67,22 +50,9 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			this.Symbol = symbol;
 		}
 
-		/// <summary>
-		/// Returns a debugger-oriented textual representation of this resolve result.
-		/// </summary>
-		/// <returns>A string containing the dynamic member name.</returns>
 		public override string ToString()
 		{
 			return string.Format(CultureInfo.InvariantCulture, "[Dynamic member '{0}']", Member);
-		}
-
-		/// <summary>
-		/// Returns child semantic results used by this dynamic member-access node.
-		/// </summary>
-		/// <returns>A single-item sequence containing <see cref="Target"/>.</returns>
-		public override IEnumerable<ResolveResult> GetChildResults()
-		{
-			return new[] { Target };
 		}
 	}
 }

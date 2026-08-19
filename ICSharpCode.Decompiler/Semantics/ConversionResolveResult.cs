@@ -17,35 +17,20 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Generic;
 
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents classification of an implicit or explicit conversion applied to an input expression.
+	/// Represents an implicit or explicit type conversion.
+	/// <c>conversionResolveResult.Input.Type</c> is the source type;
+	/// <c>conversionResolveResult.Type</c> is the target type.
+	/// The <see cref="Conversion"/> property provides details about the kind of conversion.
 	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// The source type is available as <see cref="Input"/>.<see cref="ResolveResult.Type"/>, while the target type is
-	/// the inherited <see cref="ResolveResult.Type"/> on this instance.
-	/// </para>
-	/// <para>
-	/// <see cref="Conversion"/> captures the conversion category and metadata (for example selected user-defined operator),
-	/// but this node does not execute conversion semantics itself.
-	/// </para>
-	/// </remarks>
 	public class ConversionResolveResult : ResolveResult
 	{
-		/// <summary>
-		/// Gets the expression being converted.
-		/// </summary>
 		public readonly ResolveResult Input;
-
-		/// <summary>
-		/// Gets the conversion classification selected by the resolver.
-		/// </summary>
 		public readonly Conversion Conversion;
 
 		/// <summary>
@@ -53,13 +38,6 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// </summary>
 		public readonly bool CheckForOverflow;
 
-		/// <summary>
-		/// Initializes a conversion resolve result.
-		/// </summary>
-		/// <param name="targetType">Target type of the conversion.</param>
-		/// <param name="input">Expression being converted.</param>
-		/// <param name="conversion">Conversion category and metadata selected by the resolver.</param>
-		/// <exception cref="ArgumentNullException"><paramref name="input"/> or <paramref name="conversion"/> is <see langword="null"/>.</exception>
 		public ConversionResolveResult(IType targetType, ResolveResult input, Conversion conversion)
 			: base(targetType)
 		{
@@ -71,35 +49,14 @@ namespace ICSharpCode.Decompiler.Semantics
 			this.Conversion = conversion;
 		}
 
-		/// <summary>
-		/// Initializes a conversion resolve result with explicit overflow-checking metadata.
-		/// </summary>
-		/// <param name="targetType">Target type of the conversion.</param>
-		/// <param name="input">Expression being converted.</param>
-		/// <param name="conversion">Conversion category and metadata selected by the resolver.</param>
-		/// <param name="checkForOverflow"><see langword="true"/> when numeric conversion semantics are in checked context.</param>
 		public ConversionResolveResult(IType targetType, ResolveResult input, Conversion conversion, bool checkForOverflow)
 			: this(targetType, input, conversion)
 		{
 			this.CheckForOverflow = checkForOverflow;
 		}
 
-		/// <summary>
-		/// Gets whether conversion classification reported an error.
-		/// </summary>
-		/// <returns><see langword="true"/> when <see cref="Conversion.IsValid"/> is <see langword="false"/>; otherwise <see langword="false"/>.</returns>
 		public override bool IsError {
 			get { return !Conversion.IsValid; }
 		}
-
-		/// <summary>
-		/// Enumerates child resolve results for this conversion node.
-		/// </summary>
-		/// <returns>A single-element sequence containing <see cref="Input"/>.</returns>
-		public override IEnumerable<ResolveResult> GetChildResults()
-		{
-			return new[] { Input };
-		}
-
 	}
 }

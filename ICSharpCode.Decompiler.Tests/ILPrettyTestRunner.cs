@@ -672,6 +672,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task SpanConversionOperatorMismatch()
+		{
+			await Run(settings: new DecompilerSettings { FileScopedNamespaces = false, FirstClassSpanTypes = true });
+		}
+
+		[Test]
 		public async Task ConstantBlobs()
 		{
 			await Run();
@@ -768,6 +774,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task InstanceOperatorCall()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task FSharpLoops_Debug()
 		{
 			CopyFSharpCoreDll();
@@ -783,6 +795,12 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public async Task WeirdEnums()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task EnumArithmeticOutOfRange()
 		{
 			await Run();
 		}
@@ -934,6 +952,12 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public async Task FileLocalTypes()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task Issue3729()
 		{
 			await Run();
 		}

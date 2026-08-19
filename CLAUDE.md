@@ -37,6 +37,7 @@ Cross-platform core (decompiler engine + shared support):
 Test support:
 - `TestPlugin/` — sample plugin exercising the plugin-loading system (`net10.0`)
 - `TestFixtures.Resources/` — generates resource fixtures consumed by the decompiler tests
+- `TestTools/` — file-based apps run by hand against real-world assemblies: `nugetfuzz` (crash/assert sweep over nuget.org packages) and `decompdiff` (output diff between two decompiler builds). In no solution and not run by CI; see `TestTools/README.md`
 
 Windows-only frontends, packaging, and tests:
 - `ILSpy.AddIn/`, `ILSpy.AddIn.VS2022/` — Visual Studio add-ins (`net472`)
@@ -82,7 +83,6 @@ Solutions & filters: `ILSpy.sln` builds everything; `ILSpy.XPlat.slnf` is the de
 - **Subject** is a succinct phrase describing the change. Target <= 72 chars. No area prefix; the subject itself should make the change clear.
 - **Body explains the *why*** and the non-diff context only: the constraint, the prior incident, the decision, what was tried and rejected, the invariant that motivated the change. Keep it short — one short paragraph is usually enough. The diff already shows the *what* — don't restate it, and don't enumerate per-file changes.
 - `Fix #NNNN: ...` closes an issue. `#NNNN` references one without closing.
-- **Small follow-up fixes against a commit still on the branch get squashed back** via `git commit --fixup` + `git rebase --autosquash`, not appended as "fix X" commits.
 - **en-US English** in subject and body. ASCII-only unless a non-ASCII character is genuinely required for what the message describes.
 - **AI attribution: use `Assisted-by:`, not `Co-Authored-By:`.** Following the Linux kernel's coding-assistants guidance (https://docs.kernel.org/process/coding-assistants.html#attribution), an AI-assisted commit ends with a trailer of the form `Assisted-by: AGENT_NAME:MODEL_VERSION:HARNESS` — agent, model id, and the harness that ran it, colon-separated, e.g. `Assisted-by: Claude:claude-opus-4-8:Claude Code`. Use the session's actual model id and harness. Don't list analysis/build tools. Do **not** add a `Co-Authored-By:` line for the AI, and an AI agent **must not** add a `Signed-off-by:` (only a human can certify the DCO).
 
@@ -91,6 +91,7 @@ Solutions & filters: `ILSpy.sln` builds everything; `ILSpy.XPlat.slnf` is the de
 - Always run the test suite with `--report-trx` so failures survive: `dotnet test --solution ILSpy.sln --report-trx` (the repo pins Microsoft.Testing.Platform in `global.json`; the bare `dotnet test <sln>` form is the old VSTest syntax). Don't dismiss failures as flaky without first reproducing in isolation, then running repeatedly.
 - The decompiler test suite (test kinds, fixture structure, how to write tests, the compiler-matrix model) is documented in [ICSharpCode.Decompiler.Tests/CLAUDE.md](ICSharpCode.Decompiler.Tests/CLAUDE.md).
 - After matcher / rewriter edits, **run the relevant tests, not just the build.** `dotnet build` green ≠ behaviour correct.
+- **To see what a transform did, dump the ILAst:** `ilspycmd <assembly> -m <doc-id> --ilast` prints the IL transform pipeline's result, and `--after-transform <name-or-index>` stops the pipeline early so two stages can be diffed. Debug builds only (like the UI's ILAst language), so run it from a local build, not the installed tool.
 
 ## Investigating dependencies
 

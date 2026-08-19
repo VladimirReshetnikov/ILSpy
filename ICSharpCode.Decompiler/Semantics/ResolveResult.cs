@@ -17,36 +17,18 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents the semantic classification of a resolved expression.
+	/// Represents the result of resolving an expression.
 	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// Instances capture semantic information that survives syntax rewrites: the expression type, whether the expression is known
-	/// to be a compile-time constant, and (for subclasses) operation-specific details such as member targets or invocation arguments.
-	/// </para>
-	/// <para>
-	/// <see cref="ResolveResult"/> values are attached to C# syntax nodes throughout the decompiler pipeline. Many consumers only inspect
-	/// <see cref="Type"/> and <see cref="IsError"/>, but transformations that need richer semantic trees can traverse
-	/// <see cref="GetChildResults"/> recursively.
-	/// </para>
-	/// </remarks>
 	public class ResolveResult
 	{
 		readonly IType type;
 
-		/// <summary>
-		/// Initializes a semantic result with the specified expression type.
-		/// </summary>
-		/// <param name="type">The effective type of the resolved expression.</param>
-		/// <exception cref="ArgumentNullException"><paramref name="type"/> is <see langword="null"/>.</exception>
 		public ResolveResult(IType type)
 		{
 			if (type == null)
@@ -54,40 +36,20 @@ namespace ICSharpCode.Decompiler.Semantics
 			this.type = type;
 		}
 
-		/// <summary>
-		/// Gets the effective type of the resolved expression.
-		/// </summary>
 		[System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Naming", "CA1721:PropertyNamesShouldNotMatchGetMethods",
-										 Justification = "Unrelated to object.GetType()")]
+														 Justification = "Unrelated to object.GetType()")]
 		public IType Type {
 			get { return type; }
 		}
 
-		/// <summary>
-		/// Gets a value indicating whether the expression is known to be a compile-time constant.
-		/// </summary>
-		/// <remarks>
-		/// This property describes semantic constness, not syntax shape. For example, a member access can return
-		/// <see langword="true"/> when it targets a <c>const</c> field.
-		/// </remarks>
 		public virtual bool IsCompileTimeConstant {
 			get { return false; }
 		}
 
-		/// <summary>
-		/// Gets the compile-time constant value when <see cref="IsCompileTimeConstant"/> is <see langword="true"/>.
-		/// </summary>
-		/// <value>
-		/// The constant value when <see cref="IsCompileTimeConstant"/> is <see langword="true"/>, which may itself
-		/// be <see langword="null"/>; otherwise <see langword="null"/>.
-		/// </value>
 		public virtual object ConstantValue {
 			get { return null; }
 		}
 
-		/// <summary>
-		/// Gets a value indicating whether this result represents an unresolved or invalid semantic state.
-		/// </summary>
 		public virtual bool IsError {
 			get { return false; }
 		}
@@ -97,24 +59,6 @@ namespace ICSharpCode.Decompiler.Semantics
 			return "[" + GetType().Name + " " + type + "]";
 		}
 
-		/// <summary>
-		/// Enumerates immediate semantic child nodes that belong to this resolve result.
-		/// </summary>
-		/// <returns>
-		/// A sequence of direct child results. The default implementation returns an empty sequence.
-		/// </returns>
-		public virtual IEnumerable<ResolveResult> GetChildResults()
-		{
-			return Enumerable.Empty<ResolveResult>();
-		}
-
-		/// <summary>
-		/// Creates a shallow copy of this semantic node.
-		/// </summary>
-		/// <returns>A clone produced by <see cref="object.MemberwiseClone"/>.</returns>
-		/// <remarks>
-		/// Reference-typed fields are shared between the original and clone.
-		/// </remarks>
 		public virtual ResolveResult ShallowClone()
 		{
 			return (ResolveResult)MemberwiseClone();

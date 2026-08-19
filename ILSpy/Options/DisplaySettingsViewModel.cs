@@ -16,8 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Xml.Linq;
 
@@ -55,6 +57,58 @@ namespace ICSharpCode.ILSpy.Options
 			.OrderBy(n => n, System.StringComparer.OrdinalIgnoreCase)
 			.ToArray();
 
+		/// <summary>Point sizes offered in the size dropdown.</summary>
+		public IReadOnlyList<int> FontSizes { get; } = Enumerable.Range(6, 24 - 6 + 1).ToArray();
+
+		/// <summary>
+		/// The font size as the user sees and edits it: points, converted at 1 pt = 4/3 logical
+		/// pixels. That ratio is exact wherever Avalonia's logical unit is 1/96 inch (Windows
+		/// DIPs, X11 via Xft.dpi). On macOS the logical unit is a Cocoa point, so the number
+		/// shown here is not the size native Mac font dialogs would report for the same
+		/// rendering - accepted, because
+		/// <see cref="DisplaySettings.SelectedFontSize"/> staying in logical pixels with one
+		/// fixed conversion is what lets settings files round-trip with ILSpy 9.x on every host.
+		/// Unparsable and non-finite input is ignored, numeric input is clamped to 6-72 pt.
+		/// </summary>
+		public string SelectedFontSizePoints {
+			get => Settings == null
+				? string.Empty
+				: Math.Round(Settings.SelectedFontSize * 3 / 4).ToString(CultureInfo.CurrentCulture);
+			set {
+				// Ignoring unparsable input is load-bearing beyond typing UX: ComboBox re-publishes
+				// its still-empty Text when ItemsSource initializes before the Text binding has
+				// delivered a value, and that write must not clobber the stored size. Do not
+				// "improve" this into a fall-back-to-default.
+				if (Settings == null || !double.TryParse(value, NumberStyles.Float, CultureInfo.CurrentCulture, out double points))
+					return;
+				// TryParse accepts the culture's NaN symbol, and NaN falls straight through
+				// Math.Clamp; persisted, it would fail the editor's SelectedFontSize > 0 guard
+				// forever, so the editor would never apply a font size again.
+				if (!double.IsFinite(points))
+					return;
+				points = Math.Clamp(points, 6, 72);
+				// Suppress the PropertyChanged echo for this property: the binding would
+				// immediately rewrite the size box with the rounded value mid-keystroke.
+				updatingFontSizeFromText = true;
+				try
+				{
+					Settings.SelectedFontSize = points * 4 / 3;
+				}
+				finally
+				{
+					updatingFontSizeFromText = false;
+				}
+			}
+		}
+
+		bool updatingFontSizeFromText;
+
+		/// <summary>Re-publishes the size text from the stored value. Wired to the size box's
+		/// LostFocus: the echo suppression above means a typed "3" stored as the clamped 6 pt
+		/// would otherwise keep showing 3 - committing on focus loss resyncs the box, the same
+		/// way the NumericUpDown this ComboBox replaced committed its input.</summary>
+		public void CommitFontSizeText() => OnPropertyChanged(nameof(SelectedFontSizePoints));
+
 		/// <summary>
 		/// Derived FontFamily for the preview TextBlock. Avalonia's runtime binding pipeline
 		/// doesn't auto-coerce a <c>string</c> source to <see cref="FontFamily"/> (the implicit
@@ -75,12 +129,15 @@ namespace ICSharpCode.ILSpy.Options
 			Settings.PropertyChanged += OnSettingsPropertyChanged;
 			SessionSettings = service.SessionSettings;
 			OnPropertyChanged(nameof(CurrentFontFamily));
+			OnPropertyChanged(nameof(SelectedFontSizePoints));
 		}
 
 		void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
 		{
 			if (e.PropertyName == nameof(DisplaySettings.SelectedFont))
 				OnPropertyChanged(nameof(CurrentFontFamily));
+			if (e.PropertyName == nameof(DisplaySettings.SelectedFontSize) && !updatingFontSizeFromText)
+				OnPropertyChanged(nameof(SelectedFontSizePoints));
 		}
 
 		public void LoadDefaults()

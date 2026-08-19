@@ -27,6 +27,7 @@ using System.Linq;
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.TypeSystem;
+using ICSharpCode.Decompiler.Semantics;
 
 namespace ICSharpCode.Decompiler.CSharp.Transforms
 {
@@ -708,6 +709,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// Select/Where/etc. as an ordinary method call keeps the result compilable.
 			if (expr is LambdaExpression { IsAsync: false } lambda && lambda.Parameters.Count == 1 && lambda.Body is Expression)
 			{
+				if (lambda.GetResolveResult() is DecompiledLambdaResolveResult { AttemptedConversionWithTypeMismatch: true })
+				{
+					parameter = null;
+					body = null;
+					return false;
+				}
 				ParameterDeclaration p = lambda.Parameters.Single();
 				if (ValidateParameter(p))
 				{

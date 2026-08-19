@@ -18,9 +18,7 @@
 
 using System;
 
-using ICSharpCode.Decompiler.TypeSystem;
-
-namespace ICSharpCode.Decompiler.CSharp.TypeSystem
+namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 {
 	/// <summary>
 	/// Captures the lexical type-resolution state used by the C# resolver while decompiling code.

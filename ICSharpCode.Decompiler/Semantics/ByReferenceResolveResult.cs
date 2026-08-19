@@ -16,9 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 
 using ICSharpCode.Decompiler.TypeSystem;
 
@@ -72,14 +70,6 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// </summary>
 		public IType ElementType {
 			get { return ((ByReferenceType)this.Type).ElementType; }
-		}
-
-		public override IEnumerable<ResolveResult> GetChildResults()
-		{
-			if (ElementResult != null)
-				return new[] { ElementResult };
-			else
-				return Enumerable.Empty<ResolveResult>();
 		}
 
 		public override string ToString()

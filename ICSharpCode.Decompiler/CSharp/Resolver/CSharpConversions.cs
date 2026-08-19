@@ -37,7 +37,7 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 	/// </remarks>
 	public sealed class CSharpConversions
 	{
-		readonly ConcurrentDictionary<TypePair, Conversion> implicitConversionCache = new ConcurrentDictionary<TypePair, Conversion>();
+		readonly ConcurrentDictionary<(IType fromType, IType toType), Conversion> implicitConversionCache = new ConcurrentDictionary<(IType, IType), Conversion>();
 		readonly ICompilation compilation;
 
 		public CSharpConversions(ICompilation compilation)
@@ -63,39 +63,6 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			}
 			return operators;
 		}
-
-		#region TypePair (for caching)
-		struct TypePair : IEquatable<TypePair>
-		{
-			public readonly IType FromType;
-			public readonly IType ToType;
-
-			public TypePair(IType fromType, IType toType)
-			{
-				Debug.Assert(fromType != null && toType != null);
-				this.FromType = fromType;
-				this.ToType = toType;
-			}
-
-			public override bool Equals(object obj)
-			{
-				return (obj is TypePair) && Equals((TypePair)obj);
-			}
-
-			public bool Equals(TypePair other)
-			{
-				return object.Equals(this.FromType, other.FromType) && object.Equals(this.ToType, other.ToType);
-			}
-
-			public override int GetHashCode()
-			{
-				unchecked
-				{
-					return 1000000007 * FromType.GetHashCode() + 1000000009 * ToType.GetHashCode();
-				}
-			}
-		}
-		#endregion
 
 		#region ImplicitConversion
 		private Conversion ImplicitConversion(ResolveResult resolveResult, IType toType, bool allowUserDefined, bool allowTuple)
@@ -188,7 +155,7 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			if (toType == null)
 				throw new ArgumentNullException(nameof(toType));
 
-			TypePair pair = new TypePair(fromType, toType);
+			var pair = (fromType, toType);
 			if (implicitConversionCache.TryGetValue(pair, out Conversion c))
 				return c;
 
@@ -233,8 +200,14 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 				return Conversion.ImplicitPointerConversion;
 			if (allowTupleConversion)
 			{
-				// TODO are tuple conversions really standard implicit conversions?
-				// The C# spec (draft-v11, §10.4.2) doesn't list them as standard implicit conversions.
+				// The C# spec (draft-v11, §10.4.2) does not list tuple conversions among the standard
+				// implicit conversions, but Roslyn treats them as such: they are accepted both by
+				// ConversionsBase.IsStandardImplicitConversionFromType and by
+				// UserDefinedImplicitConversions.IsEncompassingImplicitConversionKind, so a tuple
+				// conversion can make one type encompass another while resolving a user-defined
+				// conversion. The pointer, inline-array and span conversions below are in the same
+				// position: implemented by the compiler, absent from the spec's list.
+				// Callers classifying a cast pass allowTupleConversion: false, see ExplicitConversion.
 				c = TupleConversion(fromType, toType, isExplicit: false);
 				if (c != Conversion.None)
 					return c;
@@ -297,6 +270,10 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 
 			if (resolveResult.Type.Kind == TypeKind.Dynamic)
 				return Conversion.ExplicitDynamicConversion;
+			// Tuple conversions are excluded here even though an implicit tuple conversion may exist:
+			// a cast has to classify the elements as cast conversions, so the explicit tuple
+			// conversion below wins. Roslyn does the same in ClassifyConversionFromTypeForCast, which
+			// discards an ImplicitTuple result (see ExplicitConversionMayDifferFromImplicit).
 			Conversion c = ImplicitConversion(resolveResult, toType, allowUserDefined: false, allowTuple: false);
 			if (c != Conversion.None)
 				return c;
@@ -349,6 +326,8 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 				return c;
 			if (ExplicitReferenceConversion(fromType, toType))
 				return Conversion.ExplicitReferenceConversion;
+			if (IsExplicitSpanConversion(fromType, toType))
+				return Conversion.ExplicitSpanConversion;
 			if (UnboxingConversion(fromType, toType))
 				return Conversion.UnboxingConversion;
 			c = ExplicitTypeParameterConversion(fromType, toType);
@@ -1037,6 +1016,15 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 				return Conversion.None;
 			}
 
+			// C# 14: user-defined conversions are not considered when converting between types
+			// for which an implicit or an explicit span conversion exists. In particular,
+			// string[] must not reach Span<object> through op_Implicit(object[]) plus array
+			// covariance - the pair only has the explicit span conversion.
+			if (IsImplicitSpanConversion(fromType, toType) || IsExplicitSpanConversion(fromType, toType))
+			{
+				return Conversion.None;
+			}
+
 			var operators = GetApplicableConversionOperators(fromResult, fromType, toType, false);
 
 			if (operators.Count > 0)
@@ -1082,6 +1070,13 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 
 			// user-defined conversions are not supported with interfaces
 			if (fromType.Kind == TypeKind.Interface || toType.Kind == TypeKind.Interface)
+			{
+				return Conversion.None;
+			}
+
+			// C# 14: user-defined conversions are not considered when converting between types
+			// for which an implicit or an explicit span conversion exists.
+			if (IsImplicitSpanConversion(fromType, toType) || IsExplicitSpanConversion(fromType, toType))
 			{
 				return Conversion.None;
 			}
@@ -1274,6 +1269,31 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			return false;
 		}
 
+		/// <summary>
+		/// C# 14 explicit span conversion: from a single-dimensional array to Span&lt;U&gt; or
+		/// ReadOnlySpan&lt;U&gt; where an explicit reference conversion relates the element types.
+		/// The explicit conversions include the implicit ones, so element covariance that is
+		/// not an identity conversion (string[] to Span&lt;object&gt;) also lands here.
+		/// </summary>
+		bool IsExplicitSpanConversion(IType fromType, IType toType)
+		{
+			if (!compilation.TypeSystemOptions.HasFlag(TypeSystemOptions.FirstClassSpanTypes))
+			{
+				return false;
+			}
+
+			if (fromType is ArrayType { Dimensions: 1, ElementType: var elementType }
+				&& (toType.IsKnownType(KnownTypeCode.SpanOfT) || toType.IsKnownType(KnownTypeCode.ReadOnlySpanOfT)))
+			{
+				IType spanElementType = toType.TypeArguments[0];
+				return IdentityConversion(elementType, spanElementType)
+					|| IsImplicitReferenceConversion(elementType, spanElementType)
+					|| ExplicitReferenceConversion(elementType, spanElementType);
+			}
+
+			return false;
+		}
+
 		#endregion
 
 		#region AnonymousFunctionConversion
@@ -1393,7 +1413,10 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 				allowExpandingParams: false,
 				allowOptionalParameters: false,
 				allowImplicitIn: false,
-				conversions: this
+				conversions: this,
+				// C# 14 first-class spans: "span conversion is not considered when overload
+				// resolution is performed for a method group conversion".
+				allowSpanConversionOnExtensionReceiver: false
 			);
 			if (or.FoundApplicableCandidate)
 			{
@@ -1680,36 +1703,21 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 		/// <returns>0 = neither is better; 1 = t1 is better; 2 = t2 is better</returns>
 		int BetterConversionTarget(IType t1, IType t2)
 		{
-			if (t1.IsKnownType(KnownTypeCode.ReadOnlySpanOfT))
+			// ReadOnlySpan<E> beats Span<E>. This must pre-empt the mutual-convertibility rule
+			// below, which would conclude the opposite from the Span-to-ReadOnlySpan conversion.
+			// The ReadOnlySpan<E1>-vs-ReadOnlySpan<E2> case needs no rule of its own: per the
+			// C# 14 spec it is decided by implicit convertibility between the SPAN types (not
+			// the element types), which is exactly what the rule below tests.
+			if (t1.IsKnownType(KnownTypeCode.ReadOnlySpanOfT) && t2.IsKnownType(KnownTypeCode.SpanOfT))
 			{
-				if (t2.IsKnownType(KnownTypeCode.SpanOfT))
-				{
-					if (IdentityConversion(t1.TypeArguments[0], t2.TypeArguments[0]))
-						return 1;
-				}
-				if (t2.IsKnownType(KnownTypeCode.ReadOnlySpanOfT))
-				{
-					bool t1To2 = ImplicitConversion(t1.TypeArguments[0], t2.TypeArguments[0]).IsValid;
-					bool t2To1 = ImplicitConversion(t2.TypeArguments[0], t1.TypeArguments[0]).IsValid;
-					if (t1To2 && !t2To1)
-						return 1;
-				}
+				if (IdentityConversion(t1.TypeArguments[0], t2.TypeArguments[0]))
+					return 1;
 			}
 
-			if (t2.IsKnownType(KnownTypeCode.ReadOnlySpanOfT))
+			if (t2.IsKnownType(KnownTypeCode.ReadOnlySpanOfT) && t1.IsKnownType(KnownTypeCode.SpanOfT))
 			{
-				if (t1.IsKnownType(KnownTypeCode.SpanOfT))
-				{
-					if (IdentityConversion(t2.TypeArguments[0], t1.TypeArguments[0]))
-						return 2;
-				}
-				if (t1.IsKnownType(KnownTypeCode.ReadOnlySpanOfT))
-				{
-					bool t1To2 = ImplicitConversion(t1.TypeArguments[0], t2.TypeArguments[0]).IsValid;
-					bool t2To1 = ImplicitConversion(t2.TypeArguments[0], t1.TypeArguments[0]).IsValid;
-					if (t2To1 && !t1To2)
-						return 2;
-				}
+				if (IdentityConversion(t2.TypeArguments[0], t1.TypeArguments[0]))
+					return 2;
 			}
 
 			{

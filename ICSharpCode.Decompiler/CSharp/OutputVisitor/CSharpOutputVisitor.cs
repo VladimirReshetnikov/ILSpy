@@ -620,7 +620,11 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 		{
 			StartNode(arrayCreateExpression);
 			WriteKeyword(ArrayCreateExpression.NewKeyword);
-			arrayCreateExpression.Type?.AcceptVisitor(this);
+			if (arrayCreateExpression.Type != null)
+			{
+				Space();
+				arrayCreateExpression.Type.AcceptVisitor(this);
+			}
 			if (arrayCreateExpression.Arguments.Count > 0)
 			{
 				WriteCommaSeparatedListInBrackets(arrayCreateExpression.Arguments);
@@ -1137,6 +1141,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 		{
 			StartNode(objectCreateExpression);
 			WriteKeyword(ObjectCreateExpression.NewKeyword);
+			Space();
 			objectCreateExpression.Type.AcceptVisitor(this);
 			bool useParenthesis = objectCreateExpression.Arguments.Any() || objectCreateExpression.Initializer is null;
 			if (useParenthesis)
@@ -2327,6 +2332,12 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 				else
 				{
 					WriteKeyword("set");
+					if (accessor.IsInitOnly)
+					{
+						// The setter is init-only, but the output language version has no init accessor:
+						// mark the keyword, so that the difference is not lost silently.
+						writer.WriteComment(CommentType.MultiLine, "init");
+					}
 				}
 				style = policy.PropertySetBraceStyle;
 			}

@@ -17,7 +17,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
@@ -28,33 +27,12 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Resolve result for a tuple literal expression.
+	/// Resolve result for a C# 7 tuple literal.
 	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// The computed <see cref="ResolveResult.Type"/> is a <see cref="TupleType"/> when every element has a concrete type.
-	/// If any element is <see cref="TypeKind.None"/> or <see cref="TypeKind.Null"/>, the result type falls back to
-	/// <see cref="SpecialType.NoType"/> so callers can propagate an error/incomplete-state signal.
-	/// </para>
-	/// <para>
-	/// Element names are consumed only when constructing the tuple type; per-element expression semantics are carried by
-	/// <see cref="Elements"/>.
-	/// </para>
-	/// </remarks>
 	public class TupleResolveResult : ResolveResult
 	{
-		/// <summary>
-		/// Gets element expressions in tuple-literal order.
-		/// </summary>
 		public ImmutableArray<ResolveResult> Elements { get; }
 
-		/// <summary>
-		/// Initializes a tuple-literal resolve result.
-		/// </summary>
-		/// <param name="compilation">Compilation used to resolve <see cref="TupleType"/> and <c>System.ValueTuple</c> symbols.</param>
-		/// <param name="elements">Tuple element expressions in source order.</param>
-		/// <param name="elementNames">Optional tuple element names aligned with <paramref name="elements"/>.</param>
-		/// <param name="valueTupleAssembly">Optional assembly override used to locate tuple framework definitions.</param>
 		public TupleResolveResult(ICompilation compilation,
 			ImmutableArray<ResolveResult> elements,
 			ImmutableArray<string> elementNames = default(ImmutableArray<string>),
@@ -62,15 +40,6 @@ namespace ICSharpCode.Decompiler.Semantics
 		: base(GetTupleType(compilation, elements, elementNames, valueTupleAssembly))
 		{
 			this.Elements = elements;
-		}
-
-		/// <summary>
-		/// Enumerates tuple element expressions as child resolve results.
-		/// </summary>
-		/// <returns><see cref="Elements"/> in declaration order.</returns>
-		public override IEnumerable<ResolveResult> GetChildResults()
-		{
-			return Elements;
 		}
 
 		static IType GetTupleType(ICompilation compilation, ImmutableArray<ResolveResult> elements, ImmutableArray<string> elementNames, IModule valueTupleAssembly)

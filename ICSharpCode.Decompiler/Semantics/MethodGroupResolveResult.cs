@@ -20,13 +20,12 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Net.NetworkInformation;
 
-using ICSharpCode.Decompiler.Semantics;
+using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.Util;
 
-namespace ICSharpCode.Decompiler.CSharp.Resolver
+namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
 	/// A method list that belongs to a declaring type.
@@ -250,7 +249,8 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 															bool allowExpandingParams = true,
 															bool allowOptionalParameters = true,
 															bool allowImplicitIn = true,
-															bool checkForOverflow = false, CSharpConversions conversions = null)
+															bool checkForOverflow = false, CSharpConversions conversions = null,
+															bool allowSpanConversionOnExtensionReceiver = true)
 		{
 			Log.WriteLine("Performing overload resolution for " + this);
 			Log.WriteCollection("  Arguments: ", arguments);
@@ -288,6 +288,7 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 					extOr.IsExtensionMethodInvocation = true;
 					extOr.CheckForOverflow = checkForOverflow;
 					extOr.AllowImplicitIn = allowImplicitIn;
+					extOr.AllowSpanConversionOnExtensionReceiver = allowSpanConversionOnExtensionReceiver;
 
 					foreach (var g in extensionMethods)
 					{
@@ -313,14 +314,6 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			}
 			Log.WriteLine("Overload resolution finished, best candidate is {0}.", or.GetBestCandidateWithSubstitutedTypeArguments());
 			return or;
-		}
-
-		public override IEnumerable<ResolveResult> GetChildResults()
-		{
-			if (targetResult != null)
-				return new[] { targetResult };
-			else
-				return Enumerable.Empty<ResolveResult>();
 		}
 	}
 }

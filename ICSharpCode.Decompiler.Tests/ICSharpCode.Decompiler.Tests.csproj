@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
@@ -18,6 +18,12 @@
 
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
 
+    <!-- The suite runs dozens of allocation-heavy decompiles concurrently (one NUnit worker per
+         logical CPU, each roundtrip adding WholeProjectDecompiler's own Parallel.ForEach). Workstation
+         GC stops the whole process for every gen0/gen1 collection any worker triggers; measured on a
+         24-thread machine that was ~300 s of pause in a ~550 s run. Server GC gives each core its own
+         heap and collects in parallel. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
     <!-- NU1902/1903 are "Package 'X' has a known security vulnerability". In our tests, we don't care. -->
     <!-- CA1416 fires because the TFM dropped its -windows suffix: Windows-only helpers (SdkUtility,
          Tester.SignAssembly/FindMSBuild/RunWithTestRunner) and Windows-only test inputs (Console.CapsLock
@@ -98,6 +104,7 @@
     <None Include="TestCases\Correctness\StackTypes.il" />
     <None Include="TestCases\Correctness\Uninit.vb" />
     <None Include="TestCases\Disassembler\Pretty\GenericConstraints.il" />
+    <None Include="TestCases\Disassembler\Pretty\NegativeConstants.il" />
     <None Include="TestCases\Disassembler\Pretty\InterfaceImplAttributes.il" />
     <None Include="TestCases\Disassembler\Pretty\SortMembers.expected.il" />
     <None Include="TestCases\Disassembler\Pretty\SortMembers.il" />
@@ -165,6 +172,7 @@
     <None Include="TestCases\ILPretty\SelfReferencingDelegate.il" />
     <None Include="TestCases\ILPretty\VarianceBoundDelegateClosure.il" />
     <None Include="TestCases\ILPretty\WeirdEnums.il" />
+    <None Include="TestCases\ILPretty\EnumArithmeticOutOfRange.il" />
     <None Include="TestCases\ILPretty\ConstantBlobs.il" />
     <None Include="TestCases\ILPretty\StackAllocConditionalPointer.il" />
     <None Include="TestCases\ILPretty\CS1xSwitch_Debug.il" />
@@ -332,12 +340,22 @@
     <None Include="TestCases\ILPretty\TupleNamesFromConsumerLambdas.cs" />
     <Compile Remove="TestCases\ILPretty\OrderByThenByRangeVariable.cs" />
     <None Include="TestCases\ILPretty\OrderByThenByRangeVariable.cs" />
+    <Compile Remove="TestCases\ILPretty\InstanceOperatorCall.cs" />
+    <None Include="TestCases\ILPretty\InstanceOperatorCall.cs" />
+    <None Include="TestCases\ILPretty\InstanceOperatorCall.il" />
+    <Compile Remove="TestCases\ILPretty\EnumArithmeticOutOfRange.cs" />
+    <None Include="TestCases\ILPretty\EnumArithmeticOutOfRange.cs" />
     <Compile Remove="TestCases\ILPretty\EmptyBodies.cs" />
     <None Include="TestCases\ILPretty\EmptyBodies.cs" />
     <Compile Remove="TestCases\ILPretty\TruncatedAccessorBody.cs" />
     <None Include="TestCases\ILPretty\TruncatedAccessorBody.cs" />
     <Compile Remove="TestCases\ILPretty\SealedRecordProtectedCopyCtor.cs" />
     <None Include="TestCases\ILPretty\SealedRecordProtectedCopyCtor.cs" />
+    <Compile Remove="TestCases\ILPretty\Issue3729.cs" />
+    <None Include="TestCases\ILPretty\Issue3729.cs" />
+    <None Include="TestCases\ILPretty\Issue3729.il" />
+    <Compile Remove="TestCases\ILPretty\SpanConversionOperatorMismatch.cs" />
+    <None Include="TestCases\ILPretty\SpanConversionOperatorMismatch.cs" />
     <Compile Remove="TestCases\ILPretty\FSharpLoops_Debug.cs" />
     <None Include="TestCases\ILPretty\FSharpLoops_Debug.cs" />
     <Compile Remove="TestCases\ILPretty\FSharpLoops_Release.cs" />
@@ -423,12 +441,16 @@
     <None Include="TestCases\Ugly\NoFieldKeyword.Expected.cs" />
     <Compile Remove="TestCases\Ugly\NoForEachStatement.Expected.cs" />
     <None Include="TestCases\Ugly\NoForEachStatement.Expected.cs" />
+    <Compile Remove="TestCases\Ugly\NoInitAccessors.Expected.cs" />
+    <None Include="TestCases\Ugly\NoInitAccessors.Expected.cs" />
     <Compile Remove="TestCases\Ugly\NoLocalFunctions.Expected.cs" />
     <None Include="TestCases\Ugly\NoLocalFunctions.Expected.cs" />
     <Compile Remove="TestCases\Ugly\NoNewOfT.Expected.cs" />
     <None Include="TestCases\Ugly\NoNewOfT.Expected.cs" />
     <Compile Remove="TestCases\Ugly\NoPropertiesAndEvents.Expected.cs" />
     <None Include="TestCases\Ugly\NoPropertiesAndEvents.Expected.cs" />
+    <Compile Remove="TestCases\Ugly\NoUnsignedRightShift.Expected.cs" />
+    <None Include="TestCases\Ugly\NoUnsignedRightShift.Expected.cs" />
     <!-- top-level statements: neither the input nor the expected output can be compiled
          into the test assembly, which is a library and has its own entry point rules -->
     <Compile Remove="TestCases\Ugly\TopLevelProgram.cs" />

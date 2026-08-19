@@ -19,6 +19,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -240,6 +241,34 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 	{
 		void IOutParameterContract.M(out int x) { x = 0; }
 		public void M(ref int x) { }
+	}
+
+	public ref struct LifetimeAnnotationTests
+	{
+		private int value;
+
+		public static void ExplicitScopedRef(scoped ref int value) { }
+		public static void ExplicitScopedValue(scoped LifetimeAnnotationTests value) { }
+		public static void ImplicitScopedRef(out int value) { value = 0; }
+		public static void UnscopedRef([UnscopedRef] out int value) { value = 0; }
+
+		public void InstanceMethod() { }
+
+		[UnscopedRef]
+		public ref int UnscopedMethod()
+		{
+			return ref value;
+		}
+
+		[UnscopedRef]
+		public ref int UnscopedProperty => ref value;
+
+		public ref int AccessorUnscopedProperty {
+			[UnscopedRef]
+			get {
+				return ref value;
+			}
+		}
 	}
 
 	public class VarArgsCtor
@@ -592,6 +621,18 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 	public class ClassImplementingIDisposable : IDisposable
 	{
 		public void Dispose() { }
+	}
+
+	/// <summary>
+	/// Extension method on a span receiver, for the method-group-conversion span tests:
+	/// an invocation may reach it through the implicit span conversion of the receiver,
+	/// a method group conversion may not.
+	/// </summary>
+	public static class SpanReceiverExtensionTestCase
+	{
+		public static void M(this ReadOnlySpan<char> receiver)
+		{
+		}
 	}
 
 	/// <summary>

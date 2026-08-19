@@ -17,59 +17,21 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Generic;
 
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.Semantics
 {
-	/// <summary>
-	/// Represents a C# interpolated-string expression before any target-type conversion is applied.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// The resolver keeps interpolated strings as a dedicated node so later conversion classification can decide between
-	/// plain <see cref="KnownTypeCode.String"/> materialization and conversions such as
-	/// <see cref="Conversion.ImplicitInterpolatedStringConversion"/>.
-	/// </para>
-	/// <para>
-	/// <see cref="FormatString"/> and <see cref="Arguments"/> follow the same shape expected by
-	/// <see cref="string.Format(string, object[])"/>-style formatting: placeholders in the format map to entries in
-	/// <see cref="Arguments"/> by index.
-	/// </para>
-	/// </remarks>
 	public class InterpolatedStringResolveResult : ResolveResult
 	{
-		/// <summary>
-		/// Composite formatting template generated for the interpolated string.
-		/// </summary>
 		public readonly string FormatString;
-
-		/// <summary>
-		/// Expression results that supply placeholder values for <see cref="FormatString"/>.
-		/// </summary>
 		public readonly ResolveResult[] Arguments;
 
-		/// <summary>
-		/// Initializes a resolve result for an interpolated-string expression.
-		/// </summary>
-		/// <param name="stringType">The semantic type associated with string expressions in the current compilation.</param>
-		/// <param name="formatString">Composite formatting string synthesized from interpolation holes and literal segments.</param>
-		/// <param name="arguments">Per-hole value expressions in placeholder order.</param>
 		public InterpolatedStringResolveResult(IType stringType, string formatString, params ResolveResult[] arguments)
 			: base(stringType)
 		{
 			FormatString = formatString;
 			Arguments = arguments;
-		}
-
-		/// <summary>
-		/// Enumerates child resolve results that participate in the interpolated expression.
-		/// </summary>
-		/// <returns>The argument resolve results in placeholder order.</returns>
-		public override IEnumerable<ResolveResult> GetChildResults()
-		{
-			return Arguments;
 		}
 	}
 }

@@ -618,6 +618,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task AsyncAwaitPatterns([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
 		public async Task AsyncUsing([ValueSource(nameof(roslyn3OrNewerOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(
@@ -913,6 +919,18 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public async Task RefStructInterfaces([ValueSource(nameof(roslyn4OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task FirstClassSpanTypes([ValueSource(nameof(roslyn5OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task FirstClassSpanConversions([ValueSource(nameof(roslyn5OrNewerOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
 		}

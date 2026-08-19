@@ -73,10 +73,48 @@ public static class MainMenu
 		if (OperatingSystem.IsMacOS())
 		{
 			TranslateGesturesForMacOS(menu);
-			PromoteHelpToMacAppMenu(menu, topLevelByTag);
+			var promoted = PromoteHelpToMacAppMenu(menu, topLevelByTag);
+			window.Closed += (_, _) => WithdrawHelpItems(promoted);
 		}
 
+		RegisterGestureKeyBindings(window, menu);
 		NativeMenu.SetMenu(window, menu);
+	}
+
+	// The Help items the most recent PromoteHelpToMacAppMenu put into the app-level NativeMenu.
+	static List<NativeMenuItemBase> promotedHelpItems = new();
+
+	// NativeMenuItem.Gesture is display-only when NativeMenuBar renders the menu inline:
+	// the managed fallback binds it to MenuItem.InputGesture, which never handles input.
+	// So each gesture is registered as a window-level KeyBinding too - that is what makes
+	// Ctrl+O / Ctrl+S / F5 actually fire on Windows and Linux. On macOS the system menu
+	// bar consumes its key equivalents before they reach the window, so these bindings
+	// stay dormant there. Runs after TranslateGesturesForMacOS so the bound gesture always
+	// matches the one the menu displays. Duplicates of the KeyBindings declared in
+	// MainWindow.axaml (e.g. Alt+Left) are harmless: KeyboardDevice stops dispatching
+	// once a binding marks the event handled, so only the first match executes.
+	static void RegisterGestureKeyBindings(Window window, NativeMenu menu)
+	{
+		foreach (var element in menu.Items)
+		{
+			if (element is NativeMenuItemSeparator || element is not NativeMenuItem item)
+				continue;
+			if (item.Gesture is { } gesture && item.Command is { } command)
+			{
+				var keyBinding = new KeyBinding {
+					Gesture = gesture,
+					Command = command,
+				};
+				// CommandParameter must track the item's property, not snapshot it: for
+				// IProvideParameterBinding commands the item's parameter is itself a binding
+				// that only resolves once the menu lives in a visual tree, so a value copied
+				// here would be null when the shortcut fires.
+				keyBinding.Bind(KeyBinding.CommandParameterProperty, item.GetObservable(NativeMenuItem.CommandParameterProperty));
+				window.KeyBindings.Add(keyBinding);
+			}
+			if (item.Menu != null)
+				RegisterGestureKeyBindings(window, item.Menu);
+		}
 	}
 
 	// macOS convention puts About / Check for Updates under the bold app-named menu
@@ -87,23 +125,46 @@ public static class MainMenu
 	// the exporter subscribes to that instance's Items, so inserting fires a re-export.
 	// Items go at the top, above the Services / Hide / Quit block the exporter appended.
 	// We then remove _Help from the window menu so the items don't appear in both places.
-	static void PromoteHelpToMacAppMenu(NativeMenu rootMenu, Dictionary<string, NativeMenuItem> topLevelByTag)
+	// The app menu outlives any one window, and each window's Help items are built over that
+	// window's own command instances, so the items an earlier window promoted are taken out
+	// first, and each window takes its own back out when it closes; leaving them in would keep
+	// that window's command graph, and everything those commands reach, alive for the life of
+	// the process. The returned list is what that window has to withdraw.
+	internal static List<NativeMenuItemBase> PromoteHelpToMacAppMenu(NativeMenu rootMenu, Dictionary<string, NativeMenuItem> topLevelByTag)
 	{
-		if (!topLevelByTag.TryGetValue("_Help", out var helpItem) || helpItem.Menu is null)
-			return;
+		WithdrawHelpItems(promotedHelpItems);
+		var promoted = new List<NativeMenuItemBase>();
 		if (Application.Current is null)
-			return;
+			return promoted;
 		var appMenu = NativeMenu.GetMenu(Application.Current);
 		if (appMenu is null)
-			return;
+			return promoted;
+		if (!topLevelByTag.TryGetValue("_Help", out var helpItem) || helpItem.Menu is null)
+			return promoted;
 		var index = 0;
 		foreach (var item in helpItem.Menu.Items.ToArray())
 		{
 			helpItem.Menu.Items.Remove(item);
 			appMenu.Items.Insert(index++, item);
+			promoted.Add(item);
 		}
 		rootMenu.Items.Remove(helpItem);
 		topLevelByTag.Remove("_Help");
+		promotedHelpItems = promoted;
+		return promoted;
+	}
+
+	// Takes exactly the listed items back out of the app-level NativeMenu -- not "whatever is
+	// promoted right now". A window that closes after a later window promoted its own Help items
+	// must leave those in place, or the app menu ends up with no About / Check for Updates while
+	// that later window is still on screen. Removing an item that is no longer there is a no-op,
+	// so withdrawing a superseded window's list is harmless.
+	internal static void WithdrawHelpItems(List<NativeMenuItemBase> items)
+	{
+		var appMenu = Application.Current is null ? null : NativeMenu.GetMenu(Application.Current);
+		foreach (var item in items)
+			appMenu?.Items.Remove(item);
+		items.Clear();
 	}
 
 	static bool TryGetExports(

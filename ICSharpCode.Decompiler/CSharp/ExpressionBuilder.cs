@@ -28,7 +28,6 @@ using System.Threading;
 using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Transforms;
-using ICSharpCode.Decompiler.CSharp.TypeSystem;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.IL.Transforms;
 using ICSharpCode.Decompiler.Semantics;
@@ -442,8 +441,11 @@ namespace ICSharpCode.Decompiler.CSharp
 				}
 			}
 
-			if (mrr == null)
+			if (mrr == null || !requireTarget)
 			{
+				// The resolver looked the unqualified name up against the current type, so its
+				// result does not carry the translated target; annotate the same this/base or
+				// type target the qualified spelling gets.
 				mrr = new MemberResolveResult(target.ResolveResult, field);
 			}
 
@@ -1846,6 +1848,26 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 
 			var rr = resolverWithOverflowCheck.ResolveBinaryOperator(op, left.ResolveResult, right.ResolveResult);
+			if ((rr.IsError || NullableType.GetUnderlyingType(rr.Type).GetStackType() != inst.UnderlyingResultType
+				|| !IsCompatibleWithSign(rr.Type, inst.Sign))
+				&& op is BinaryOperatorType.Add or BinaryOperatorType.Subtract
+				&& (left.Type.Kind == TypeKind.Enum || right.Type.Kind == TypeKind.Enum))
+			{
+				// enum +/- constant did not resolve (e.g. an int constant whose numeric value
+				// does not fit the unsigned underlying type, issue #1142); the IL constant is
+				// the enum's bit pattern, so retry with it reinterpreted in the enum type
+				// before falling back to integer arithmetic with casts.
+				var adjustedLeft = AdjustConstantExpressionToType(left, right.Type);
+				var adjustedRight = AdjustConstantExpressionToType(right, left.Type);
+				var adjustedRR = resolverWithOverflowCheck.ResolveBinaryOperator(op, adjustedLeft.ResolveResult, adjustedRight.ResolveResult);
+				if (!(adjustedRR.IsError || NullableType.GetUnderlyingType(adjustedRR.Type).GetStackType() != inst.UnderlyingResultType
+					|| !IsCompatibleWithSign(adjustedRR.Type, inst.Sign)))
+				{
+					left = adjustedLeft;
+					right = adjustedRight;
+					rr = adjustedRR;
+				}
+			}
 			if (rr.IsError || NullableType.GetUnderlyingType(rr.Type).GetStackType() != inst.UnderlyingResultType
 				|| !IsCompatibleWithSign(rr.Type, inst.Sign))
 			{
@@ -2934,6 +2956,8 @@ namespace ICSharpCode.Decompiler.CSharp
 			// the emitted lambda compiles; every use inside the body was valid on the wider type and
 			// therefore stays valid on the narrower one.
 			var invokeParameters = delegateType?.GetDelegateInvokeMethod()?.Parameters;
+			var result = new List<ParameterDeclaration>(parameters.Count);
+			bool anyAnonymousType = false;
 			int i = 0;
 			foreach (var parameter in parameters)
 			{
@@ -2959,11 +2983,24 @@ namespace ICSharpCode.Decompiler.CSharp
 					// needs to be consistent with logic in ILReader.CreateILVariable
 					pd.Name = "P_" + i;
 				}
+
 				if (settings.AnonymousTypes && parameterType.ContainsAnonymousType())
-					pd.Type = null;
-				yield return pd;
+					anyAnonymousType = true;
+
+				result.Add(pd);
 				i++;
 			}
+
+			// An anonymous type cannot be named, so a lambda with such a parameter must be implicitly typed.
+			// C# also requires all lambda parameters to use the same form (CS0748). Drop every type when the
+			// remaining parameter syntax permits it; otherwise keep the converted declarations as a
+			// best-effort fallback for an unrepresentable signature.
+			if (anyAnonymousType && result.All(p => p is { ParameterModifier: ReferenceKind.None, IsParams: false, IsScopedRef: false, Attributes.Count: 0, DefaultExpression: null }))
+			{
+				foreach (var pd in result)
+					pd.Type = null;
+			}
+			return result;
 		}
 
 		protected internal override TranslatedExpression VisitBlockContainer(BlockContainer container, TranslationContext context)
@@ -3023,13 +3060,13 @@ namespace ICSharpCode.Decompiler.CSharp
 			// Additionally check target for null, in order to avoid a crash.
 			if (!memberStatic && target != null)
 			{
-				if (ShouldUseBaseReference())
+				if (ShouldUseBaseReference(out var baseThisVariable))
 				{
 					var baseReferenceType = resolver.CurrentTypeDefinition.DirectBaseTypes
 						.FirstOrDefault(t => t.Kind != TypeKind.Interface);
 					return new BaseReferenceExpression()
 						.WithILInstruction(target)
-						.WithRR(new ThisResolveResult(baseReferenceType ?? memberDeclaringType, nonVirtualInvocation));
+						.WithRR(new ThisResolveResult(baseThisVariable, baseReferenceType ?? memberDeclaringType, nonVirtualInvocation));
 				}
 				else
 				{
@@ -3092,11 +3129,11 @@ namespace ICSharpCode.Decompiler.CSharp
 							.WithoutILInstruction();
 					}
 					translatedTarget = EnsureTargetNotNullable(translatedTarget, target);
-					if (translatedTarget.Expression is ThisReferenceExpression)
+					if (translatedTarget.Expression is ThisReferenceExpression
+						&& translatedTarget.ResolveResult is ILVariableResolveResult { Variable: var thisVariable })
 					{
 						// Give an explicit `this` the same resolve result the base-reference branch
-						// above gives `base`, and that the resolver gives the unqualified spelling of
-						// the same access. ConvertVariable annotates it as an ordinary local, so
+						// above gives `base`. ConvertVariable annotates it as an ordinary local, so
 						// without this a consumer asking "does this expression reach instance state"
 						// gets a different answer depending on whether the qualifier happened to be
 						// printed - and the qualifier is printed for reasons (a parameter of the same
@@ -3104,7 +3141,7 @@ namespace ICSharpCode.Decompiler.CSharp
 						// question being asked.
 						translatedTarget = new ThisReferenceExpression()
 							.WithILInstruction(target)
-							.WithRR(new ThisResolveResult(translatedTarget.Type, nonVirtualInvocation));
+							.WithRR(new ThisResolveResult(thisVariable, translatedTarget.Type, nonVirtualInvocation));
 					}
 					return translatedTarget;
 				}
@@ -3116,21 +3153,22 @@ namespace ICSharpCode.Decompiler.CSharp
 					.WithRR(new TypeResolveResult(constrainedTo ?? memberDeclaringType));
 			}
 
-			bool ShouldUseBaseReference()
+			bool ShouldUseBaseReference([NotNullWhen(true)] out ILVariable? thisVariable)
 			{
+				thisVariable = null;
 				if (!nonVirtualInvocation)
 					return false;
-				if (!MatchLdThis(target))
+				if (!MatchLdThis(target, out thisVariable))
 					return false;
 				if ((constrainedTo ?? memberDeclaringType).GetDefinition() == resolver.CurrentTypeDefinition)
 					return false;
 				return true;
 			}
 
-			bool MatchLdThis(ILInstruction inst)
+			bool MatchLdThis(ILInstruction inst, [NotNullWhen(true)] out ILVariable? thisVariable)
 			{
 				// ldloc this
-				if (inst.MatchLdThis())
+				if (inst.MatchLdThis(out thisVariable))
 					return true;
 				if (resolver.CurrentTypeDefinition.Kind == TypeKind.Struct)
 				{
@@ -3141,7 +3179,7 @@ namespace ICSharpCode.Decompiler.CSharp
 						return false;
 					if (!type.Equals(type2) || !type.Equals(resolver.CurrentTypeDefinition))
 						return false;
-					return arg2.MatchLdThis();
+					return arg2.MatchLdThis(out thisVariable);
 				}
 				return false;
 			}
@@ -4346,7 +4384,13 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 			else if (typeHint.Kind == TypeKind.Enum || typeHint.IsKnownType(KnownTypeCode.Char) || typeHint.IsCSharpSmallIntegerType())
 			{
-				var castRR = resolver.WithCheckForOverflow(true).ResolveCast(typeHint, rr);
+				// An IL constant is a bit pattern: converting it to an integer type at least as
+				// wide only reinterprets it, which is lossless even where the numeric value
+				// changes sign (e.g. int -501 for a uint-based enum member 0xfffffe0b, or for a
+				// ulong-based one where the IL sign-extends it with conv.i8). Only narrowing can
+				// lose information, so limit the overflow check to that case.
+				bool mayBeLossy = !rr.Type.GetStackType().IsIntegerType() || rr.Type.GetSize() > typeHint.GetSize();
+				var castRR = resolver.WithCheckForOverflow(mayBeLossy).ResolveCast(typeHint, rr);
 				if (castRR.IsCompileTimeConstant && !castRR.IsError)
 				{
 					rr = castRR;
@@ -4972,9 +5016,30 @@ namespace ICSharpCode.Decompiler.CSharp
 				// we can deference the managed reference by stripping away the 'ref'
 				value = value.UnwrapChild(((DirectionExpression)value.Expression).Expression);
 			}
-			if (expectedType != null)
+			var callBuilder = new CallBuilder(this, typeSystem, settings);
+			if (expectedType != null && inst.GetAwaiterMethod != null)
 			{
-				value = value.ConvertTo(expectedType, this, allowImplicitConversion: true);
+				// An operand boxed for the GetAwaiter call is typed 'object', which hides the receiver
+				// from member lookup. C# boxes the operand of an `await` implicitly, so the box need
+				// not appear in the output as long as the unboxed operand still binds the same
+				// GetAwaiter. Look through the box for that question only; UnwrapChild detaches the
+				// operand from the AST, so it must not run before the answer is known.
+				Expression? boxedOperand = null;
+				var lookupTarget = value.ResolveResult;
+				if (value.ResolveResult is ConversionResolveResult { Conversion.IsBoxingConversion: true } boxing
+					&& value.Expression is CastExpression boxCast)
+				{
+					boxedOperand = boxCast.Expression;
+					lookupTarget = boxing.Input;
+				}
+				if (!callBuilder.CheckSimpleCall(lookupTarget, inst.GetAwaiterMethod, inst.GetAwaiterCallOpCode))
+				{
+					value = value.ConvertTo(expectedType, this);
+				}
+				else if (boxedOperand != null)
+				{
+					value = value.UnwrapChild(boxedOperand);
+				}
 			}
 			return new UnaryOperatorExpression(UnaryOperatorType.Await, value.Expression)
 				.WithILInstruction(inst)

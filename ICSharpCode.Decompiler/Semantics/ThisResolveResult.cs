@@ -16,29 +16,24 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using ICSharpCode.Decompiler.CSharp;
+using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.Semantics
 {
 	/// <summary>
-	/// Represents semantic classification for <c>this</c> and <c>base</c> receiver expressions.
+	/// Represents the 'this' reference.
+	/// Also used for the 'base' reference.
+	/// Both read the 'this' parameter of the current function, so this is also the
+	/// <see cref="ILVariableResolveResult"/> of that variable. The type is the one the
+	/// reference is spelled with: 'base' carries the base type, not the variable's type.
 	/// </summary>
-	/// <remarks>
-	/// The same type is used for both keywords. <see cref="CausesNonVirtualInvocation"/> distinguishes
-	/// the <c>base</c> case where member dispatch must bypass virtual override lookup.
-	/// </remarks>
-	public class ThisResolveResult : ResolveResult
+	public class ThisResolveResult : ILVariableResolveResult
 	{
 		bool causesNonVirtualInvocation;
 
-		/// <summary>
-		/// Initializes a receiver resolve result.
-		/// </summary>
-		/// <param name="type">The receiver type used for member lookup and typing.</param>
-		/// <param name="causesNonVirtualInvocation">
-		/// <see langword="true"/> when this receiver enforces non-virtual dispatch semantics (as with <c>base</c>).
-		/// </param>
-		public ThisResolveResult(IType type, bool causesNonVirtualInvocation = false) : base(type)
+		public ThisResolveResult(ILVariable thisVariable, IType type, bool causesNonVirtualInvocation = false) : base(thisVariable, type)
 		{
 			this.causesNonVirtualInvocation = causesNonVirtualInvocation;
 		}

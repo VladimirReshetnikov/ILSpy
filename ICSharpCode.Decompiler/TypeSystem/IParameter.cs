@@ -18,117 +18,55 @@
 
 #nullable enable
 
-using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
-	/// <summary>
-	/// Describes how a parameter is passed at call sites and represented in signatures.
-	/// </summary>
 	/// <remarks>
-	/// <para>
-	/// Ordering intentionally matches <see cref="CSharp.Syntax.FieldDirection"/> so the decompiler can map parser/AST
-	/// modifiers to type-system values without translation tables.
-	/// </para>
-	/// <para>
-	/// Values in this enum describe source-level calling semantics rather than raw metadata flags. For example,
-	/// <see cref="In"/> and <see cref="RefReadOnly"/> are both represented by byref signatures in metadata, but they
-	/// carry different language contracts and therefore remain distinct here.
-	/// </para>
+	/// Should match order in <see cref="CSharp.Syntax.FieldDirection"/>.
 	/// </remarks>
 	public enum ReferenceKind : byte
 	{
-		/// <summary>
-		/// The parameter is passed by value (no <c>ref</c>/<c>out</c>/<c>in</c> modifier).
-		/// </summary>
 		None,
-		/// <summary>
-		/// The parameter is passed by reference and must be assigned by the callee before return.
-		/// </summary>
 		Out,
-		/// <summary>
-		/// The parameter is passed by reference and is both readable and writable by caller and callee.
-		/// </summary>
 		Ref,
-		/// <summary>
-		/// The parameter is passed by readonly reference using the C# <c>in</c> modifier.
-		/// </summary>
 		In,
-		/// <summary>
-		/// The parameter uses the C# <c>ref readonly</c> modifier.
-		/// </summary>
-		/// <remarks>
-		/// This is represented differently from <see cref="In"/> because ILSpy preserves the exact source-level modifier
-		/// set when that information is recoverable from metadata attributes.
-		/// </remarks>
 		RefReadOnly,
 	}
 
 	/// <summary>
-	/// Carries C# lifetime annotations that can be attached to parameters.
+	/// Describes which part of a parameter or local is restricted to the current scope.
 	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// The decompiler uses this structure to preserve source-level lifetime modifiers (currently <c>scoped</c>)
-	/// separately from <see cref="ReferenceKind"/>. That separation is important because both concepts influence
-	/// emitted syntax but describe different contracts.
-	/// </para>
-	/// <para>
-	/// Legacy preview fields are kept for backward compatibility with older callers and metadata patterns.
-	/// </para>
-	/// </remarks>
+	public enum ScopedKind : byte
+	{
+		None,
+		ScopedRef,
+		ScopedValue,
+	}
+
 	public struct LifetimeAnnotation
 	{
 		/// <summary>
-		/// Gets or sets whether the parameter is annotated with C# <c>scoped</c> lifetime semantics.
+		/// Gets or sets the scope explicitly encoded by <c>ScopedRefAttribute</c>.
+		/// Implicit and redundant scopedness is excluded.
 		/// </summary>
-		/// <value>
-		/// <see langword="true"/> when <c>ScopedRefAttribute</c> metadata maps to a scoped parameter contract;
-		/// otherwise <see langword="false"/>.
-		/// </value>
+		public ScopedKind DeclaredScope { get; set; }
+
+		/// <summary>
+		/// C# 11 scoped annotation: "scoped ref" (ScopedRefAttribute)
+		/// </summary>
 		public bool ScopedRef {
-#pragma warning disable 618
-			get { return RefScoped; }
-			set { RefScoped = value; }
-#pragma warning restore 618
+			get { return DeclaredScope != ScopedKind.None; }
+			set { DeclaredScope = value ? ScopedKind.ScopedRef : ScopedKind.None; }
 		}
 
 		/// <summary>
-		/// Legacy backing field for <see cref="ScopedRef"/>.
+		/// Gets or sets whether <c>UnscopedRefAttribute</c> is present.
 		/// </summary>
-		/// <remarks>
-		/// This field is obsolete and retained only for source compatibility. New code should use
-		/// <see cref="ScopedRef"/>.
-		/// </remarks>
-		[Obsolete("Use ScopedRef property instead of directly accessing this field")]
-		public bool RefScoped;
-
-		/// <summary>
-		/// Legacy preview field for an older C# lifetime annotation experiment.
-		/// </summary>
-		/// <remarks>
-		/// Current C# language versions no longer use this form; ILSpy keeps the field so older callers can still
-		/// deserialize or inspect historical data.
-		/// </remarks>
-		[Obsolete("C# 11 preview: \"ref scoped\" no longer supported")]
-		public bool ValueScoped;
+		public bool HasUnscopedRefAttribute { get; set; }
 	}
 
-	/// <summary>
-	/// Represents a single parameter in a method, constructor, accessor, delegate, or function pointer signature.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// This abstraction merges metadata facts (custom attributes, optional/default-value payloads, marshalling,
-	/// byref flags) with language-level interpretation used by ILSpy's resolver and C# output pipeline.
-	/// </para>
-	/// <para>
-	/// Implementations are expected to preserve signature order and to report values that are stable for the lifetime
-	/// of the owning symbol.
-	/// </para>
-	/// </remarks>
 	public interface IParameter : IVariable
 	{
 		/// <summary>
@@ -142,15 +80,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		ReferenceKind ReferenceKind { get; }
 
 		/// <summary>
-		/// Gets additional lifetime annotations associated with this parameter.
+		/// C# 11 scoped annotation.
 		/// </summary>
-		/// <value>
-		/// A <see cref="LifetimeAnnotation"/> value that currently captures scoped-lifetime semantics.
-		/// </value>
-		/// <remarks>
-		/// This value is independent from <see cref="ReferenceKind"/>. A parameter can be by-value or by-reference and
-		/// still carry lifetime annotations when the language version and metadata support it.
-		/// </remarks>
 		LifetimeAnnotation Lifetime { get; }
 
 		/// <summary>
@@ -168,14 +99,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets whether this parameter has a constant value when presented in method signature.
 		/// </summary>
 		/// <remarks>
-		/// This can only be <c>true</c> if the parameter is optional, and it's true for most
+		/// This can only be <c>true</c> if the parameter is optional, and it's true for most 
 		/// optional parameters. However it is possible to compile a parameter without a default value,
-		/// and some parameters handle their default values in a special way.
-		///
+		/// and some parameters handle their default values in an special way.
+		/// 
 		/// For example, <see cref="DecimalConstantAttribute"/> does not use normal constants,
-		/// so when <see cref="DecompilerSettings.DecimalConstants"/> is <c>false</c>
+		/// so when <see cref="DecompilerSettings.DecimalConstants" /> is <c>false</c>
 		/// we expose <c>DecimalConstantAttribute</c> directly instead of a constant value.
-		///
+		/// 
 		/// On the call sites, though, we can still use the value inferred from the attribute.
 		/// </remarks>
 		bool HasConstantValueInSignature { get; }
