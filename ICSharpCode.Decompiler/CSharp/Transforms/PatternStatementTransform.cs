@@ -1078,7 +1078,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// A type definition's fields are unspecialized, so compare against the property
 			// DEFINITION's return type; a specialized property in a generic type would
 			// otherwise never match its own backing field.
-			var propertyType = ((IProperty)property.MemberDefinition).ReturnType;
+			// Nullability annotations do not participate in storage identity: the compiler may
+			// annotate the property's return type while leaving the synthesized field oblivious
+			// (or vice versa), and either way the field is still that property's storage.
+			var propertyType = ((IProperty)property.MemberDefinition).ReturnType.AcceptVisitor(NormalizeTypeVisitor.IgnoreNullability);
 			foreach (var candidate in property.DeclaringTypeDefinition.Fields)
 			{
 				if (candidate.IsCompilerGenerated()
@@ -1087,7 +1090,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					// structurally; arbitrary accessor bodies do not. A field of a different
 					// type is not this property's storage, and removing it while printing
 					// `field` would substitute storage of the property's type instead.
-					&& candidate.Type.Equals(propertyType)
+					&& candidate.Type.AcceptVisitor(NormalizeTypeVisitor.IgnoreNullability).Equals(propertyType)
 					&& NameCouldBeBackingFieldOfAutomaticProperty(candidate.Name, out var propertyName)
 					&& propertyName == property.Name)
 				{
