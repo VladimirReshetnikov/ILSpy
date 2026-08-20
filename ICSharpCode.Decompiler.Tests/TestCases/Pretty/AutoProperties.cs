@@ -67,6 +67,24 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 	{
 		public int Property { get; set; }
 	}
+#if CS70
+	internal class DeconstructedGetterOnlyProperties
+	{
+		public string First { get; }
+
+		public int Second { get; }
+
+		public DeconstructedGetterOnlyProperties(string s)
+		{
+			(First, Second) = Build(s);
+		}
+
+		private static (string, int) Build(string s)
+		{
+			return (s, s.Length);
+		}
+	}
+#endif
 	internal interface IAutoProperty
 	{
 		int Property { get; set; }

@@ -1270,6 +1270,17 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					{
 						if (!property.CanSet && !context.Settings.GetterOnlyAutomaticProperties && !context.Settings.FieldKeyword)
 							return null;
+						// With the field keyword, the property only loses its explicit accessors
+						// where TransformFieldBackedProperty removes the field - the same verdict
+						// gates a store rewrite here, or the output assigns a property that kept
+						// setter-less explicit accessors (CS0200). Reads stay unconditional: a
+						// property read compiles either way.
+						if (context.Settings.FieldKeyword && !property.CanSet
+							&& IsStoreTarget(parent)
+							&& !(IsConstructorStoreTarget(parent, field) && BackingFieldWillBeRemoved(property, field, parent)))
+						{
+							return null;
+						}
 					}
 					else if (context.Settings.FieldKeyword && !property.CanSet && IsConstructorStoreTarget(parent, field)
 						&& BackingFieldWillBeRemoved(property, field, parent))
@@ -1302,6 +1313,20 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			=> IsConstructorStore(node, field, currentMethod);
 
 		/// <summary>
+		/// True when <paramref name="node"/> is written to by a plain or deconstructing
+		/// assignment - the positions where rewriting a field reference into a property
+		/// reference turns a store into a property store.
+		/// </summary>
+		static bool IsStoreTarget(AstNode node)
+		{
+			AstNode target = node;
+			while (target.Parent is TupleExpression)
+				target = target.Parent;
+			return target.Parent is AssignmentExpression { Operator: AssignmentOperatorType.Assign } assignment
+				&& assignment.Left == target;
+		}
+
+		/// <summary>
 		/// Whether <see cref="TransformFieldBackedProperty"/> will remove this field's
 		/// declaration. Rewriting a store before knowing that produces an assignment to a
 		/// property that keeps explicit, setter-less accessors.
@@ -1329,8 +1354,21 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// </remarks>
 		static bool IsConstructorStore(AstNode node, IField field, IMethod? enclosingMethod)
 		{
-			if (node.Parent is not AssignmentExpression { Operator: AssignmentOperatorType.Assign } assignment
-				|| assignment.Left != node)
+			AstNode target = node;
+			// A deconstruction assigns each tuple element like a plain assignment, so a
+			// setter-less property's element keeps constructor-store semantics: the rewritten
+			// '(A, B) = ...' writes the get-only auto-properties directly, exactly like the
+			// direct field stores it decompiled from. A settable property's element does not
+			// qualify - its plain store would be lifted into a property initializer to bypass
+			// the setter, and a tuple element has no initializer to move to.
+			if (node.Parent is TupleExpression
+				&& IsBackingFieldOfAutomaticProperty(field, out var tupleProperty) && !tupleProperty.CanSet)
+			{
+				while (target.Parent is TupleExpression)
+					target = target.Parent;
+			}
+			if (target.Parent is not AssignmentExpression { Operator: AssignmentOperatorType.Assign } assignment
+				|| assignment.Left != target)
 			{
 				return false;
 			}
