@@ -154,9 +154,30 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return $"{value}";
 		}
 
+		public string StackSpanAssignedAcrossBranches(ReadOnlySpan<byte> ns, ReadOnlySpan<byte> name)
+		{
+			Span<char> span = stackalloc char[ns.IsEmpty ? name.Length : (ns.Length + 1 + name.Length)];
+			scoped Span<char> span2;
+			if (!ns.IsEmpty)
+			{
+				span[0] = '.';
+				span2 = span.Slice(1, span.Length - 1);
+			}
+			else
+			{
+				span2 = span;
+			}
+			span2[0] = 'x';
+			return span.ToString();
+		}
+
 		public string HeapSpanPassedThroughRef()
 		{
+#if CS140
+			ReadOnlySpan<char> input = "value";
+#else
 			ReadOnlySpan<char> input = "value".AsSpan();
+#endif
 			scoped ReadOnlySpan<char> output;
 			CopyByRefToOut(ref input, out output);
 			return output.ToString();

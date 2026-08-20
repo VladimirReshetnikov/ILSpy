@@ -1187,7 +1187,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 								init.AddAnnotation(annotation);
 							}
 						}
-						if (context.Settings.ScopedRef && v.ILVariable.IsScoped)
+						// The IL-side analysis and the byref-like heuristic above are two routes to
+						// the same keyword; a declaration flagged by both must still print one 'scoped'.
+						if (context.Settings.ScopedRef && v.ILVariable.IsScoped && !vds.IsScopedRef)
 						{
 							vds.Modifiers |= Modifiers.Scoped;
 						}
@@ -1265,15 +1267,17 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						initializer = new DefaultValueExpression(type.Clone());
 					}
 					var vds = new VariableDeclarationStatement(type, v.Name, initializer);
-					if (context.Settings.ScopedRef && v.ILVariable.IsScopedWithoutInitializer)
-					{
-						vds.Modifiers |= Modifiers.Scoped;
-					}
 					vds.Variables.Single().AddAnnotation(new ILVariableResolveResult(ilVariable));
 					if (context.Settings.ScopedRef && v.Type.IsByRefLike
 						&& ShouldDeclareByRefLikeLocalScoped(v))
 					{
 						vds.IsScopedRef = true;
+					}
+					// The IL-side analysis and the byref-like heuristic above are two routes to the
+					// same keyword; a declaration flagged by both must still print one 'scoped'.
+					if (context.Settings.ScopedRef && v.ILVariable.IsScopedWithoutInitializer && !vds.IsScopedRef)
+					{
+						vds.Modifiers |= Modifiers.Scoped;
 					}
 					context.Step("Insert variable declaration", v.InsertionPoint.nextNode);
 					if (v.InsertionPoint.nextNode.Parent is LambdaExpression lambda)
