@@ -1322,7 +1322,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// could equally be an expression, while type arguments, an array or pointer suffix, a
 		/// predefined type keyword or a <c>global::</c> qualifier could not.
 		/// </summary>
-		static bool ParsesAsCastOfCollectionExpression(AstType type)
+		internal static bool ParsesAsCastOfCollectionExpression(AstType type)
 		{
 			switch (type)
 			{

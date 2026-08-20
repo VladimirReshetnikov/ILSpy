@@ -127,6 +127,21 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				target = firstArgument.GetResolveResult();
 				dirExpr.Detach();
 			}
+			else if (firstArgument is CollectionExpression)
+			{
+				// As an invocation argument the collection expression took its target type from
+				// the parameter; receiver position offers no target type at all (CS9176), so the
+				// conversion the compiler applied has to become an explicit cast. When the
+				// parameter type's syntax would not even parse as a cast over '[...]' (a bare
+				// name reads as an element access instead), the call keeps its static form.
+				var castType = context.TypeSystemAstBuilder.ConvertType(method.Parameters[0].Type);
+				if (!IntroduceCollectionExpressions.ParsesAsCastOfCollectionExpression(castType))
+					return;
+				context.Step("Introduce extension method call", invocationExpression);
+				stepped = true;
+				// The replacement is a freshly created CastExpression, so the result is non-null.
+				firstArgument = firstArgument.ReplaceWith(expr => new CastExpression(castType, expr.Detach()))!;
+			}
 			else if (firstArgument is NullReferenceExpression)
 			{
 				Debug.Assert(context.RequiredNamespacesSuperset.Contains(method.Parameters[0].Type.Namespace));

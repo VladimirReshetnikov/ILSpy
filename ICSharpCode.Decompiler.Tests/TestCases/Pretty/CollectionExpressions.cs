@@ -4,6 +4,14 @@ using System.Collections.Immutable;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
+	internal static class CollectionExpressionExtensions
+	{
+		public static string Description(this IEnumerable<string> values)
+		{
+			return string.Join(",", values);
+		}
+	}
+
 	internal class CollectionExpressions
 	{
 		public IReadOnlyList<int> ArrayWrapper()
@@ -174,5 +182,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 			return new int[3] { 1, 2, 3 };
 		}
+
+		public string ExtensionOnCollectionExpression(string a, string b)
+		{
+			return ((IEnumerable<string>)[a, b]).Description();
+		}
 	}
+
 }
