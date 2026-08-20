@@ -87,6 +87,30 @@ namespace Lib.Sub
 }
 ";
 
+		// A file-local helper in the global namespace whose user sits inside a namespace: the
+		// merged file then has a top-level type before the namespace declaration, which rules
+		// out the file-scoped namespace form (CS8956).
+		const string GlobalHelperSource = @"
+file static class GlobalHelper
+{
+	public static int One()
+	{
+		return 1;
+	}
+}
+
+namespace Lib.Deep
+{
+	public class GlobalHelperUser
+	{
+		public int Get()
+		{
+			return GlobalHelper.One();
+		}
+	}
+}
+";
+
 		const string UnrelatedSource = @"
 namespace Lib
 {
@@ -111,6 +135,7 @@ namespace Lib
 				new[] {
 					CSharpSyntaxTree.ParseText(HolderSource, path: "Holder.cs"),
 					CSharpSyntaxTree.ParseText(UnrelatedSource, path: "Unrelated.cs"),
+					CSharpSyntaxTree.ParseText(GlobalHelperSource, path: "GlobalHelper.cs"),
 				},
 				references,
 				new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));

@@ -42,7 +42,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			singleNamespaceDeclaration = null;
 			hasNamespace = false;
 			base.VisitSyntaxTree(syntaxTree);
-			if (context.Settings.FileScopedNamespaces && singleNamespaceDeclaration != null)
+			// A file-scoped namespace must precede all other members (CS8956), so a top-level
+			// type outside the namespace - e.g. a global-namespace helper exported into the same
+			// file as its user - rules the form out even when the namespace itself is unique.
+			if (context.Settings.FileScopedNamespaces && singleNamespaceDeclaration != null
+				&& !(singleNamespaceDeclaration.Parent?.Children.OfType<EntityDeclaration>().Any() ?? true))
 			{
 				context.Step("Use file-scoped namespace", singleNamespaceDeclaration);
 				singleNamespaceDeclaration.IsFileScoped = true;
