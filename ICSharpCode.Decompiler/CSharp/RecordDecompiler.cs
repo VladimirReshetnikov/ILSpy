@@ -560,6 +560,13 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				case "System.Runtime.CompilerServices.CompilerGeneratedAttribute":
 					return true;
+				case "System.Diagnostics.CodeAnalysis.SetsRequiredMembersAttribute":
+					// The compiler puts this on the copy constructor it generates for a record
+					// with required members, and generates it again on recompilation - but only
+					// then, so a record without any required member keeps such a constructor
+					// spelled out rather than losing the attribute silently.
+					return recordTypeDef.Fields.Concat<IMember>(recordTypeDef.Properties)
+						.Any(m => m.HasAttribute(KnownAttribute.Required));
 				default:
 					return false;
 			}

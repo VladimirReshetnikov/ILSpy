@@ -456,6 +456,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public object C;
 			public required dynamic D;
 		}
+
+		public record ClassWithRequiredMembers
+		{
+			public required string A { get; init; }
+			public required double B { get; set; }
+		}
 #endif
 		public record struct RecordWithMultipleCtors
 		{
